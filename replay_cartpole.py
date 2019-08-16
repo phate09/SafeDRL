@@ -1,6 +1,5 @@
 import torch
 from gym.envs.classic_control import CartPoleEnv
-from unityagents import UnityEnvironment
 
 from dqn_agent import Agent
 
@@ -15,7 +14,8 @@ for i in range(1):
     score = 0
     state = env.reset()  # reset the environment
     while True:
-        action = agent.act_eval(state)
+        env.render()
+        action = agent.act(state)
         next_state, reward, done, _ = env.step(action)  # send the action to the environment
         state = next_state
         score += reward

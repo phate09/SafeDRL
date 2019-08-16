@@ -102,11 +102,6 @@ class Agent:
         else:
             return random.choice(np.arange(self.action_size))
 
-    def act_eval(self, state):
-        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
-        action_values = self.qnetwork_target(state)
-        return np.argmax(action_values.cpu().data.numpy())
-
     def learn(self, experiences, indexes, is_values):
         """Update value parameters using given batch of experience tuples.
 

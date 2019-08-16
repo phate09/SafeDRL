@@ -15,7 +15,7 @@ currentDT = datetime.datetime.now()
 print(f'Start at {currentDT.strftime("%Y-%m-%d %H:%M:%S")}')
 seed = 5
 # np.random.seed(seed)
-env = CartPoleEnv()
+env = CartPoleEnv()  # gym.make("CartPole-v0")
 state_size = 4
 action_size = 2
 STARTING_BETA = 0.5
@@ -40,11 +40,17 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     eps = Scheduler(eps_start, eps_end, n_episodes * EPS_DECAY)
     for i_episode in range(n_episodes):
         state = env.reset()  # reset the environment
+        action = None
         score = 0
         for t in range(max_t):
-            action = agent.act(state, eps.get(i_episode))
-            next_state, reward, done, _ = env.step(action)  # send the action to the environment
-            agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+            if action is None:
+                action = agent.act(state, eps.get(i_episode))
+                next_state, reward, done, _ = env.step(action)  # send the action to the environment
+                if np.random.random() < 0.8:  # random frame skip
+                    action = None
+            else:
+                # action = agent.act(state, eps.get(i_episode))
+                next_state, reward, done, _ = env.step(action)  # send the action to the environment
             state = next_state
             score += reward
             if done:
