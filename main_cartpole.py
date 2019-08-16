@@ -41,10 +41,18 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     for i_episode in range(n_episodes):
         state = env.reset()  # reset the environment
         score = 0
+        action = None
         for t in range(max_t):
-            action = agent.act(state, eps.get(i_episode))
-            next_state, reward, done, _ = env.step(action)  # send the action to the environment
-            agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+            if action is None:
+                action = agent.act(state, eps.get(i_episode))
+                next_state, reward, done, _ = env.step(action)  # send the action to the environment
+                agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+                if np.random.rand() > 0.8:
+                    action = None
+            else:
+                next_state, reward, done, _ = env.step(action)
+                agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+                action = None
             state = next_state
             score += reward
             if done:
@@ -64,10 +72,10 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} '
                   f'eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
         torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-        if np.mean(scores_window) >= 197.0:
-            print(f'\nEnvironment solved in {i_episode - 100:d} episodes!\tAverage Score: {np.mean(scores_window):.2f}')
-            torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-            break
+        # if np.mean(scores_window) >= 197.0:
+        #     print(f'\nEnvironment solved in {i_episode - 100:d} episodes!\tAverage Score: {np.mean(scores_window):.2f}')
+    torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
+        #     break
     return scores
 
 
