@@ -1,14 +1,14 @@
-import random
-from collections import deque
-
 import numpy as np
 import progressbar as pb
 import torch
 from scipy import stats
-
+import torch.nn
+import torch.optim.optimizer
 import constants
 import pong_utils
 from agents.GenericAgent import GenericAgent
+
+ACTION_LEFT = 0
 
 
 class AgentPPO(GenericAgent):
@@ -35,7 +35,7 @@ class AgentPPO(GenericAgent):
         self.beta: float = config[constants.beta]
         self.device = config[constants.device]
         self.model: torch.nn.Module = config[constants.model]
-        self.optimiser: torch.optim.Optimizer = config[constants.optimiser]
+        self.optimiser: torch.optim.optimizer.Optimizer = config[constants.optimiser]
         self.ending_condition = config[constants.ending_condition]
 
         self.state_list = []
@@ -158,51 +158,51 @@ class AgentPPO(GenericAgent):
 
         timer.finish()
 
-    def train(self, env, brain_name, writer, ending_condition, n_episodes=2000, max_t=1000):
-        """
-
-        :param env:
-        :param brain_name:
-        :param writer:
-        :param ending_condition: a method that given a score window returns true or false
-        :param n_episodes:
-        :param max_t:
-        :return:
-        """
-        scores = []  # list containing scores from each episode
-        scores_window = deque(maxlen=100)  # last 100 scores
-
-        for i_episode in range(n_episodes):
-            env_info = env.reset(train_mode=True)[brain_name]  # reset the environment
-            self.reset()  # reset the agent
-            state = env_info.vector_observations[0]  # get the current state
-            score = 0
-            for t in range(max_t):
-                action, probs = self.act(state)
-                env_info = env.step(action)[brain_name]  # send the action to the environment
-                next_state = env_info.vector_observations[0]  # get the next state
-                reward = env_info.rewards[0]  # get the reward
-                done = env_info.local_done[0]  # see if episode has finished
-                self.collect(state, action, reward, next_state, done)
-                state = next_state
-                score += reward
-                if done:
-                    break
-            self.learn()
-            scores_window.append(score)  # save most recent score
-            scores.append(score)  # save most recent score
-            writer.add_scalar('data/score', score, i_episode)
-            writer.add_scalar('data/score_average', np.mean(scores_window), i_episode)
-            print(
-                f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} ', end="")
-            if i_episode + 1 % 100 == 0:
-                print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} ')
-            # torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-            if ending_condition(scores_window):
-                print(f'\nEnvironment solved in {i_episode - 100:d} episodes!\tAverage Score: {np.mean(scores_window):.2f}')
-                # torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth') #save the agent
-                break
-        return scores
+    # def train(self, env, brain_name, writer, ending_condition, n_episodes=2000, max_t=1000):
+    #     """
+    #
+    #     :param env:
+    #     :param brain_name:
+    #     :param writer:
+    #     :param ending_condition: a method that given a score window returns true or false
+    #     :param n_episodes:
+    #     :param max_t:
+    #     :return:
+    #     """
+    #     scores = []  # list containing scores from each episode
+    #     scores_window = deque(maxlen=100)  # last 100 scores
+    #
+    #     for i_episode in range(n_episodes):
+    #         env_info = env.reset(train_mode=True)[brain_name]  # reset the environment
+    #         self.reset()  # reset the agent
+    #         state = env_info.vector_observations[0]  # get the current state
+    #         score = 0
+    #         for t in range(max_t):
+    #             action, probs = self.act(state)
+    #             env_info = env.step(action)[brain_name]  # send the action to the environment
+    #             next_state = env_info.vector_observations[0]  # get the next state
+    #             reward = env_info.rewards[0]  # get the reward
+    #             done = env_info.local_done[0]  # see if episode has finished
+    #             self.collect(state, action, reward, next_state, done)
+    #             state = next_state
+    #             score += reward
+    #             if done:
+    #                 break
+    #         self.learn()
+    #         scores_window.append(score)  # save most recent score
+    #         scores.append(score)  # save most recent score
+    #         writer.add_scalar('data/score', score, i_episode)
+    #         writer.add_scalar('data/score_average', np.mean(scores_window), i_episode)
+    #         print(
+    #             f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} ', end="")
+    #         if i_episode + 1 % 100 == 0:
+    #             print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} ')
+    #         # torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
+    #         if ending_condition(scores_window):
+    #             print(f'\nEnvironment solved in {i_episode - 100:d} episodes!\tAverage Score: {np.mean(scores_window):.2f}')
+    #             # torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth') #save the agent
+    #             break
+    #     return scores
 
     def clipped_surrogate(self, policy, old_probs, states, actions, rewards,
                           discount=0.995, epsilon=0.1, beta=0.01):
@@ -221,7 +221,7 @@ class AgentPPO(GenericAgent):
 
         # convert states to policy (or probability)
         new_probs = pong_utils.states_to_prob(policy, states)
-        new_probs = torch.where(actions == pong_utils.RIGHT, new_probs, 1.0 - new_probs)
+        new_probs = torch.where(actions == ACTION_LEFT, new_probs, 1.0 - new_probs)
 
         # cost = torch.log(new_probs) * rewards_standardised
         ratio = new_probs / old_probs
