@@ -16,14 +16,20 @@ class QNetwork(nn.Module):
         """
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, 64)
+        self.bn1 = nn.BatchNorm1d(64)
         self.fc2 = nn.Linear(64, 64)
+        self.bn2 = nn.BatchNorm1d(64)
         self.fc3 = nn.Linear(64, action_size)
+        self.bn3 = nn.BatchNorm1d(action_size)
 
     #         print(f'parameters={self.parameters()}')
 
     def forward(self, state):
         """Build a network that maps state -> action values."""
-        return self.fc3(F.relu(self.fc2(F.relu(self.fc1(state)))))
+        output: torch.Tensor = F.relu(self.bn1(self.fc1(state)))  # self.bn1(
+        output: torch.Tensor = F.relu(self.bn2(self.fc2(output)))  # self.bn2(
+        output: torch.Tensor = self.bn3(self.fc3(output))  # self.bn2(
+        return output
 
 
 class DuelingQNetwork(nn.Module):

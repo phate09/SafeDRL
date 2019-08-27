@@ -30,7 +30,8 @@ os.mkdir(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
-
+# agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
+# agent.qnetwork_target.load_state_dict(torch.load('model.pth'))
 
 def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     scores = []  # list containing scores from each episode
@@ -43,16 +44,12 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
         score = 0
         action = None
         for t in range(max_t):
-            if action is None:
-                action = agent.act(state, eps.get(i_episode))
-                next_state, reward, done, _ = env.step(action)  # send the action to the environment
-                agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
-                if np.random.rand() > 0.8:
-                    action = None
-            else:
+            action = agent.act(state, eps.get(i_episode))
+            next_state, reward, done, _ = env.step(action)  # send the action to the environment
+            agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+            if np.random.rand() > 0.8:
                 next_state, reward, done, _ = env.step(action)
                 agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
-                action = None
             state = next_state
             score += reward
             if done:
@@ -79,7 +76,7 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     return scores
 
 
-return_scores = dqn()
+return_scores = dqn(n_episodes=8000)
 
 # plot the scores
 fig = plt.figure()
