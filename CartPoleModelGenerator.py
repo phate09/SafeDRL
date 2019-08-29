@@ -2,19 +2,25 @@ from collections import deque
 
 import numpy as np
 from gym.envs.classic_control import CartPoleEnv
+import torch
+from dqn_agent import Agent
 
-
+state_size = 4
+action_size = 2
+ALPHA = 0.4
 class CartPoleModelGenerator:
     def __init__(self):
         self.p: float = 0.8  # probability of not sticky actions
         self.last_state: np.ndarray
         self.last_action: np.ndarray
-        self.max_n: int = 10
+        self.max_n: int = 12
         self.current_t: int = 0
         self.failed: bool = False
         self.terminal: bool = False
         self.env = CartPoleEnv()
         self.env.seed(0)
+        self.agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+        self.agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
 
     def getVarNames(self):
         return ["x", "y", "z"]
@@ -53,12 +59,13 @@ class CartPoleModelGenerator:
         if self.current_t >= self.max_n:
             return self.last_state, self.terminal, self.current_t
         else:
-            state, reward, done, _ = self.env.step(i)
+            action = self.agent.act(self.last_state,0)
+            state, reward, done, _ = self.env.step(action)
             self.last_state = state
             self.terminal = done
             self.current_t = self.current_t + 1
             if offset == 1 and not done:
-                state, reward, done, _ = self.env.step(i)
+                state, reward, done, _ = self.env.step(action)
                 self.last_state = state
                 self.terminal = done
         return self.last_state, self.terminal, self.current_t
@@ -81,6 +88,7 @@ class CartPoleModelGenerator:
         state, terminal, t = self.getInitialState()
         queue.append((state, terminal, 1.0, t))
         set = {(tuple(self.last_state), terminal, t)}
+        max_t = 0
         while len(queue) != 0:
             (state, terminal, prob, t) = queue.popleft()
             for i in range(self.getNumChoices()):
@@ -92,12 +100,13 @@ class CartPoleModelGenerator:
                         queue.append((state, terminal, new_prob, t_next))
                     # else:
                     #     print("skipped")
+                    max_t=max(max_t,t_next)
                     set.add((tuple(state), terminal, t_next))
-        return set
+        return set,max_t
 
 
 if __name__ == '__main__':
     model = CartPoleModelGenerator()
-    tree = model.generateTree()
-    print(tree)
-    print(f"total length {len(tree)}")
+    tree,max_t = model.generateTree()
+    # print(tree)
+    print(f"total length {len(tree)}, max_t {max_t}")

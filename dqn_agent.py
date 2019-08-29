@@ -14,11 +14,12 @@ BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
 GAMMA = 0.99  # discount factor
 TAU = 1e-3  # for soft update of target parameters
-LR = 5e-4  # learning rate
+LR = 5e-5  # learning rate
 UPDATE_EVERY = 4  # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-prioritised = False
+prioritised = True
+
 
 # noinspection SpellCheckingInspection,PyMethodMayBeStatic
 class Agent:
@@ -93,7 +94,7 @@ class Agent:
                 # ------------------- update target network ------------------- #
                 self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)
 
-    def act(self, state, eps=0.):
+    def act(self, state: np.ndarray, eps=0.):
         """Returns actions for given state as per current policy.
 
         Params
@@ -141,7 +142,7 @@ class Agent:
         Qa_next_s = self.qnetwork_target(next_states).gather(1, next_actions.unsqueeze(-1)).squeeze(
             -1)  # the maximum Q at the next state
         target_Q = rewards + GAMMA * Qa_next_s * (torch.ones_like(dones) - dones)
-        td_errors = torch.abs(target_Q - Qa_s)+1e-5
+        td_errors = torch.abs(target_Q - Qa_s) + 1e-5
         if prioritised:
             # updates the priority by using the newly computed td_errors
             self.memory.update_priorities(indexes, td_errors.detach().cpu().numpy())
