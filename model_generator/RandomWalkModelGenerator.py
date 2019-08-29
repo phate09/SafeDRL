@@ -15,7 +15,10 @@ class RandomWalkModelGenerator:
             method = getattr(self, method_name, lambda: print("Invalid method name"))
             # Call the method as we return it
             return method(message)
-
+    def getVarNames(self,message):
+        return ["x"]
+    def getVarTypes(self,message):
+        return ["TypeInt"]
 
 if __name__ == '__main__':
     generator = RandomWalkModelGenerator(5558)
