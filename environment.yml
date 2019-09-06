@@ -128,5 +128,3 @@ dependencies:
     - werkzeug==0.15.5
     - widgetsnbextension==3.5.1
     - zipp==0.5.2
-prefix: /home/edoardo/anaconda3/envs/safedrl
-
