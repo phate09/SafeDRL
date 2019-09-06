@@ -10,7 +10,7 @@ class RandomWalkModelGenerator:
         self.socket.bind(f"tcp://*:{port}")
         self.x = 0
         self.n = 10
-        self.p = 0.2
+        self.p = 0.5
 
     def start(self):
         while True:
