@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='state_request.proto',
   package='prism',
   syntax='proto3',
-  serialized_pb=_b('\n\x13state_request.proto\x12\x05prism\"\x1b\n\nStateFloat\x12\r\n\x05value\x18\x01 \x03(\x01\"\x1f\n\x0eStringVarNames\x12\r\n\x05value\x18\x01 \x03(\tb\x06proto3')
+  serialized_pb=_b('\n\x13state_request.proto\x12\x05prism\"\x1b\n\nStateFloat\x12\r\n\x05value\x18\x01 \x03(\x01\"\x19\n\x08StateInt\x12\r\n\x05value\x18\x01 \x03(\x05\"\x1f\n\x0eStringVarNames\x12\r\n\x05value\x18\x01 \x03(\tb\x06proto3')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -57,6 +57,37 @@ _STATEFLOAT = _descriptor.Descriptor(
 )
 
 
+_STATEINT = _descriptor.Descriptor(
+  name='StateInt',
+  full_name='prism.StateInt',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='value', full_name='prism.StateInt.value', index=0,
+      number=1, type=5, cpp_type=1, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=59,
+  serialized_end=84,
+)
+
+
 _STRINGVARNAMES = _descriptor.Descriptor(
   name='StringVarNames',
   full_name='prism.StringVarNames',
@@ -83,11 +114,12 @@ _STRINGVARNAMES = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=59,
-  serialized_end=90,
+  serialized_start=86,
+  serialized_end=117,
 )
 
 DESCRIPTOR.message_types_by_name['StateFloat'] = _STATEFLOAT
+DESCRIPTOR.message_types_by_name['StateInt'] = _STATEINT
 DESCRIPTOR.message_types_by_name['StringVarNames'] = _STRINGVARNAMES
 
 StateFloat = _reflection.GeneratedProtocolMessageType('StateFloat', (_message.Message,), dict(
@@ -96,6 +128,13 @@ StateFloat = _reflection.GeneratedProtocolMessageType('StateFloat', (_message.Me
   # @@protoc_insertion_point(class_scope:prism.StateFloat)
   ))
 _sym_db.RegisterMessage(StateFloat)
+
+StateInt = _reflection.GeneratedProtocolMessageType('StateInt', (_message.Message,), dict(
+  DESCRIPTOR = _STATEINT,
+  __module__ = 'state_request_pb2'
+  # @@protoc_insertion_point(class_scope:prism.StateInt)
+  ))
+_sym_db.RegisterMessage(StateInt)
 
 StringVarNames = _reflection.GeneratedProtocolMessageType('StringVarNames', (_message.Message,), dict(
   DESCRIPTOR = _STRINGVARNAMES,

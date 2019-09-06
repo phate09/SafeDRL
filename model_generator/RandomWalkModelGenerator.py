@@ -1,6 +1,6 @@
 import zmq
 
-from proto.state_request_pb2 import StateFloat, StringVarNames
+from proto.state_request_pb2 import StringVarNames, StateInt
 
 
 class RandomWalkModelGenerator:
@@ -42,13 +42,15 @@ class RandomWalkModelGenerator:
         pass
 
     def getInitialState(self, message):
-        state = StateFloat()
+        state = StateInt()
         state.value.append(0)  # initialise the state to 0
         self.socket.send(state.SerializeToString())
 
     def exploreState(self, message):
-        state = StateFloat.ParseFromString(message[1])
+        state = StateInt()
+        state.ParseFromString(message[1])
         self.x = int(state.value[0])
+        self.socket.send_string("OK")
 
     def getNumChoices(self, message):
         self.socket.send_string("1")  # returns only 1 choice
@@ -67,7 +69,7 @@ class RandomWalkModelGenerator:
         self.socket.send_string(str(prob))
 
     def computeTransitionTarget(self, message):
-        state = StateFloat()
+        state = StateInt()
         i = int(message[1].decode('utf-8'))
         offset = int(message[2].decode('utf-8'))
         if self.x == -self.n or self.x == self.n:
