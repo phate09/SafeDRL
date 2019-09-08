@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='state_request.proto',
   package='prism',
   syntax='proto3',
-  serialized_pb=_b('\n\x13state_request.proto\x12\x05prism\"\x1b\n\nStateFloat\x12\r\n\x05value\x18\x01 \x03(\x01\"\x19\n\x08StateInt\x12\r\n\x05value\x18\x01 \x03(\x05\"\x1f\n\x0eStringVarNames\x12\r\n\x05value\x18\x01 \x03(\tb\x06proto3')
+  serialized_pb=_b('\n\x13state_request.proto\x12\x05prism\"\x1b\n\nStateFloat\x12\r\n\x05value\x18\x01 \x03(\x01\"\x19\n\x08StateInt\x12\r\n\x05value\x18\x01 \x03(\x05\"\x1f\n\x0eStringVarNames\x12\r\n\x05value\x18\x01 \x03(\t\"6\n\rCartPoleState\x12\t\n\x01t\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x03(\x05\x12\x0c\n\x04\x64one\x18\x03 \x01(\x08\x62\x06proto3')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -118,9 +118,55 @@ _STRINGVARNAMES = _descriptor.Descriptor(
   serialized_end=117,
 )
 
+
+_CARTPOLESTATE = _descriptor.Descriptor(
+  name='CartPoleState',
+  full_name='prism.CartPoleState',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='t', full_name='prism.CartPoleState.t', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='name', full_name='prism.CartPoleState.name', index=1,
+      number=2, type=5, cpp_type=1, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='done', full_name='prism.CartPoleState.done', index=2,
+      number=3, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=119,
+  serialized_end=173,
+)
+
 DESCRIPTOR.message_types_by_name['StateFloat'] = _STATEFLOAT
 DESCRIPTOR.message_types_by_name['StateInt'] = _STATEINT
 DESCRIPTOR.message_types_by_name['StringVarNames'] = _STRINGVARNAMES
+DESCRIPTOR.message_types_by_name['CartPoleState'] = _CARTPOLESTATE
 
 StateFloat = _reflection.GeneratedProtocolMessageType('StateFloat', (_message.Message,), dict(
   DESCRIPTOR = _STATEFLOAT,
@@ -142,6 +188,13 @@ StringVarNames = _reflection.GeneratedProtocolMessageType('StringVarNames', (_me
   # @@protoc_insertion_point(class_scope:prism.StringVarNames)
   ))
 _sym_db.RegisterMessage(StringVarNames)
+
+CartPoleState = _reflection.GeneratedProtocolMessageType('CartPoleState', (_message.Message,), dict(
+  DESCRIPTOR = _CARTPOLESTATE,
+  __module__ = 'state_request_pb2'
+  # @@protoc_insertion_point(class_scope:prism.CartPoleState)
+  ))
+_sym_db.RegisterMessage(CartPoleState)
 
 
 # @@protoc_insertion_point(module_scope)
