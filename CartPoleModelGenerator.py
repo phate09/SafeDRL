@@ -4,7 +4,7 @@ import zmq
 from gym.envs.classic_control import CartPoleEnv
 
 from dqn_agent import Agent
-from proto.state_request_pb2 import StringVarNames, StateInt
+from proto.state_request_pb2 import StringVarNames, CartPoleState
 
 state_size = 4
 action_size = 2
@@ -18,7 +18,7 @@ class CartPoleModelGenerator:
         self.socket.bind(f"tcp://*:{port}")
         self.last_state: np.ndarray
         self.last_action: np.ndarray
-        self.p: float = 0.8  # probability of not sticky actions
+        self.p: float = 0.2  # probability of sticky actions
         self.max_n: int = 12
         self.current_t: int = 0
         self.failed: bool = False
@@ -43,6 +43,7 @@ class CartPoleModelGenerator:
 
     def getVarNames(self, message):
         string_var_names = StringVarNames()
+        string_var_names.value.append("t")
         string_var_names.value.append("x1")
         string_var_names.value.append("x2")
         string_var_names.value.append("x3")
@@ -51,7 +52,8 @@ class CartPoleModelGenerator:
 
     def getVarTypes(self, message):
         string_var_names = StringVarNames()
-        string_var_names.value.append("TypeInt")  # todo make it float?
+        for i in range(5):  # 4 variables + current_t
+            string_var_names.value.append("TypeInt")
         self.socket.send(string_var_names.SerializeToString())
 
     def getLabelNames(self, message):
@@ -67,25 +69,23 @@ class CartPoleModelGenerator:
     def getInitialState(self, message):
         self.last_state = self.env.reset()
         self.current_t = 0
-        self.done = False
-        state = StateInt()
-        for x in self.last_state:
-            state.value.append(int(x * 100))  # multiply by 100 for rounding up integers
+        self.terminal = False
+        state = self.currentStateToProtobuf()
         self.socket.send(state.SerializeToString())
 
     def exploreState(self, message):
-        state = StateInt()
+        state = CartPoleState()
         state.ParseFromString(message[1])
         self.last_state = self.parseFromPrism(state)  # parse from StateInt
         self.env.state = self.last_state  # loads the state in the environment
-        self.current_t = None  # todo get t from the message
+        self.current_t = state.t
         self.socket.send_string("OK")
 
     def getNumChoices(self, message):
         self.socket.send_string("1")  # returns only 1 choice
 
     def getNumTransitions(self, message):
-        if self.current_t > self.max_n:  # if done
+        if self.current_t > self.max_n or self.terminal:  # if done
             self.socket.send_string(str(1))
         self.socket.send_string(str(2))
 
@@ -99,31 +99,27 @@ class CartPoleModelGenerator:
         self.socket.send_string(str(prob))
 
     def computeTransitionTarget(self, message):
-        state = StateInt()
         i = int(message[1].decode('utf-8'))
         offset = int(message[2].decode('utf-8'))
         if self.current_t >= self.max_n:
-            # do nothing
-            state.value.append(self.x)  # append the current state values
+            state = self.currentStateToProtobuf()  # append the current state values
         else:
+            self.env.reset()
+            self.env.state = self.last_state
             action = self.agent.act(self.last_state, 0)
             state, reward, done, _ = self.env.step(action)
-            self.last_state = state
-            self.terminal = done
-            self.current_t = self.current_t + 1
+            current_t = self.current_t + 1
             if offset == 1 and not done:
                 state, reward, done, _ = self.env.step(action)
-                self.last_state = state
-                self.terminal = done
-            # todo convert the current new state to a state message
+            state = self.stateToProtobuf(current_t, state)
         self.socket.send(state.SerializeToString())
 
     def isLabelTrue(self, message):
         i = int(message[1].decode('utf-8'))
         if i == 0:
-            value = self.done  # todo add fail condition
+            value = self.terminal  # todo add fail condition
         elif i == 1:
-            value = self.done
+            value = self.terminal
         else:
             # should never happen
             value = False
@@ -140,8 +136,20 @@ class CartPoleModelGenerator:
 
     def getStateActionReward(self, message):
         self.socket.send_string(str(0.0))
-    def parseFromPrism(self,state:StateInt):
-        return np.ndarray(state.value,dtype=float)/100
+
+    def parseFromPrism(self, state: CartPoleState):
+        return np.asarray(state.value, dtype=float) / 100
+
+    def currentStateToProtobuf(self):
+        return self.stateToProtobuf(self.current_t, self.last_state)
+
+    def stateToProtobuf(self, t, env_state: np.ndarray):
+        state = CartPoleState()
+        state.t = t
+        for x in env_state:
+            state.value.append(int(x * 100))  # multiply by 100 for rounding up integers
+        return state
+
 
 if __name__ == '__main__':
     model = CartPoleModelGenerator(5558)
