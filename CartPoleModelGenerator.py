@@ -19,12 +19,13 @@ class CartPoleModelGenerator:
         self.last_state: np.ndarray
         self.last_action: np.ndarray
         self.p: float = 0.2  # probability of sticky actions
-        self.max_n: int = 12
+        self.max_n: int = 500
         self.current_t: int = 0
         self.failed: bool = False
         self.terminal: bool = False
         self.env = CartPoleEnv()
         self.env.seed(0)
+        torch.manual_seed(0)
         self.agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
         self.agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
 
@@ -32,6 +33,7 @@ class CartPoleModelGenerator:
         while True:
             message: list = self.socket.recv_multipart()  # receives a multipart message
             decode = message[0].decode('utf-8')
+            print(decode)
             method_name = decode
             method = getattr(self, method_name, self.invalid_method)
             # Call the method as we return it
@@ -44,6 +46,7 @@ class CartPoleModelGenerator:
     def getVarNames(self, message):
         string_var_names = StringVarNames()
         string_var_names.value.append("t")
+        string_var_names.value.append("done")
         string_var_names.value.append("x1")
         string_var_names.value.append("x2")
         string_var_names.value.append("x3")
@@ -52,7 +55,7 @@ class CartPoleModelGenerator:
 
     def getVarTypes(self, message):
         string_var_names = StringVarNames()
-        for i in range(5):  # 4 variables + current_t
+        for i in range(6):  # 4 variables + current_t + done
             string_var_names.value.append("TypeInt")
         self.socket.send(string_var_names.SerializeToString())
 
@@ -67,6 +70,8 @@ class CartPoleModelGenerator:
         pass
 
     def getInitialState(self, message):
+        self.env.seed(0)
+        torch.manual_seed(0)
         self.last_state = self.env.reset()
         self.current_t = 0
         self.terminal = False
@@ -79,15 +84,20 @@ class CartPoleModelGenerator:
         self.last_state = self.parseFromPrism(state)  # parse from StateInt
         self.env.state = self.last_state  # loads the state in the environment
         self.current_t = state.t
+        self.terminal = state.done
         self.socket.send_string("OK")
 
     def getNumChoices(self, message):
-        self.socket.send_string("1")  # returns only 1 choice
+        if self.current_t > self.max_n or self.terminal:  # if done
+            self.socket.send_string(str(1))
+        else:
+            self.socket.send_string("1")  # returns only 1 choice
 
     def getNumTransitions(self, message):
         if self.current_t > self.max_n or self.terminal:  # if done
             self.socket.send_string(str(1))
-        self.socket.send_string(str(2))
+        else:
+            self.socket.send_string(str(2))
 
     def getTransitionAction(self, message):
         pass
@@ -95,13 +105,13 @@ class CartPoleModelGenerator:
     def getTransitionProbability(self, message):
         i = int(message[1].decode('utf-8'))
         offset = int(message[2].decode('utf-8'))
-        prob = 1.0 if (self.current_t > self.max_n) else (1 - self.p if offset == 0 else self.p)
+        prob = 1.0 if (self.current_t > self.max_n or self.terminal) else (1 - self.p if offset == 0 else self.p)
         self.socket.send_string(str(prob))
 
     def computeTransitionTarget(self, message):
         i = int(message[1].decode('utf-8'))
         offset = int(message[2].decode('utf-8'))
-        if self.current_t >= self.max_n:
+        if self.current_t >= self.max_n or self.terminal:
             state = self.currentStateToProtobuf()  # append the current state values
         else:
             self.env.reset()
@@ -111,15 +121,20 @@ class CartPoleModelGenerator:
             current_t = self.current_t + 1
             if offset == 1 and not done:
                 state, reward, done, _ = self.env.step(action)
-            state = self.stateToProtobuf(current_t, state)
+            state = self.stateToProtobuf(current_t, state, done)
         self.socket.send(state.SerializeToString())
 
     def isLabelTrue(self, message):
         i = int(message[1].decode('utf-8'))
         if i == 0:
-            value = self.terminal  # todo add fail condition
+            x, x_dot, theta, theta_dot = self.last_state
+            fail = self.terminal or x < -self.env.x_threshold \
+                   or x > self.env.x_threshold \
+                   or theta < -self.env.theta_threshold_radians \
+                   or theta > self.env.theta_threshold_radians
+            value = fail
         elif i == 1:
-            value = self.terminal
+            value = self.current_t >= self.max_n
         else:
             # should never happen
             value = False
@@ -132,22 +147,31 @@ class CartPoleModelGenerator:
         self.socket.send(reward.SerializeToString())
 
     def getStateReward(self, message):
-        self.socket.send_string(str(1.0))
+        state = CartPoleState()
+        state.ParseFromString(message[1])
+        last_state = self.parseFromPrism(state)  # parse from StateInt
+        current_t = state.t
+        terminal = state.done
+        if not terminal:
+            self.socket.send_string(str(1.0))
+        else:
+            self.socket.send_string(str(0.0))
 
     def getStateActionReward(self, message):
         self.socket.send_string(str(0.0))
 
     def parseFromPrism(self, state: CartPoleState):
-        return np.asarray(state.value, dtype=float) / 100
+        return np.asarray(state.value, dtype=float) / 1000
 
     def currentStateToProtobuf(self):
-        return self.stateToProtobuf(self.current_t, self.last_state)
+        return self.stateToProtobuf(self.current_t, self.last_state, self.terminal)
 
-    def stateToProtobuf(self, t, env_state: np.ndarray):
+    def stateToProtobuf(self, t, env_state: np.ndarray, done: bool):
         state = CartPoleState()
         state.t = t
+        state.done = done
         for x in env_state:
-            state.value.append(int(x * 100))  # multiply by 100 for rounding up integers
+            state.value.append(int(x * 1000))  # multiply by 100 for rounding up integers
         return state
 
 
