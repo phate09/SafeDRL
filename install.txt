@@ -1,5 +1,6 @@
 conda deactivate
 conda remove --name safedrl --all
-conda create --name safedrl python=3.6 numpy pytorch pyzmq protobuf
+conda create --name safedrl python=3.6 numpy pyzmq protobu
 conda activate safedrl
-pip install gym
+pip install torch gym
+python CartPoleModelGenerator.py
