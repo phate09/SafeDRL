@@ -19,7 +19,7 @@ class CartPoleModelGenerator:
         self.last_state: np.ndarray
         self.last_action: np.ndarray
         self.p: float = 0.2  # probability of sticky actions
-        self.max_n: int = 500
+        self.max_n: int = 10
         self.current_t: int = 0
         self.failed: bool = False
         self.terminal: bool = False
