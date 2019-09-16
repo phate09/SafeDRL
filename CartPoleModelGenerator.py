@@ -27,7 +27,8 @@ class CartPoleModelGenerator:
         self.env.seed(0)
         torch.manual_seed(0)
         self.agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
-        self.agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.agent.qnetwork_local.load_state_dict(torch.load('model.pth', map_location=self.device))
 
     def start(self):
         while True:
