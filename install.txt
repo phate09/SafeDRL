@@ -1,0 +1,5 @@
+conda deactivate
+conda remove --name safedrl --all
+conda create --name safedrl python=3.6 numpy pytorch pyzmq protobuf
+conda activate safedrl
+pip install gym
