@@ -4,3 +4,5 @@ conda create --name safedrl python=3.6 numpy pyzmq protobu
 conda activate safedrl
 pip install torch gym
 python CartPoleModelGenerator.py
+conda config --add channels http://conda.anaconda.org/gurobi
+conda install gurobi
