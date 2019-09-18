@@ -8,7 +8,7 @@ import torch
 from gym.envs.classic_control import CartPoleEnv
 from tensorboardX import SummaryWriter
 
-from dqn_agent import Agent
+from dqn.dqn_agent import Agent
 from utility.Scheduler import Scheduler
 
 currentDT = datetime.datetime.now()

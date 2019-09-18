@@ -1,7 +1,7 @@
 import torch
 from gym.envs.classic_control import CartPoleEnv
 
-from dqn_agent import Agent
+from dqn.dqn_agent import Agent
 
 env = CartPoleEnv()
 # number of actions
