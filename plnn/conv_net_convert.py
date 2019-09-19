@@ -14,8 +14,8 @@ import torch.utils
 import torch.utils.data
 import torch.utils.data as utils
 
-from black_white_generator import BlackWhite
-from plnn.simplified.conv_net import Net
+# from black_white_generator import BlackWhite
+# from plnn.simplified.conv_net import Net
 
 
 def get_weights(layers, inp_shape=(1, 28, 28)):
@@ -124,53 +124,3 @@ def convert(input_layers):
         if i != len(eq_weights) - 1:
             layers.append(nn.ReLU())
     return layers
-
-
-def main():
-    # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                        help='number of epochs to train (default: 10)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                        help='learning rate (default: 0.01)')
-    parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
-                        help='SGD momentum (default: 0.5)')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='how many batches to wait before logging training status')
-
-    parser.add_argument('--save-model', action='store_true', default=True,
-                        help='For Saving the current Model')
-    args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-
-    torch.manual_seed(args.seed)
-
-    device = torch.device("cuda" if use_cuda else "cpu")
-    black_white = BlackWhite(shape=(1, 28, 28))  # pytorch style
-
-    my_dataset = utils.TensorDataset(black_white.data, black_white.target)  # create your datset
-    my_dataloader = utils.DataLoader(my_dataset, batch_size=128, shuffle=True, drop_last=True)  # create your dataloader
-
-    model = Net().to('cpu')
-    model.load_state_dict(torch.load('../../save/conv_net.pt', map_location='cpu'))
-    model.to(device)
-    test(args, model, device, my_dataloader, flatten=False)
-    layers = convert(model.layers)
-    sequential = nn.Sequential(*layers)
-    model.layers = layers
-    model.sequential = sequential
-    model.to(device)
-    # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-    test(args, model, device, my_dataloader, flatten=True)
-
-
-if __name__ == '__main__':
-    main()

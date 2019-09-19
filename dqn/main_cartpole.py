@@ -4,7 +4,6 @@ from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from gym.envs.classic_control import CartPoleEnv
 from tensorboardX import SummaryWriter
 
@@ -20,18 +19,20 @@ env.seed(seed)
 np.random.seed(seed)
 state_size = 4
 action_size = 2
-STARTING_BETA = 0.6 #the higher the more it decreases the influence of high TD transitions
-ALPHA = 0.6 #the higher the more aggressive the sampling towards high TD transitions
+STARTING_BETA = 0.6  # the higher the more it decreases the influence of high TD transitions
+ALPHA = 0.6  # the higher the more aggressive the sampling towards high TD transitions
 EPS_DECAY = 0.2
 MIN_EPS = 0.01
 
 current_time = currentDT.strftime('%b%d_%H-%M-%S')
 comment = f"alpha={ALPHA}, min_eps={MIN_EPS}, eps_decay={EPS_DECAY}"
-log_dir = os.path.join('runs', current_time + '_' + comment)
+log_dir = os.path.join('../runs', current_time + '_' + comment)
 os.mkdir(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+
+
 # agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
 # agent.qnetwork_target.load_state_dict(torch.load('model.pth'))
 
@@ -63,22 +64,15 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
         writer.add_scalar('data/epsilon', eps.get(i_episode), i_episode)
         writer.add_scalar('data/beta', betas.get(i_episode), i_episode)
         # eps = max(eps_end, eps_decay * eps)  # decrease epsilon
-        print(
-            f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} '
-            f'eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}'
-            , end="")
+        print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}', end="")
         if i_episode + 1 % 100 == 0:
-            print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} '
-                  f'eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
-        torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-        # if np.mean(scores_window) >= 197.0:
-        #     print(f'\nEnvironment solved in {i_episode - 100:d} episodes!\tAverage Score: {np.mean(scores_window):.2f}')
-    torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
-        #     break
+            print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
+            agent.save(os.path.join(log_dir, f"checkpoint_{i_episode}.pth"), i_episode)
+    agent.save(os.path.join(log_dir, f"checkpoint_final.pth"), i_episode)
     return scores
 
 
-return_scores = dqn(n_episodes=8000)
+return_scores = dqn(n_episodes=6000)
 
 # plot the scores
 fig = plt.figure()

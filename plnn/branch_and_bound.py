@@ -96,7 +96,7 @@ def bab(net, domain: torch.Tensor, true_class_index, eps=1e-3, decision_bound=No
         for i, ndom_i in enumerate(ndoms):
             print(f'Domain #{i}')
             # Find the upper and lower bounds on the minimum in dom_i
-            dom_i = domain_lb + domain_width * ndom_i
+            dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * ndom_i
             dom_ub_point, dom_ub = net.get_upper_bound(dom_i, true_class_index)
             dom_lb = net.get_lower_bound(dom_i, true_class_index, save)
             print(f'dom_ub:{dom_ub}')

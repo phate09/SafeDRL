@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from models.model_critic import QNetwork
+from models.model_critic_sequential import QNetwork
 from utility.ExperienceReplay import ExperienceReplayBuffer
 from utility.PrioritisedExperienceReplayBuffer import PrioritizedReplayBuffer
 
@@ -166,3 +166,19 @@ class Agent:
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
+
+    def save(self, path, global_step):
+        torch.save({
+            "global_step": global_step,
+            "critic": self.qnetwork_local.state_dict(),
+            "target_critic": self.qnetwork_target.state_dict(),
+            "optimiser_critic": self.optimizer.state_dict(),
+        }, path)
+
+    def load(self, path):
+        checkpoint = torch.load(path)
+        self.qnetwork_local.load_state_dict(checkpoint["critic"])
+        self.qnetwork_target.load_state_dict(checkpoint["target_critic"])
+        self.optimizer.load_state_dict(checkpoint["optimiser_critic"])
+        self.global_step = checkpoint["global_step"]
+        print(f'Loading complete')
