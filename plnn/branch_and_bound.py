@@ -29,8 +29,8 @@ class CandidateDomain:
 
     def __repr__(self):
         string = f"[LB: {self.lower_bound:.4e}\t" \
-            f" UB:  {self.upper_bound:.4e}\n" \
-            f" Domain: {self.domain}]"
+                 f" UB:  {self.upper_bound:.4e}\n" \
+                 f" Domain: {self.domain}]"
         return string
 
     def area(self):
@@ -78,8 +78,7 @@ def bab(net, domain: torch.Tensor, true_class_index, eps=1e-3, decision_bound=No
         return global_lb, global_ub, global_ub_point
 
     # Use objects of type CandidateDomain to store domains with their bounds.
-    candidate_domain = CandidateDomain(lb=global_lb, ub=global_ub,
-                                       dm=normed_domain)
+    candidate_domain = CandidateDomain(lb=global_lb, ub=global_ub, dm=normed_domain)
     domains = [candidate_domain]
 
     # This counter is used to decide when to prune domains

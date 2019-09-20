@@ -550,6 +550,8 @@ class VerificationNetwork(nn.Module):
         # print(f'Result -1={gurobi_vars[-2]}')
         return gurobi_vars[-1][0].X
 
+
+
     def convert_ConvL_to_FCL(self, input: torch.Tensor, K: torch.Tensor, padding, stride):
         batch_size, channels_in, h_in, w_in = input.size()
         channels_out, channels_in, k_h, k_w = K.size()
