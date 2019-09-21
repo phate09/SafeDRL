@@ -21,13 +21,12 @@ class DomainExplorer():
         self.domain_lb = domain.select(-1, 0)
         self.net = net
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        global_ub_point, global_ub = self.net.get_upper_bound(self.initial_domain, self.safe_property_index)
+        global_ub = self.net.get_upper_bound2(self.initial_domain, self.safe_property_index,False)
         global_lb = self.net.get_lower_bound(self.initial_domain, self.safe_property_index, False)
         assert global_lb <= global_ub, "lb must be lower than ub"
         print(f'global_ub:{global_ub}')
         print(f'global_lb:{global_lb}')
         self.global_ub = global_ub
-        self.global_ub_point = global_ub_point
         self.global_lb = global_lb
         normed_domain = torch.stack((torch.zeros(self.nb_input_var),torch.ones(self.nb_input_var)), 1)
         # Use objects of type CandidateDomain to store domains with their bounds.
@@ -56,7 +55,7 @@ class DomainExplorer():
                 print(f'Domain #{i}')
                 # Find the upper and lower bounds on the minimum in dom_i
                 dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
-                dom_ub_point, dom_ub = self.net.get_upper_bound(dom_i, self.safe_property_index)
+                dom_ub = self.net.get_upper_bound2(dom_i, self.safe_property_index,False)
                 dom_lb = self.net.get_lower_bound(dom_i, self.safe_property_index, False)
                 print(f'dom_ub:{dom_ub}')
                 print(f'dom_lb:{dom_lb}')
@@ -64,14 +63,11 @@ class DomainExplorer():
                 # Update the global upper if the new upper bound found is lower.
                 if dom_ub < self.global_ub:
                     self.global_ub = dom_ub
-                    self.global_ub_point = dom_ub_point
                     print(f'updated global_ub to {self.global_ub}')
                 # Add the domain to our current list of domains if its lowerbound
                 # is less than the global upperbound.
                 if dom_lb < self.global_ub:
-                    candidate_domain_to_add = CandidateDomain(lb=dom_lb,
-                                                              ub=dom_ub,
-                                                              dm=ndom_i)
+                    candidate_domain_to_add = CandidateDomain(lb=dom_lb,ub=dom_ub,dm=ndom_i)
                     self.add_domain(candidate_domain_to_add, self.domains)
                     prune_counter += 1
             # Prune domains whose lowerbounds are larger than or equal to the
@@ -94,10 +90,11 @@ class DomainExplorer():
             if len(self.domains) > 0:
                 print(f'----------------------------------')
                 print(f'remaining domains: {len(self.domains)}')
-                print(f'lbs:{[i.lower_bound for i in self.domains]}')
+                # print(f'lbs:{[i.lower_bound for i in self.domains]}')
                 self.global_lb = self.domains[0].lower_bound
                 # print(f'first domain lb: {domains[0].lower_bound}')
                 # global_lb = max([i.lower_bound for i in domains])
+                print(f'global_ub:{self.global_ub}')
                 print(f'global_lb:{self.global_lb}')
             else:
                 # if there is no more domains, we have pruned them all.
@@ -106,10 +103,10 @@ class DomainExplorer():
             # Stopping criterion
             if self.global_lb >= decision_bound:
                 break
-            # elif self.global_ub < decision_bound:
-            #     break
+            elif self.global_ub < decision_bound:
+                break
         print(f'Reached a decision')
-        return self.global_lb, self.global_ub, self.global_ub_point
+        return self.global_lb, self.global_ub
 
     @staticmethod
     def _box_split():
