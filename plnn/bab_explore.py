@@ -1,4 +1,5 @@
 import bisect
+import time
 
 import numpy as np
 import torch
@@ -7,7 +8,7 @@ from plnn.branch_and_bound import CandidateDomain
 
 
 class DomainExplorer():
-    def __init__(self, domain: torch.Tensor,net, safe_property_index: int):
+    def __init__(self, domain: torch.Tensor, net, safe_property_index: int):
         """
 
         :param domain: the domain to explore for abstract interpretations
@@ -21,19 +22,19 @@ class DomainExplorer():
         self.domain_lb = domain.select(-1, 0)
         self.net = net
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        global_ub = self.net.get_upper_bound2(self.initial_domain, self.safe_property_index,False)
+        global_ub = self.net.get_upper_bound2(self.initial_domain, self.safe_property_index, False)
         global_lb = self.net.get_lower_bound(self.initial_domain, self.safe_property_index, False)
         assert global_lb <= global_ub, "lb must be lower than ub"
         print(f'global_ub:{global_ub}')
         print(f'global_lb:{global_lb}')
         self.global_ub = global_ub
         self.global_lb = global_lb
-        normed_domain = torch.stack((torch.zeros(self.nb_input_var),torch.ones(self.nb_input_var)), 1)
+        normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
         # Use objects of type CandidateDomain to store domains with their bounds.
         candidate_domain = CandidateDomain(lb=global_lb, ub=global_ub, dm=normed_domain)
         self.domains = [candidate_domain]
 
-    def _pick_next_domain(self,eps):
+    def _pick_next_domain(self, eps):
         threshold = self.global_ub - eps
         return self._pick_out(self.domains, threshold)
 
@@ -55,8 +56,9 @@ class DomainExplorer():
                 print(f'Domain #{i}')
                 # Find the upper and lower bounds on the minimum in dom_i
                 dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
-                dom_ub = self.net.get_upper_bound2(dom_i, self.safe_property_index,False)
-                dom_lb = self.net.get_lower_bound(dom_i, self.safe_property_index, False)
+                # dom_ub = self.net.get_upper_bound2(dom_i, self.safe_property_index,False)
+                # dom_lb = self.net.get_lower_bound(dom_i, self.safe_property_index, False)
+                dom_ub, dom_lb = self.net.get_boundaries(dom_i, self.safe_property_index, False)
                 print(f'dom_ub:{dom_ub}')
                 print(f'dom_lb:{dom_lb}')
                 assert dom_lb <= dom_ub, "lb must be lower than ub"
@@ -67,7 +69,7 @@ class DomainExplorer():
                 # Add the domain to our current list of domains if its lowerbound
                 # is less than the global upperbound.
                 if dom_lb < self.global_ub:
-                    candidate_domain_to_add = CandidateDomain(lb=dom_lb,ub=dom_ub,dm=ndom_i)
+                    candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
                     self.add_domain(candidate_domain_to_add, self.domains)
                     prune_counter += 1
             # Prune domains whose lowerbounds are larger than or equal to the

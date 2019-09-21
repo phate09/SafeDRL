@@ -176,7 +176,7 @@ class Agent:
         }, path)
 
     def load(self, path):
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path,map_location=device)
         self.qnetwork_local.load_state_dict(checkpoint["critic"])
         self.qnetwork_target.load_state_dict(checkpoint["target_critic"])
         self.optimizer.load_state_dict(checkpoint["optimiser_critic"])
