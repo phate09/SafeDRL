@@ -28,8 +28,9 @@ successes = 0
 attempts = 0
 last_result = ""
 domain = torch.from_numpy(domain_raw).float().to(device)
-explorer = DomainExplorer(domain,verification_model, 0)
-min_lb0, min_ub0, ub_point0 = explorer.bab()
+explorer = DomainExplorer(0, domain)
+found_domains = explorer.explore(verification_model)
+# min_lb0, min_ub0, ub_point0 = explorer.explore(verification_model)
 # min_lb0, min_ub0, ub_point0 = bab(verification_model, domain, 0, epsilon, decision_bound, save=False)
 # min_lb1, min_ub1, ub_point1 = bab(verification_model, domain, 1, epsilon, decision_bound, save=False)
 first_true = False

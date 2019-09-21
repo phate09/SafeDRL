@@ -1,3 +1,4 @@
+import ray
 import bisect
 import time
 
@@ -5,12 +6,13 @@ import jsonpickle
 import numpy as np
 import torch
 from jsonpickle import json
+from itertools import cycle
 
 from plnn.branch_and_bound import CandidateDomain
 
 
 class DomainExplorer():
-    def __init__(self, domain: torch.Tensor, net, safe_property_index: int):
+    def __init__(self, safe_property_index: int, domain: torch.Tensor):
         """
 
         :param domain: the domain to explore for abstract interpretations
@@ -19,26 +21,41 @@ class DomainExplorer():
         """
         self.initial_domain = domain
         self.safe_property_index = safe_property_index
-        self.domains = []
-        self.found_domains = []
-        self.abstract_area = 0
+        # self.domains = []
+        self.safe_domains = []
+        self.safe_area = 0
+        self.unsafe_domains = []
+        self.unsafe_area = 0
         self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
         self.domain_lb = domain.select(-1, 0)
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        self.net = net
-        dom_ub, dom_lb = self.net.get_boundaries(self.initial_domain, self.safe_property_index, False)
-        assert dom_ub <= dom_ub, "lb must be lower than ub"
-        print(f'global_ub:{dom_ub}')
-        print(f'global_lb:{dom_lb}')
         normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
-        # Use objects of type CandidateDomain to store domains with their bounds.
-        candidate_domain = CandidateDomain(lb=dom_ub, ub=dom_lb, dm=normed_domain)
-        decision_bound = 0
-        if dom_lb >= decision_bound:
-            self.found_domains = [candidate_domain]
-            self.abstract_area += candidate_domain.area().item()
-        if dom_lb <= decision_bound <= dom_ub:
-            self.domains = [candidate_domain]
+        # self.domains = [normed_domain]
+
+    def explore(self, net, n_workers=8):
+        eps = 1e-3
+        precision = 1e-3  # does not allow precision of any dimension to go under this amount
+        min_area = 1e-6  # minimum area of the domain for it to be considered
+        ray.init()
+        message_queue = []
+        explorers = cycle([ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net) for i in range(n_workers)])
+        normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
+        domain_id = ray.put((normed_domain, None))
+        message_queue.append(domain_id)
+        while len(message_queue) > 0:
+            print(f"\rqueue length : {len(message_queue)}, # abstract domains: {len(self.safe_domains)}, abstract areas: [safe:{self.safe_area:.3%},unsafe:{self.unsafe_area:.3%},unknown:{1 - (self.safe_area + self.unsafe_area):.3%}]", end="")
+            explore, safe, unsafe = ray.get(message_queue.pop(0))
+            if safe is not None:
+                self.safe_domains.append(safe)
+                self.safe_area += self.area(safe)
+            if unsafe is not None:
+                self.unsafe_domains.append(unsafe)
+            if explore is not None:
+                # Genearate new, smaller (normalized) domains using box split.
+                ndoms = self.box_split(explore)
+                for i, ndom_i in enumerate(ndoms):
+                    message_queue.append(next(explorers).bab.remote(ndom_i, self.safe_property_index))  # starts on the next available explorer
+        return self.safe_domains
 
     def save(self, path):
         f = open(path, 'w')
@@ -52,6 +69,15 @@ class DomainExplorer():
         thawed: DomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
+    @staticmethod
+    def area(domain: torch.Tensor):
+        '''
+        Compute the area of the domain
+        '''
+        dom_sides = domain.select(1, 1) - domain.select(1, 0)
+        dom_area = dom_sides.prod()
+        return dom_area
+
     def find_groups(self, net):
         pass
 
@@ -61,11 +87,11 @@ class DomainExplorer():
             decision_bound = 0
             # This counter is used to decide when to prune domains
             while len(self.domains) > 0:
-                selected_candidate_domain = self.domains.pop(0)
+                selected_candidate_domain: torch.Tensor = self.domains.pop(0)
                 print(f'Splitting domain')
                 # Genearate new, smaller (normalized) domains using box split.
-                ndoms = self.box_split(selected_candidate_domain.domain)
-                print(f"# domains : {len(self.domains)}, # abstract domains: {len(self.found_domains)}, abstract area: {self.abstract_area:.3%}")
+                ndoms = self.box_split(selected_candidate_domain)
+                print(f"# domains : {len(self.domains)}, # abstract domains: {len(self.safe_domains)}, abstract area: {self.safe_area:.3%}")
                 for i, ndom_i in enumerate(ndoms):
                     # Find the upper and lower bounds on the minimum in dom_i
                     dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
@@ -80,21 +106,20 @@ class DomainExplorer():
                         continue
                     if dom_lb >= decision_bound:
                         # keep
-                        self.found_domains.append(ndom_i)
-                        candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
-                        self.abstract_area += candidate_domain_to_add.area().item()
+                        self.safe_domains.append(ndom_i)
+                        self.safe_area += self.area(ndom_i).item()
                         pass
                     if dom_lb <= decision_bound <= dom_ub:
                         # explore
                         print(f'dom_ub:{dom_ub}')
                         print(f'dom_lb:{dom_lb}')
-                        candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
+                        # candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
                         # self.add_domain(candidate_domain_to_add, self.domains)
-                        self.domains.append(candidate_domain_to_add)  # O(1)
+                        self.domains.append(ndom_i)  # O(1)
                         # self.domains.insert(0,candidate_domain_to_add) #O(1)
                         pass
-            print(self.found_domains)
-        return self.found_domains
+            print(self.safe_domains)
+        return self.safe_domains
 
     @staticmethod
     def box_split(domain):
@@ -139,3 +164,30 @@ class DomainExplorer():
         to the candidate list `domains` so that `domains` remains a sorted list.
         """
         bisect.insort_left(domains, candidate)
+
+
+@ray.remote
+class ParallelExplorer:
+    def __init__(self, domain_lb, domain_width, nb_input_var, net):
+        self.net = net
+        self.domain_width = domain_width
+        self.domain_lb = domain_lb
+        self.nb_input_var = nb_input_var
+
+    def bab(self, normed_domain, safe_property_index):
+        eps = 1e-3
+        dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * normed_domain
+        dom_ub, dom_lb = self.net.get_boundaries(dom_i, safe_property_index, False)
+        assert dom_lb <= dom_ub, "lb must be lower than ub"
+        if dom_ub < 0:
+            # discard
+            return None, None, normed_domain
+        if dom_ub - dom_lb < eps:
+            # ignore
+            return None, None, None
+        if dom_lb >= 0:
+            # keep
+            return None, normed_domain, None
+        if dom_lb <= 0 <= dom_ub:
+            # explore
+            return normed_domain, None, None
