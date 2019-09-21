@@ -1,8 +1,10 @@
 import bisect
 import time
 
+import jsonpickle
 import numpy as np
 import torch
+from jsonpickle import json
 
 from plnn.branch_and_bound import CandidateDomain
 
@@ -18,94 +20,81 @@ class DomainExplorer():
         self.initial_domain = domain
         self.safe_property_index = safe_property_index
         self.domains = []
+        self.found_domains = []
+        self.abstract_area = 0
         self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
         self.domain_lb = domain.select(-1, 0)
-        self.net = net
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        global_ub = self.net.get_upper_bound2(self.initial_domain, self.safe_property_index, False)
-        global_lb = self.net.get_lower_bound(self.initial_domain, self.safe_property_index, False)
-        assert global_lb <= global_ub, "lb must be lower than ub"
-        print(f'global_ub:{global_ub}')
-        print(f'global_lb:{global_lb}')
-        self.global_ub = global_ub
-        self.global_lb = global_lb
+        self.net = net
+        dom_ub, dom_lb = self.net.get_boundaries(self.initial_domain, self.safe_property_index, False)
+        assert dom_ub <= dom_ub, "lb must be lower than ub"
+        print(f'global_ub:{dom_ub}')
+        print(f'global_lb:{dom_lb}')
         normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
         # Use objects of type CandidateDomain to store domains with their bounds.
-        candidate_domain = CandidateDomain(lb=global_lb, ub=global_ub, dm=normed_domain)
-        self.domains = [candidate_domain]
+        candidate_domain = CandidateDomain(lb=dom_ub, ub=dom_lb, dm=normed_domain)
+        decision_bound = 0
+        if dom_lb >= decision_bound:
+            self.found_domains = [candidate_domain]
+            self.abstract_area += candidate_domain.area().item()
+        if dom_lb <= decision_bound <= dom_ub:
+            self.domains = [candidate_domain]
 
-    def _pick_next_domain(self, eps):
-        threshold = self.global_ub - eps
-        return self._pick_out(self.domains, threshold)
+    def save(self, path):
+        f = open(path, 'w')
+        frozen = jsonpickle.encode(self)
+        f.write(frozen)
+
+    @staticmethod
+    def load(path):
+        f = open(path)
+        json_str = f.read()
+        thawed: DomainExplorer = jsonpickle.decode(json_str)
+        return thawed
 
     def find_groups(self, net):
         pass
 
     def bab(self):
-        eps = 1e-3
-        decision_bound = 0
-        # This counter is used to decide when to prune domains
-        prune_counter = 0
-        found_domains = []
-        while len(self.domains) > 0:
-            selected_candidate_domain = self._pick_next_domain(eps)
-            print(f'Splitting domain')
-            # Genearate new, smaller (normalized) domains using box split.
-            ndoms = self.box_split(selected_candidate_domain.domain)
-            print(f"# domains : {len(self.domains)}")
-            for i, ndom_i in enumerate(ndoms):
-                # print(f'Domain #{i}')
-                # Find the upper and lower bounds on the minimum in dom_i
-                dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
-                # dom_ub = self.net.get_upper_bound2(dom_i, self.safe_property_index,False)
-                # dom_lb = self.net.get_lower_bound(dom_i, self.safe_property_index, False)
-                dom_ub, dom_lb = self.net.get_boundaries(dom_i, self.safe_property_index, False)
+        with torch.no_grad():
+            eps = 1e-3
+            decision_bound = 0
+            # This counter is used to decide when to prune domains
+            while len(self.domains) > 0:
+                selected_candidate_domain = self.domains.pop(0)
+                print(f'Splitting domain')
+                # Genearate new, smaller (normalized) domains using box split.
+                ndoms = self.box_split(selected_candidate_domain.domain)
+                print(f"# domains : {len(self.domains)}, # abstract domains: {len(self.found_domains)}, abstract area: {self.abstract_area:.3%}")
+                for i, ndom_i in enumerate(ndoms):
+                    # Find the upper and lower bounds on the minimum in dom_i
+                    dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
+                    dom_ub, dom_lb = self.net.get_boundaries(dom_i, self.safe_property_index, False)
 
-                assert dom_lb <= dom_ub, "lb must be lower than ub"
-                if dom_ub < decision_bound:
-                    # discard
-                    # print("discard")
-                    continue
-                if dom_ub - dom_lb < eps:
-                    continue
-                if dom_lb >= decision_bound:
-                    # keep
-                    found_domains.append(ndom_i)
-                    pass
-                if dom_lb <= decision_bound <= dom_ub:
-                    # explore
-                    print(f'dom_ub:{dom_ub}')
-                    print(f'dom_lb:{dom_lb}')
-                    candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
-                    self.add_domain(candidate_domain_to_add, self.domains)
-                    prune_counter += 1
-                    pass
-        print(found_domains)
-        return found_domains
-
-    @staticmethod
-    def _box_split():
-        pass
-
-    @staticmethod
-    def _pick_out(domains, threshold):
-        """
-        Pick the first domain in the `domains` sequence
-        that has a lower bound lower than `threshold`.
-
-        Any domain appearing before the chosen one but having a lower_bound greater
-        than the threshold is discarded.
-
-        Returns: Non prunable CandidateDomain with the lowest reference_value.
-        """
-        assert len(domains) > 0, "The given domains list is empty."
-        while True:
-            assert len(domains) > 0, "No domain left to pick from."
-            selected_candidate_domain = domains.pop(0)
-            if selected_candidate_domain.lower_bound < threshold:
-                break
-
-        return selected_candidate_domain
+                    assert dom_lb <= dom_ub, "lb must be lower than ub"
+                    if dom_ub < decision_bound:
+                        # discard
+                        # print("discard")
+                        continue
+                    if dom_ub - dom_lb < eps:
+                        continue
+                    if dom_lb >= decision_bound:
+                        # keep
+                        self.found_domains.append(ndom_i)
+                        candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
+                        self.abstract_area += candidate_domain_to_add.area().item()
+                        pass
+                    if dom_lb <= decision_bound <= dom_ub:
+                        # explore
+                        print(f'dom_ub:{dom_ub}')
+                        print(f'dom_lb:{dom_lb}')
+                        candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
+                        # self.add_domain(candidate_domain_to_add, self.domains)
+                        self.domains.append(candidate_domain_to_add)  # O(1)
+                        # self.domains.insert(0,candidate_domain_to_add) #O(1)
+                        pass
+            print(self.found_domains)
+        return self.found_domains
 
     @staticmethod
     def box_split(domain):
