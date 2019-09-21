@@ -46,69 +46,42 @@ class DomainExplorer():
         decision_bound = 0
         # This counter is used to decide when to prune domains
         prune_counter = 0
-        while self.global_ub - self.global_lb > eps:
+        found_domains = []
+        while len(self.domains) > 0:
             selected_candidate_domain = self._pick_next_domain(eps)
             print(f'Splitting domain')
             # Genearate new, smaller (normalized) domains using box split.
             ndoms = self.box_split(selected_candidate_domain.domain)
-
+            print(f"# domains : {len(self.domains)}")
             for i, ndom_i in enumerate(ndoms):
-                print(f'Domain #{i}')
+                # print(f'Domain #{i}')
                 # Find the upper and lower bounds on the minimum in dom_i
                 dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
                 # dom_ub = self.net.get_upper_bound2(dom_i, self.safe_property_index,False)
                 # dom_lb = self.net.get_lower_bound(dom_i, self.safe_property_index, False)
                 dom_ub, dom_lb = self.net.get_boundaries(dom_i, self.safe_property_index, False)
-                print(f'dom_ub:{dom_ub}')
-                print(f'dom_lb:{dom_lb}')
+
                 assert dom_lb <= dom_ub, "lb must be lower than ub"
-                # Update the global upper if the new upper bound found is lower.
-                if dom_ub < self.global_ub:
-                    self.global_ub = dom_ub
-                    print(f'updated global_ub to {self.global_ub}')
-                # Add the domain to our current list of domains if its lowerbound
-                # is less than the global upperbound.
-                if dom_lb < self.global_ub:
+                if dom_ub < decision_bound:
+                    # discard
+                    # print("discard")
+                    continue
+                if dom_ub - dom_lb < eps:
+                    continue
+                if dom_lb >= decision_bound:
+                    # keep
+                    found_domains.append(ndom_i)
+                    pass
+                if dom_lb <= decision_bound <= dom_ub:
+                    # explore
+                    print(f'dom_ub:{dom_ub}')
+                    print(f'dom_lb:{dom_lb}')
                     candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
                     self.add_domain(candidate_domain_to_add, self.domains)
                     prune_counter += 1
-            # Prune domains whose lowerbounds are larger than or equal to the
-            # global upperbound.
-            # If domains list is larger than 100 items and if prune_counter has
-            # reached a threshold, prune domains that we no longer need.
-            if prune_counter >= 100 and len(self.domains) >= 100:
-                # Remove domains with dom_lb >= global_ub
-                self.domains = self.prune_domains(self.domains, self.global_ub - eps)
-                prune_counter = 0
-
-                # Do a pass over all the remaining domains to evaluate how much of
-                # the input is there left to prune
-                # print_remaining_domain(domains)
-                # print(f"Current: lb: {global_lb}\t ub: {global_ub}")
-            # Update the global lower bound with a lower bound that belongs
-            # to a domain in the updated list "domains" .
-            # TODO: This current implementation is only a global lower bound
-            #       if we sort domains by lower_bound.
-            if len(self.domains) > 0:
-                print(f'----------------------------------')
-                print(f'remaining domains: {len(self.domains)}')
-                # print(f'lbs:{[i.lower_bound for i in self.domains]}')
-                self.global_lb = self.domains[0].lower_bound
-                # print(f'first domain lb: {domains[0].lower_bound}')
-                # global_lb = max([i.lower_bound for i in domains])
-                print(f'global_ub:{self.global_ub}')
-                print(f'global_lb:{self.global_lb}')
-            else:
-                # if there is no more domains, we have pruned them all.
-                self.global_lb = self.global_ub - eps
-
-            # Stopping criterion
-            if self.global_lb >= decision_bound:
-                break
-            elif self.global_ub < decision_bound:
-                break
-        print(f'Reached a decision')
-        return self.global_lb, self.global_ub
+                    pass
+        print(found_domains)
+        return found_domains
 
     @staticmethod
     def _box_split():
