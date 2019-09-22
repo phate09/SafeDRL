@@ -6,3 +6,4 @@ pip install torch gym
 python CartPoleModelGenerator.py
 conda config --add channels http://conda.anaconda.org/gurobi
 conda install gurobi
+pip install ray

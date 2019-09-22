@@ -26,6 +26,8 @@ class DomainExplorer():
         self.safe_area = 0
         self.unsafe_domains = []
         self.unsafe_area = 0
+        self.ignore_domains = []
+        self.ignore_area = 0
         self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
         self.domain_lb = domain.select(-1, 0)
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
@@ -35,26 +37,38 @@ class DomainExplorer():
     def explore(self, net, n_workers=8):
         eps = 1e-3
         precision = 1e-3  # does not allow precision of any dimension to go under this amount
-        min_area = 1e-6  # minimum area of the domain for it to be considered
+        min_area = 1e-5  # minimum area of the domain for it to be considered
+        global_min_area = float("inf")
+        shortest_dimension = float("inf")
         ray.init()
         message_queue = []
         explorers = cycle([ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net) for i in range(n_workers)])
         normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
-        domain_id = ray.put((normed_domain, None))
+        domain_id = ray.put((normed_domain, None, None))
         message_queue.append(domain_id)
         while len(message_queue) > 0:
-            print(f"\rqueue length : {len(message_queue)}, # abstract domains: {len(self.safe_domains)}, abstract areas: [safe:{self.safe_area:.3%},unsafe:{self.unsafe_area:.3%},unknown:{1 - (self.safe_area + self.unsafe_area):.3%}]", end="")
             explore, safe, unsafe = ray.get(message_queue.pop(0))
             if safe is not None:
                 self.safe_domains.append(safe)
                 self.safe_area += self.area(safe)
             if unsafe is not None:
                 self.unsafe_domains.append(unsafe)
+                self.unsafe_area += self.area(unsafe)
             if explore is not None:
                 # Genearate new, smaller (normalized) domains using box split.
                 ndoms = self.box_split(explore)
                 for i, ndom_i in enumerate(ndoms):
-                    message_queue.append(next(explorers).bab.remote(ndom_i, self.safe_property_index))  # starts on the next available explorer
+                    area = self.area(ndom_i)
+                    length = self.max_length(ndom_i)
+                    global_min_area = min(area, global_min_area)
+                    shortest_dimension = min(length, shortest_dimension)
+                    if length < precision or area < min_area:
+                        # too short or too small
+                        self.ignore_domains.append(ndom_i)
+                        self.ignore_area += self.area(ndom_i)
+                    else:
+                        message_queue.append(next(explorers).bab.remote(ndom_i, self.safe_property_index))  # starts on the next available explorer
+            print(f"\rqueue length : {len(message_queue)}, # safe domains: {len(self.safe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.6f}", end="")
         return self.safe_domains
 
     def save(self, path):
@@ -120,6 +134,19 @@ class DomainExplorer():
                         pass
             print(self.safe_domains)
         return self.safe_domains
+
+    @staticmethod
+    def max_length(domain):
+        diff = domain[:, 1] - domain[:, 0]
+        edgelength, dim = torch.max(diff, 0)
+
+        # Unwrap from tensor containers
+        edgelength = edgelength.item()
+        return edgelength
+
+    @staticmethod
+    def check_min_area(domain, min_area=float("inf")):
+        return DomainExplorer.area(domain) < min_area
 
     @staticmethod
     def box_split(domain):

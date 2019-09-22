@@ -1,5 +1,6 @@
 import math
 
+import jsonpickle
 import numpy as np
 import torch.nn
 
@@ -28,34 +29,15 @@ successes = 0
 attempts = 0
 last_result = ""
 domain = torch.from_numpy(domain_raw).float().to(device)
-explorer = DomainExplorer(0, domain)
-found_domains = explorer.explore(verification_model)
-# min_lb0, min_ub0, ub_point0 = explorer.explore(verification_model)
-# min_lb0, min_ub0, ub_point0 = bab(verification_model, domain, 0, epsilon, decision_bound, save=False)
-# min_lb1, min_ub1, ub_point1 = bab(verification_model, domain, 1, epsilon, decision_bound, save=False)
-first_true = False
-second_true = False
-neither_true = not first_true and not second_true
-if neither_true:
-    # split both
-    pass
-elif first_true:
-    # split second
-    pass
-elif second_true:
-    # split first
-    pass
-else:  # both true
-    # terminate
-    pass
-attempts += 1
-if min_lb0 >= 0:
-    successes += 1
-    last_result = "UNSAT"
-elif min_ub0 < 0:
-    last_result = "SAT"
-    # print(ub_point)
-else:
-    print("Unknown")  # 18
-print(f'\rRunning percentage: {successes / attempts:.02%}, last result:{last_result}', end="")
-print(f'Final percentage: {successes / attempts:.02%}')
+explorer = DomainExplorer(1, domain)
+explorer.explore(verification_model)
+
+frozen_safe = jsonpickle.encode([i.cpu().numpy() for i in explorer.safe_domains])
+frozen_unsafe = jsonpickle.encode([i.cpu().numpy() for i in explorer.unsafe_domains])
+frozen_ignore = jsonpickle.encode([i.cpu().numpy() for i in explorer.ignore_domains])
+with open("../runs/safe_domains.json", 'w+') as f:
+    f.write(frozen_safe)
+with open("../runs/unsafe_domains.json", 'w+') as f:
+    f.write(frozen_unsafe)
+with open("../runs/ignore_domains.json", 'w+') as f:
+    f.write(frozen_ignore)
