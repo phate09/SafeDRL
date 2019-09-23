@@ -14,24 +14,25 @@ from dqn.dqn_agent import Agent
 def main():
     with open("../runs/safe_domains.json", 'r') as f:
         frozen_safe = jsonpickle.decode(f.read())
-    with open("../runs/unsafe_domains.json", 'r') as f:
-        frozen_unsafe = jsonpickle.decode(f.read())
-    with open("../runs/ignore_domains.json", 'r') as f:
-        frozen_ignore = jsonpickle.decode(f.read())
+    # with open("../runs/unsafe_domains.json", 'r') as f:
+    #     frozen_unsafe = jsonpickle.decode(f.read())
+    # with open("../runs/ignore_domains.json", 'r') as f:
+    #     frozen_ignore = jsonpickle.decode(f.read())
     frozen_safe = np.stack(frozen_safe)  # .take(range(10), axis=0)
-    frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
-    frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
+    # frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
+    # frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
     aggregated_safe = aggregate(frozen_safe)
     print(f"safe {{{frozen_safe.shape} --> {aggregated_safe.shape}}}")
-    aggregated_unsafe = aggregate(frozen_unsafe)
-    print(f"unsafe {{{frozen_unsafe.shape} --> {aggregated_unsafe.shape}}}")
-    aggregated_ignore = aggregate(frozen_ignore)
-    print(f"ignore {{{frozen_ignore.shape} --> {aggregated_ignore.shape}}}")
+    # aggregated_unsafe = aggregate(frozen_unsafe)
+    # print(f"unsafe {{{frozen_unsafe.shape} --> {aggregated_unsafe.shape}}}")
+    # aggregated_ignore = aggregate(frozen_ignore)
+    # print(f"ignore {{{frozen_ignore.shape} --> {aggregated_ignore.shape}}}")
     use_cuda = False
     seed = 1
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
+
     theta_threshold_radians = 12 * 2 * math.pi / 360  # maximum angle allowed
     x_threshold = 2.4  # maximum distance allowed
     domain_raw = np.array([[-x_threshold, x_threshold], [-x_threshold, x_threshold], [-theta_threshold_radians, theta_threshold_radians], [-theta_threshold_radians, theta_threshold_radians]])
@@ -46,7 +47,7 @@ def main():
     last_result = ""
     domain = torch.from_numpy(domain_raw).float().to(device)
     explorer = DomainExplorer(1, domain)
-    explorer.explore(verification_model)
+    explorer.explore(verification_model, aggregated_safe, precision=1e-6, min_area=0)  # double check for no mistakes
 
 
 if __name__ == '__main__':

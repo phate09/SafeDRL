@@ -34,23 +34,29 @@ class DomainExplorer():
         normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
         # self.domains = [normed_domain]
 
-    def explore(self, net, normed_domains=None, n_workers=8):
-        eps = 1e-3
-        precision = 1e-3  # does not allow precision of any dimension to go under this amount
-        min_area = 1e-5  # minimum area of the domain for it to be considered
+    def explore(self, net, domains=None, n_workers=8, precision=1e-3, min_area=1e-5):
+        # eps = 1e-3
+        # precision = 1e-3  # does not allow precision of any dimension to go under this amount
+        # min_area = 1e-5  # minimum area of the domain for it to be considered
         global_min_area = float("inf")
         shortest_dimension = float("inf")
         ray.init()
-        explorers = cycle([ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net) for i in range(n_workers)])
+
         message_queue = []
-        if normed_domains is None:
+        if domains is None:
             normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
             domain_id = ray.put((normed_domain, None, None))
             message_queue.append(domain_id)
         else:  # if given a list of normed domains then prefills the queue
-            for normed_domain in normed_domains:
-                domain_id = ray.put((normed_domain, None, None))
+            for domain in domains:
+                normed_domain = np.copy(domain)
+                # widths = normed_domain[:,1]-normed_domain[:,0]
+                # normed_domain[:,0] = normed_domain[:,0]-self.domain_lb.cpu().numpy()
+                # normed_domain[:,1] = widths/self.domain_width.cpu().numpy()
+                domain_id = ray.put((torch.from_numpy(normed_domain), None, None))
                 message_queue.append(domain_id)
+        # a=ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net)
+        explorers = cycle([ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net) for i in range(n_workers)])
         while len(message_queue) > 0:
             explore, safe, unsafe = ray.get(message_queue.pop(0))
             if safe is not None:
@@ -121,7 +127,7 @@ class DomainExplorer():
                         # discard
                         # print("discard")
                         continue
-                    if dom_ub - dom_lb < eps:
+                    if dom_ub - dom_lb < eps:  # todo what do in this case?
                         continue
                     if dom_lb >= decision_bound:
                         # keep
