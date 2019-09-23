@@ -40,7 +40,7 @@ class DomainExplorer():
         # min_area = 1e-5  # minimum area of the domain for it to be considered
         global_min_area = float("inf")
         shortest_dimension = float("inf")
-        ray.init()
+        ray.init(ignore_reinit_error=True)
 
         message_queue = []
         if domains is None:
