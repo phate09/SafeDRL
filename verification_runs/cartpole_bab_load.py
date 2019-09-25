@@ -12,11 +12,11 @@ from dqn.dqn_agent import Agent
 
 
 def main():
-    with open("../runs/safe_domains.json", 'r') as f:
+    with open("../save/safe_domains.json", 'r') as f:
         frozen_safe = jsonpickle.decode(f.read())
-    with open("../runs/unsafe_domains.json", 'r') as f:
+    with open("../save/unsafe_domains.json", 'r') as f:
         frozen_unsafe = jsonpickle.decode(f.read())
-    with open("../runs/ignore_domains.json", 'r') as f:
+    with open("../save/ignore_domains.json", 'r') as f:
         frozen_ignore = jsonpickle.decode(f.read())
     frozen_safe = np.stack(frozen_safe)  # .take(range(10), axis=0)
     frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
@@ -37,7 +37,7 @@ def main():
     x_threshold = 2.4  # maximum distance allowed
     domain_raw = np.array([[-x_threshold, x_threshold], [-x_threshold, x_threshold], [-theta_threshold_radians, theta_threshold_radians], [-theta_threshold_radians, theta_threshold_radians]])
     agent = Agent(4, 2)
-    agent.load("/home/edoardo/Development/SafeDRL/runs/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
+    agent.load("/home/edoardo/Development/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
     verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
 
     domain = torch.from_numpy(domain_raw).float().to(device)

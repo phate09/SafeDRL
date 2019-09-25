@@ -20,7 +20,7 @@ theta_threshold_radians = 12 * 2 * math.pi / 360  # maximum angle allowed
 x_threshold = 2.4  # maximum distance allowed
 domain_raw = np.array([[-x_threshold, x_threshold], [-x_threshold, x_threshold], [-theta_threshold_radians, theta_threshold_radians], [-theta_threshold_radians, theta_threshold_radians]])
 agent = Agent(4, 2)
-agent.load("/home/edoardo/Development/SafeDRL/runs/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
+agent.load("/home/edoardo/Development/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
 verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
 
 epsilon = 1e-5
