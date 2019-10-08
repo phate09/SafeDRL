@@ -33,13 +33,13 @@ def main():
     print(f"ignore {{{frozen_ignore.shape} --> {aggregated_ignore.shape}}}")
     with open("../save/aggregated_ignore_domains.json", "w+") as f:
         f.write(jsonpickle.encode(aggregated_ignore))
-    explorer, verification_model = generateCartpoleDomainExplorer()
-    print("\n---------------checking safe domains, everything should be safe")
-    explorer.explore(verification_model, aggregated_safe, precision=1e-6, min_area=0)  # double check for no mistakes
-    print("\n---------------checking unsafe domains, everything should be unsafe")
-    explorer.explore(verification_model, aggregated_unsafe, precision=1e-6, min_area=0)  # double check for no mistakes
-    print("\n---------------checking ignore domains, might improve on identified domains")
-    explorer.explore(verification_model, aggregated_ignore, precision=1e-6, min_area=0)  # unknown behaviour
+    # explorer, verification_model = generateCartpoleDomainExplorer()
+    # print("\n---------------checking safe domains, everything should be safe")
+    # explorer.explore(verification_model, aggregated_safe, precision=1e-6, min_area=0)  # double check for no mistakes
+    # print("\n---------------checking unsafe domains, everything should be unsafe")
+    # explorer.explore(verification_model, aggregated_unsafe, precision=1e-6, min_area=0)  # double check for no mistakes
+    # print("\n---------------checking ignore domains, might improve on identified domains")
+    # explorer.explore(verification_model, aggregated_ignore, precision=1e-6, min_area=0)  # unknown behaviour
 
 
 def generateCartpoleDomainExplorer():
