@@ -33,27 +33,30 @@ def main():
     print(f"ignore {{{frozen_ignore.shape} --> {aggregated_ignore.shape}}}")
     with open("../save/aggregated_ignore_domains.json", "w+") as f:
         f.write(jsonpickle.encode(aggregated_ignore))
-    use_cuda = False
-    seed = 1
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
-
-    theta_threshold_radians = 12 * 2 * math.pi / 360  # maximum angle allowed
-    x_threshold = 2.4  # maximum distance allowed
-    domain_raw = np.array([[-x_threshold, x_threshold], [-x_threshold, x_threshold], [-theta_threshold_radians, theta_threshold_radians], [-theta_threshold_radians, theta_threshold_radians]])
-    agent = Agent(4, 2)
-    agent.load("/home/edoardo/Development/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
-    verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
-
-    domain = torch.from_numpy(domain_raw).float().to(device)
-    explorer = DomainExplorer(1, domain)
+    explorer, verification_model = generateCartpoleDomainExplorer()
     print("\n---------------checking safe domains, everything should be safe")
     explorer.explore(verification_model, aggregated_safe, precision=1e-6, min_area=0)  # double check for no mistakes
     print("\n---------------checking unsafe domains, everything should be unsafe")
     explorer.explore(verification_model, aggregated_unsafe, precision=1e-6, min_area=0)  # double check for no mistakes
     print("\n---------------checking ignore domains, might improve on identified domains")
     explorer.explore(verification_model, aggregated_ignore, precision=1e-6, min_area=0)  # unknown behaviour
+
+
+def generateCartpoleDomainExplorer():
+    use_cuda = False
+    seed = 1
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
+    theta_threshold_radians = 12 * 2 * math.pi / 360  # maximum angle allowed
+    x_threshold = 2.4  # maximum distance allowed
+    domain_raw = np.array([[-x_threshold, x_threshold], [-x_threshold, x_threshold], [-theta_threshold_radians, theta_threshold_radians], [-theta_threshold_radians, theta_threshold_radians]])
+    agent = Agent(4, 2)
+    agent.load("/home/edoardo/Development/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
+    verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
+    domain = torch.from_numpy(domain_raw).float().to(device)
+    explorer = DomainExplorer(1, domain)
+    return explorer, verification_model
 
 
 if __name__ == '__main__':
