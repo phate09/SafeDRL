@@ -23,10 +23,16 @@ def main():
     frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
     aggregated_safe = aggregate(frozen_safe)
     print(f"safe {{{frozen_safe.shape} --> {aggregated_safe.shape}}}")
+    with open("../save/aggregated_safe_domains.json", "w+") as f:
+        f.write(jsonpickle.encode(aggregated_safe))
     aggregated_unsafe = aggregate(frozen_unsafe)
     print(f"unsafe {{{frozen_unsafe.shape} --> {aggregated_unsafe.shape}}}")
+    with open("../save/aggregated_unsafe_domains.json", "w+") as f:
+        f.write(jsonpickle.encode(aggregated_unsafe))
     aggregated_ignore = aggregate(frozen_ignore)
     print(f"ignore {{{frozen_ignore.shape} --> {aggregated_ignore.shape}}}")
+    with open("../save/aggregated_ignore_domains.json", "w+") as f:
+        f.write(jsonpickle.encode(aggregated_ignore))
     use_cuda = False
     seed = 1
     torch.manual_seed(seed)
