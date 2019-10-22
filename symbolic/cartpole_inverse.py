@@ -119,7 +119,7 @@ class CartPoleEnv(gym.Env):
             self.steps_beyond_done += 1
             reward = 0.0
 
-        return np.array(self.state), reward, done, {}
+        return np.array(self.state), reward, done, {thetaacc, xacc}
 
     def test(self):
         # state = self.state
@@ -161,19 +161,19 @@ class CartPoleEnv(gym.Env):
         f_x_dot = Eq(next_x_dot, x_dot + self.tau * next_xacc)
         f_theta = Eq(next_theta, theta + self.tau * theta_dot)
         f_theta_dot = Eq(next_theta_dot, theta_dot + self.tau * next_thetaacc)
-        f_thetaacc = Eq(next_thetaacc,thetaacc)
-        f_xacc = Eq(next_xacc,xacc)
-        print(latex(f_x)+"\\\\")
-        print(latex(f_x_dot)+"\\\\")
-        print(latex(f_theta)+"\\\\")
-        print(latex(f_theta_dot)+"\\\\")
-        print(latex(f_thetaacc)+"\\\\")
-        print(latex(f_xacc)+"\\\\")
+        f_thetaacc = Eq(next_thetaacc, thetaacc)
+        f_xacc = Eq(next_xacc, xacc)
+        print(latex(f_x) + "\\\\")
+        print(latex(f_x_dot) + "\\\\")
+        print(latex(f_theta) + "\\\\")
+        print(latex(f_theta_dot) + "\\\\")
+        print(latex(f_thetaacc) + "\\\\")
+        print(latex(f_xacc) + "\\\\")
 
-        print(latex(solve([f_x], [x]))+"\\\\")
-        print(latex(solve([f_x_dot], [x_dot]))+"\\\\")
-        print(latex(solve([f_theta], [theta]))+"\\\\")
-        print(latex(solve([f_theta_dot], [theta_dot]))+"\\\\")  # todo fix this
+        print(latex(solve([f_x], [x])) + "\\\\")
+        print(latex(solve([f_x_dot], [x_dot])) + "\\\\")
+        print(latex(solve([f_theta], [theta])) + "\\\\")
+        print(latex(solve([f_theta_dot], [theta_dot])) + "\\\\")  # todo fix this
 
     def reset(self):
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))

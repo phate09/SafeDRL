@@ -46,10 +46,7 @@ class CartPoleEnv_abstract(gym.Env):
         Considered solved when the average reward is greater than or equal to 195.0 over 100 consecutive trials.
     """
 
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 50
-    }
+    metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
 
     def __init__(self):
         self.gravity = 9.8
@@ -67,11 +64,7 @@ class CartPoleEnv_abstract(gym.Env):
         self.x_threshold = 2.4
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation is still within bounds
-        high = np.array([
-            self.x_threshold * 2,
-            np.finfo(np.float32).max,
-            self.theta_threshold_radians * 2,
-            np.finfo(np.float32).max])
+        high = np.array([self.x_threshold * 2, np.finfo(np.float32).max, self.theta_threshold_radians * 2, np.finfo(np.float32).max])
 
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
@@ -107,10 +100,7 @@ class CartPoleEnv_abstract(gym.Env):
             theta_dot = theta_dot + self.tau * thetaacc
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
-        done = x < -self.x_threshold \
-               or x > self.x_threshold \
-               or theta < -self.theta_threshold_radians \
-               or theta > self.theta_threshold_radians
+        done = x < -self.x_threshold or x > self.x_threshold or theta < -self.theta_threshold_radians or theta > self.theta_threshold_radians
         done = bool(done)
 
         if not done:
@@ -125,7 +115,7 @@ class CartPoleEnv_abstract(gym.Env):
             self.steps_beyond_done += 1
             reward = 0.0
 
-        return np.array(self.state), reward, done, {}
+        return np.array(self.state), reward, done, {thetaacc, xacc}
 
     def inverse_step(self, action):
 
