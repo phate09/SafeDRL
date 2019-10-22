@@ -31,10 +31,9 @@ class DomainExplorer():
         self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
         self.domain_lb = domain.select(-1, 0)
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
-        # self.domains = [normed_domain]
+        normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)  # self.domains = [normed_domain]
 
-    def explore(self, net, domains=None, n_workers=8, precision=1e-3, min_area=1e-5):
+    def explore(self, net, domains=None, n_workers=8, precision=1e-3, min_area=1e-5,debug=True):
         # eps = 1e-3
         # precision = 1e-3  # does not allow precision of any dimension to go under this amount
         # min_area = 1e-5  # minimum area of the domain for it to be considered
@@ -79,8 +78,17 @@ class DomainExplorer():
                         self.ignore_area += self.area(ndom_i)
                     else:
                         message_queue.append(next(explorers).bab.remote(ndom_i, self.safe_property_index))  # starts on the next available explorer
-            print(f"\rqueue length : {len(message_queue)}, # safe domains: {len(self.safe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.6f}", end="")
+            if debug:
+                print(f"\rqueue length : {len(message_queue)}, # safe domains: {len(self.safe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.6f}", end="")
         return self.safe_domains
+
+    def reset(self):
+        self.safe_domains = []
+        self.safe_area = 0
+        self.unsafe_domains = []
+        self.unsafe_area = 0
+        self.ignore_domains = []
+        self.ignore_area = 0
 
     def save(self, path):
         f = open(path, 'w')
