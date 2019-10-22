@@ -6,9 +6,9 @@ import progressbar as pb
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 import ray
 
-with open("../save/safe_domains.json", 'r') as f:
+with open("../save/aggregated_safe_domains.json", 'r') as f:
     frozen_safe = jsonpickle.decode(f.read())
-with open("../save/unsafe_domains.json", 'r') as f:
+with open("../save/aggregated_unsafe_domains.json", 'r') as f:
     frozen_unsafe = jsonpickle.decode(f.read())
 # with open("../save/ignore_domains.json", 'r') as f:
 #     frozen_ignore = jsonpickle.decode(f.read())
@@ -17,15 +17,14 @@ frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
 explorer, verification_model = generateCartpoleDomainExplorer()
 
 
-
 # frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
 # frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
 # @ray.remote
 def contains(first, second, safe_domains, unsafe_domains):
-    domains = np.concatenate((safe_domains, unsafe_domains))
+    domains = np.concatenate((unsafe_domains,safe_domains))
     for i, domain in enumerate(domains):
         if domain[0, 0] <= first <= domain[0, 1] and domain[2, 0] <= second <= domain[2, 1]:
-            if i >= len(safe_domains):
+            if i < len(safe_domains):
                 return -1
             else:
                 return 1
@@ -35,8 +34,8 @@ def contains(first, second, safe_domains, unsafe_domains):
 def heatmap(original_domain, safe_domains, unsafe_domains, points_x=50, points_y=50, parallelise=True):
     if parallelise:
         ray.init()
-    linx = np.linspace(original_domain[0, 0], original_domain[0, 1], num=points_x)
-    liny = np.linspace(original_domain[2, 0], original_domain[2, 1], num=points_y)
+    linx = np.linspace(0, 1, num=points_x)  # since the domains are normalised we use a linear space between 0 and 1
+    liny = np.linspace(0, 1, num=points_y)
     values = np.zeros((points_x, points_y))
     returns = []
     widget = ['building heatmap: ', pb.Percentage(), ' ',
@@ -77,4 +76,4 @@ def heatmap(original_domain, safe_domains, unsafe_domains, points_x=50, points_y
     plt.show()
 
 
-heatmap(explorer.initial_domain.cpu().numpy(), frozen_safe, frozen_unsafe, points_x=100, points_y=100,parallelise=False)
+heatmap(explorer.initial_domain.cpu().numpy(), frozen_safe, frozen_unsafe, points_x=100, points_y=100, parallelise=False)

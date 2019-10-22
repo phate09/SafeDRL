@@ -1,14 +1,18 @@
-import sys
-import mpmath
-import sympy
-from mpmath import iv, pi
+"""
+Classic cart-pole system implemented by Rich Sutton et al.
+Copied from http://incompleteideas.net/sutton/book/code/pole.c
+permalink: https://perma.cc/C9ZM-652R
+"""
+
+import math
 import gym
 from gym import spaces, logger
 from gym.utils import seeding
 import numpy as np
+from sympy import *
 
 
-class CartPoleEnv_abstract(gym.Env):
+class CartPoleEnv(gym.Env):
     """
     Description:
         A pole is attached by an un-actuated joint to a cart, which moves along a frictionless track. The pendulum starts upright, and the goal is to prevent it from falling over by increasing and reducing the cart's velocity.
@@ -46,10 +50,7 @@ class CartPoleEnv_abstract(gym.Env):
         Considered solved when the average reward is greater than or equal to 195.0 over 100 consecutive trials.
     """
 
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second': 50
-    }
+    metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
 
     def __init__(self):
         self.gravity = 9.8
@@ -63,15 +64,11 @@ class CartPoleEnv_abstract(gym.Env):
         self.kinematics_integrator = 'euler'
 
         # Angle at which to fail the episode
-        self.theta_threshold_radians = 12 * 2 * mpmath.pi / 360
+        self.theta_threshold_radians = 12 * 2 * math.pi / 360
         self.x_threshold = 2.4
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation is still within bounds
-        high = np.array([
-            self.x_threshold * 2,
-            np.finfo(np.float32).max,
-            self.theta_threshold_radians * 2,
-            np.finfo(np.float32).max])
+        high = np.array([self.x_threshold * 2, np.finfo(np.float32).max, self.theta_threshold_radians * 2, np.finfo(np.float32).max])
 
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
@@ -91,8 +88,8 @@ class CartPoleEnv_abstract(gym.Env):
         state = self.state
         x, x_dot, theta, theta_dot = state
         force = self.force_mag if action == 1 else -self.force_mag
-        costheta = iv.cos(theta)
-        sintheta = iv.sin(theta)
+        costheta = math.cos(theta)
+        sintheta = math.sin(theta)
         temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (self.length * (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass))
         xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
@@ -107,10 +104,7 @@ class CartPoleEnv_abstract(gym.Env):
             theta_dot = theta_dot + self.tau * thetaacc
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
-        done = x < -self.x_threshold \
-               or x > self.x_threshold \
-               or theta < -self.theta_threshold_radians \
-               or theta > self.theta_threshold_radians
+        done = x < -self.x_threshold or x > self.x_threshold or theta < -self.theta_threshold_radians or theta > self.theta_threshold_radians
         done = bool(done)
 
         if not done:
@@ -127,32 +121,62 @@ class CartPoleEnv_abstract(gym.Env):
 
         return np.array(self.state), reward, done, {}
 
-    def inverse_step(self, action):
+    def test(self):
+        # state = self.state
+        # x, x_dot, theta, theta_dot = state
+        # x_old, x_dot_old, theta_old, theta_dot_old = state
+        # force = self.force_mag  # if action == 1 else -self.force_mag
+        # costheta = math.cos(theta)
+        # sintheta = math.sin(theta)
+        # temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
+        # thetaacc = (self.gravity * sintheta - costheta * temp) / (
+        #         self.length * (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass))
+        # xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+        # x = x + self.tau * x_dot
+        # x_dot = x_dot + self.tau * xacc
+        # theta = theta + self.tau * theta_dot
+        # theta_dot = theta_dot + self.tau * thetaacc
 
-        """Performs the inverse of the step function"""
-        from sympy import solve
-        state = self.state
-        x, x_dot, theta, theta_dot = state
-        force = self.force_mag if action == 1 else -self.force_mag
-        costheta = iv.cos(theta)
-        sintheta = iv.sin(theta)
+        # start inverse
+        self.gravity = symbols("g")
+        self.masscart = symbols("m1")
+        self.masspole = symbols("m2")
+        self.total_mass = (self.masspole + self.masscart)
+        self.length = symbols("l")  # actually half the pole's length
+        self.polemass_length = (self.masspole * self.length)
+        # self.force_mag = symbols("f")
+        self.tau = symbols("tau")  # seconds between state updates
+        x, x_dot, theta, theta_dot = symbols("x, Delta_x, theta, Delta_theta")
+        force = symbols("f")
+        costheta = cos(theta)
+        sintheta = sin(theta)
         temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (self.length * (4.0 / 3.0 - self.masspole * costheta * costheta / self.total_mass))
         xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
-        # x1, x_dot1 = sympy.symbols('x,x_dot')
-        # e = x1 + self.tau * x_dot1
-        # solve(e,x1)
-        # solve(e,x_dot1)
-        theta_dot = theta_dot - self.tau * thetaacc
-        theta = theta - self.tau * theta_dot
-        x_dot = x_dot - self.tau * xacc
-        x = x - self.tau * x_dot
-        self.state = (x, x_dot, theta, theta_dot)
-        return np.array(self.state)
+        # thetaacc = symbols("alpha_theta")
+        next_thetaacc = symbols("alpha_theta")
+        next_xacc = symbols("alpha_x")
+        next_x, next_x_dot, next_theta, next_theta_dot = symbols('x_t, Delta_x_t, theta_t, Delta_theta_t')  # use t because prime doesn't get recognised
+        f_x = Eq(next_x, x + self.tau * x_dot)
+        f_x_dot = Eq(next_x_dot, x_dot + self.tau * next_xacc)
+        f_theta = Eq(next_theta, theta + self.tau * theta_dot)
+        f_theta_dot = Eq(next_theta_dot, theta_dot + self.tau * next_thetaacc)
+        f_thetaacc = Eq(next_thetaacc,thetaacc)
+        f_xacc = Eq(next_xacc,xacc)
+        print(latex(f_x)+"\\\\")
+        print(latex(f_x_dot)+"\\\\")
+        print(latex(f_theta)+"\\\\")
+        print(latex(f_theta_dot)+"\\\\")
+        print(latex(f_thetaacc)+"\\\\")
+        print(latex(f_xacc)+"\\\\")
+
+        print(latex(solve([f_x], [x]))+"\\\\")
+        print(latex(solve([f_x_dot], [x_dot]))+"\\\\")
+        print(latex(solve([f_theta], [theta]))+"\\\\")
+        print(latex(solve([f_theta_dot], [theta_dot]))+"\\\\")  # todo fix this
 
     def reset(self):
-        eps = 1e-4
-        self.state = tuple([iv.mpf([x, x + eps]) for x in self.np_random.uniform(low=-0.05, high=0.05, size=(4,))])
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
         self.steps_beyond_done = None
         return np.array(self.state)
 
@@ -213,3 +237,9 @@ class CartPoleEnv_abstract(gym.Env):
         if self.viewer:
             self.viewer.close()
             self.viewer = None
+
+
+if __name__ == '__main__':
+    env = CartPoleEnv()
+    env.reset()
+    env.test()

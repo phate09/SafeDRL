@@ -10,16 +10,21 @@ from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 with open("../save/aggregated_safe_domains.json", 'r') as f:
     frozen_safe = jsonpickle.decode(f.read())
-# with open("../save/unsafe_domains.json", 'r') as f:
-#     frozen_unsafe = jsonpickle.decode(f.read())
+with open("../save/unsafe_domains.json", 'r') as f:
+    frozen_unsafe = jsonpickle.decode(f.read())
 # with open("../save/ignore_domains.json", 'r') as f:
 #     frozen_ignore = jsonpickle.decode(f.read())
 frozen_safe = np.stack(frozen_safe)#.take(range(10), axis=0)
-# frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
+frozen_unsafe = np.stack(frozen_unsafe)  # .take(range(10), axis=0)
 # frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
 
 #%%
 env = CartPoleEnv_abstract()
+s = env.reset()
+env.step(1)
+s1=env.inverse_step(1)
+print(s)
+print(s1)
 
 #%%
 def interval_unwrap(state):
@@ -36,7 +41,7 @@ def step_state(state, action):
 #%%
 
 next_states = []
-for interval in frozen_safe:
+for interval in frozen_unsafe:
     state = tuple([iv.mpf([x.item(0), x.item(1)]) for x in interval])
     next_state = step_state(state, 1)
     unwrapped_next_state = interval_unwrap(next_state)
