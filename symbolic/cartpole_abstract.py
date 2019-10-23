@@ -141,8 +141,7 @@ class CartPoleEnv_abstract(gym.Env):
         return np.array(self.state)
 
     def reset(self):
-        eps = 1e-4
-        self.state = tuple([iv.mpf([x, x + eps]) for x in self.np_random.uniform(low=-0.05, high=0.05, size=(4,))])
+        self.state = tuple([iv.mpf([-0.05, 0.05]) for x in range(4)])
         self.steps_beyond_done = None
         return np.array(self.state)
 

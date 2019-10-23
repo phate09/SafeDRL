@@ -33,13 +33,14 @@ class DomainExplorer():
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
         normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)  # self.domains = [normed_domain]
 
-    def explore(self, net, domains=None, n_workers=8, precision=1e-3, min_area=1e-5,debug=True):
+    def explore(self, net, domains=None, n_workers=8, precision=1e-3, min_area=1e-6, debug=True):
         # eps = 1e-3
         # precision = 1e-3  # does not allow precision of any dimension to go under this amount
         # min_area = 1e-5  # minimum area of the domain for it to be considered
         global_min_area = float("inf")
         shortest_dimension = float("inf")
-        ray.init(ignore_reinit_error=True)
+        if not ray.is_initialized():
+            ray.init()
 
         message_queue = []
         if domains is None:
@@ -52,7 +53,7 @@ class DomainExplorer():
                 # widths = normed_domain[:,1]-normed_domain[:,0]
                 # normed_domain[:,0] = normed_domain[:,0]-self.domain_lb.cpu().numpy()
                 # normed_domain[:,1] = widths/self.domain_width.cpu().numpy()
-                domain_id = ray.put((torch.from_numpy(normed_domain), None, None))
+                domain_id = ray.put((torch.from_numpy(normed_domain).float(), None, None))
                 message_queue.append(domain_id)
         # a=ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net)
         explorers = cycle([ParallelExplorer.remote(self.domain_lb, self.domain_width, self.nb_input_var, net) for i in range(n_workers)])
@@ -79,8 +80,22 @@ class DomainExplorer():
                     else:
                         message_queue.append(next(explorers).bab.remote(ndom_i, self.safe_property_index))  # starts on the next available explorer
             if debug:
-                print(f"\rqueue length : {len(message_queue)}, # safe domains: {len(self.safe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.6f}", end="")
-        return self.safe_domains
+                print(f"\rqueue length : {len(message_queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.8f}", end="")
+        if debug:
+            print("\n")
+        # prepare stats
+        stats = {}
+        total_area = (self.safe_area + self.unsafe_area + self.ignore_area)
+        if total_area == 0:
+            total_area = 1
+        stats["safe_relative_percentage"] = self.safe_area / total_area
+        stats["unsafe_relative_percentage"] = self.unsafe_area / total_area
+        stats["ignore_relative_percentage"] = self.ignore_area / total_area
+        stats["n_states"] = len(self.safe_domains) + len(self.unsafe_domains) + len(self.ignore_domains)
+        stats["n_safe"] = len(self.safe_domains)
+        stats["n_unsafe"] = len(self.unsafe_domains)
+        stats["n_ignore"] = len(self.ignore_domains)
+        return stats
 
     def reset(self):
         self.safe_domains = []

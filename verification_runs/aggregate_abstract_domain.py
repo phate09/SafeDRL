@@ -42,8 +42,10 @@ def merge_single(first, second, n_dims) -> np.ndarray:
     return np.array(output)
 
 
-def aggregate(aggregate_list):
-    new_list = aggregate_list
+def aggregate(aggregate_list: np.ndarray):
+    if len(aggregate_list) == 0:
+        return aggregate_list
+    new_list = aggregate_list.copy()
     perms = list(permutations(range(4)))
     for i in range(len(perms)):
         order = []
