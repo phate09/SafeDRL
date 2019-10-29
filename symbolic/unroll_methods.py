@@ -5,7 +5,7 @@ import jsonpickle
 import numpy as np
 import mpmath
 from mpmath import iv
-
+import pandas as pd
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
@@ -14,7 +14,9 @@ import os
 from verification_runs.aggregate_abstract_domain import aggregate
 import random
 import plotly.graph_objs as go
-
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
 def interval_unwrap(state):
     unwrapped_state = tuple([[float(x.a), float(x.b)] for x in state])
@@ -83,7 +85,7 @@ def iteration(t: int, t_states, env: CartPoleEnv_abstract, explorer: DomainExplo
     return t_states
 
 
-def generate_points_in_intervals(total_states: np.ndarray, n_points=100):
+def generate_points_in_intervals(total_states: np.ndarray, n_points=100) -> np.ndarray:
     """
     :param total_states: 3 dimensional array (n,dimension,interval)
     :return:
@@ -104,23 +106,32 @@ def assign_action(random_points: np.ndarray, t_states):
     :param random_points: collection of random points
     :return:
     """
-    assigned_action = [-1] * len(random_points)
+    assigned_action = [""] * len(random_points)
     for i in range(len(random_points)):
         # for t in range(len(t_states)):
         t = len(t_states) - 1
+        point = random_points[i]
         for r in range(3):  # safe,unsafe,ignore
-            matches = 0
             for g in range(len(t_states[t][r])):  # group
-                for d in range(len(t_states[t][r][g])):  # dimension
-                    if t_states[t][r][g][d][0] <= random_points[i][d] <= t_states[t][r][g][d][1]:
+                matches = 0
+                interval = t_states[t][r][g]
+                # if interval[0][0] <= point[0] <= interval[0][1]:
+                #     if interval[1][0] <= point[1] <= interval[1][1]:
+                #         if interval[2][0] <= point[2] <= interval[2][1]:
+                #             if interval[3][0] <= point[3] <= interval[3][1]:
+                #                 matches=4
+                for d in range(len(interval)):  # dimension
+                    if interval[d][0] <= point[d] <= interval[d][1]:
                         matches += 1
                 if matches == 4:
                     if r == 0:
-                        assert assigned_action[i] == -1 or assigned_action[i] == 1
-                        assigned_action[i] = 1
+                        if assigned_action[i] != "" and assigned_action[i] != "safe":
+                            print("something's wrong")
+                        assigned_action[i] = "safe"
                     elif r == 1:
-                        assert assigned_action[i] == -1 or assigned_action[i] == 0
-                        assigned_action[i] = 0
+                        if assigned_action[i] != "" and assigned_action[i] != "unsafe":
+                            print("something's wrong 2")
+                        assigned_action[i] = "unsafe"
                     elif r == 2:
-                        assigned_action[i] = -1
+                        assigned_action[i] = "ignore"
     return assigned_action
