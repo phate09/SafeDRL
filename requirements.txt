@@ -1,3 +1,6 @@
+scikit-learn
+pandas
+plotly
 numpy
 pytorch
 pyzmq
