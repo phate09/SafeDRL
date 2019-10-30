@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
+
 def interval_unwrap(state):
     unwrapped_state = tuple([[float(x.a), float(x.b)] for x in state])
     return unwrapped_state
@@ -104,17 +105,16 @@ def assign_action(random_points: np.ndarray, t_states):
     Given some points and a list of domains divided in 3 categories (safe,unsafe,ignore) check which action to pick.
     It also check for duplicates throwing an assertion error
     :param random_points: collection of random points
+    :param t_states: collection of states at timestep t
     :return:
     """
     assigned_action = [""] * len(random_points)
     for i in range(len(random_points)):
-        # for t in range(len(t_states)):
-        t = len(t_states) - 1
         point = random_points[i]
         for r in range(3):  # safe,unsafe,ignore
-            for g in range(len(t_states[t][r])):  # group
+            for g in range(len(t_states[r])):  # group
                 matches = 0
-                interval = t_states[t][r][g]
+                interval = t_states[r][g]
                 # if interval[0][0] <= point[0] <= interval[0][1]:
                 #     if interval[1][0] <= point[1] <= interval[1][1]:
                 #         if interval[2][0] <= point[2] <= interval[2][1]:
@@ -135,3 +135,19 @@ def assign_action(random_points: np.ndarray, t_states):
                     elif r == 2:
                         assigned_action[i] = "ignore"
     return assigned_action
+
+
+def generate_points(t_states, t):
+    """
+    Generate random points and determines the action of the agent given a collection of abstract states and a time step
+    :param t_states: list of list of arrays
+    :param t: timestep
+    :return: random points and corresponding actions
+    """
+    # Generate random points and determines the action of the agent
+    random_points = generate_points_in_intervals(t_states[t][0], 500) if len(t_states[t][0])>0 else np.array([]).reshape((0,4))  # safe
+    random_points2 = generate_points_in_intervals(t_states[t][1], 500) if len(t_states[t][1])>0 else np.array([]).reshape((0,4)) # unsafe
+    random_points3 = generate_points_in_intervals(t_states[t][2], 500) if len(t_states[t][2])>0 else np.array([]).reshape((0,4)) # unsafe
+    random_points = np.concatenate((random_points, random_points2,random_points3))
+    assigned_actions = assign_action(random_points, t_states[t])
+    return random_points, assigned_actions

@@ -33,43 +33,38 @@ explorer, verification_model = generateCartpoleDomainExplorer()
 # with open("./save/t_states.json", 'r') as f:
 #     t_states = jsonpickle.decode(f.read())
 #
-# # %% Generate random points
-# random_points = generate_points_in_intervals(t_states[4][0], 500)
-# random_points2 = generate_points_in_intervals(t_states[4][1], 500)
-# random_points = np.concatenate((random_points, random_points2))
-# del random_points2
 # # %%
-# assigned_actions = assign_action(random_points, t_states)
+# frames = []
+# for t in range(len(t_states)):
+#     random_points, assigned_actions = generate_points(t_states, t)
+#     new_frame = pd.DataFrame(random_points)
+#     new_frame["action"] = assigned_actions
+#     frames.append(new_frame)
+# main_frame = pd.concat(frames, keys=range(len(t_states)))
 # # %%
-# original_frame = pd.DataFrame(random_points)
-# original_frame["action"] = assigned_actions
-# #%%
-# original_frame.to_json("./save/original_dataframe.json")
+# main_frame.to_pickle("./save/original_dataframe.pickle")
 # %%
-original_frame = pd.read_json("./save/original_dataframe.json")
+main_frame:pd.DataFrame = pd.read_pickle("./save/original_dataframe.pickle")
+main_frame.head()
 # %%
-x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])
+x = StandardScaler().fit_transform(main_frame.iloc[:, 0:4])
 pca = PCA(n_components=2)
-principalComponents = pca.fit_transform(x)
-
+pca.fit(x)
+principalComponents = pca.transform(main_frame.xs(0,0).iloc[:, 0:4])
 # %%
 
-pca_frame = pd.DataFrame(principalComponents, columns=["A", "B"])
-pca_result = pd.concat([original_frame, pca_frame], axis=1, sort=False)
+pca_frame:pd.DataFrame = pd.DataFrame(principalComponents, columns=["A", "B"])
+# main_frame.xs(0,0) = main_frame.xs(0,0).join(pca_frame)
+pca_result = pd.concat([main_frame, pca_frame], axis=1, sort=False)
 pca_result.head()
 # %%
 import plotly.express as px
 
 fig = px.scatter(pca_result, x="A", y="B", color="action")
-fig.write_html('first_figure.html', auto_open=True)
-# # %%
-# lca = LinearDiscriminantAnalysis(n_components=None)
-# x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])
-# linearDiscriminants = lca.fit_transform(x,original_frame["action"])
-# lca_frame = pd.DataFrame(linearDiscriminants,columns=["C","D"])
+fig.write_html('first_figure.html', auto_open=True)  # # %%  # lca = LinearDiscriminantAnalysis(n_components=None)  # x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])  # linearDiscriminants = lca.fit_transform(x,original_frame["action"])  # lca_frame = pd.DataFrame(linearDiscriminants,columns=["C","D"])
 # lca_result = pd.concat([pca_result, lca_frame], axis=1, sort=False)
 # lca_result.head()
 # #%%
 # fig = px.scatter(pca_result, x="C", y="D", color="action")
 # fig.write_html('first_figure.html', auto_open=True)
-#%%
+# %%
