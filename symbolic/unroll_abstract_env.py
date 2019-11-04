@@ -3,7 +3,8 @@ from symbolic.unroll_methods import *
 
 # %%
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-
+pd.set_option('display.max_columns', 50)
+pd.set_option('display.width', 1000)
 # %%
 env = CartPoleEnv_abstract()
 s = env.reset()
@@ -58,7 +59,8 @@ pca.fit(x)
 principalComponents = pca.transform(x)
 # %%
 main_frame.loc[:, ["A", "B"]] = principalComponents  # (0, 0):(0, 500)
-main_frame.head(50)
+main_frame.at[0,"action"] = "safe" # fix to plot not showing all the labels unless they both appear at t=0
+main_frame.head()
 # %%
 import plotly.express as px
 
