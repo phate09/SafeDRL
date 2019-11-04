@@ -30,21 +30,24 @@ explorer, verification_model = generateCartpoleDomainExplorer()
 # with open("./save/t_states.json", 'w+') as f:
 #     f.write(jsonpickle.encode(t_states))
 # %%
-# with open("./save/t_states.json", 'r') as f:
-#     t_states = jsonpickle.decode(f.read())
+with open("./save/t_states.json", 'r') as f:
+    t_states = jsonpickle.decode(f.read())
 
 # %%
-# frames = []
-# for t in range(len(t_states)):
-#     random_points, assigned_actions = generate_points(t_states, t)
-#     new_frame = pd.DataFrame(random_points)
-#     new_frame["action"] = assigned_actions
-#     frames.append(new_frame)
-# main_frame = pd.concat(frames, keys=range(len(t_states)))
+frames = []
+for t in range(len(t_states)):
+    random_points, areas, assigned_actions = generate_middle_points(t_states, t)
+    new_frame = pd.DataFrame(random_points)
+    new_frame["action"] = assigned_actions
+    new_frame["area"] = areas
+    new_frame["t"] = t
+    frames.append(new_frame)
+main_frame = pd.concat(frames, ignore_index=True)
 # %%
-# main_frame.to_pickle("./save/original_dataframe.pickle")
+main_frame.to_pickle("./save/original_dataframe.pickle")
 # %%
 main_frame: pd.DataFrame = pd.read_pickle("./save/original_dataframe.pickle")
+# append A and B column for PCA dimensions
 main_frame["A"] = np.nan
 main_frame["B"] = np.nan
 main_frame.head()
@@ -52,20 +55,31 @@ main_frame.head()
 x = StandardScaler().fit_transform(main_frame.iloc[:, 0:4])
 pca = PCA(n_components=2)
 pca.fit(x)
-principalComponents = pca.transform(main_frame.xs(0, 0).iloc[:, 0:4])
+principalComponents = pca.transform(x)
 # %%
-pca_frame: pd.DataFrame = pd.DataFrame(principalComponents, columns=["A", "B"])
-main_frame.xs(0, 0).head()
-main_frame.xs(0, level=0, drop_level=False).loc[0, "A"] = 1
-main_frame.loc[(0,1), "A"] = 1
-pca_result = pd.concat([main_frame, pca_frame], axis=1, sort=False)
-pca_result.head()
+main_frame.loc[:, ["A", "B"]] = principalComponents  # (0, 0):(0, 500)
+main_frame.head(50)
 # %%
 import plotly.express as px
 
-fig = px.scatter(pca_result, x="A", y="B", color="action")
-fig.write_html('first_figure.html', auto_open=True)  # # %%  # lca = LinearDiscriminantAnalysis(n_components=None)  # x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])  # linearDiscriminants = lca.fit_transform(x,original_frame["action"])  # lca_frame = pd.DataFrame(linearDiscriminants,columns=["C","D"])  # lca_result = pd.concat([pca_result, lca_frame], axis=1, sort=False)  # lca_result.head()
-# #%%
-# fig = px.scatter(pca_result, x="C", y="D", color="action")
+fig = px.scatter(main_frame, x="A", y="B",animation_frame="t",size="area", color="action",size_max=500,height=1200)
+fig.write_html('first_figure.html', auto_open=True)  # # %%  # lca = LinearDiscriminantAnalysis(n_components=None)  # x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])  # linearDiscriminants = lca.fit_transform(x,original_frame["action"])  # lca_frame = pd.DataFrame(linearDiscriminants,columns=["C","D"])  # lca_result = pd.concat([pca_result, lca_frame], axis=1, sort=False)  # lca_result.head()  # #%%  # fig = px.scatter(pca_result, x="C", y="D", color="action")
+
+
 # fig.write_html('first_figure.html', auto_open=True)
 # %%
+def mklbl(prefix, n):
+    return ["%s%s" % (prefix, i) for i in range(n)]
+
+
+miindex = pd.MultiIndex.from_product([mklbl('A', 2), mklbl('B', 2), mklbl('C', 2), mklbl('D', 2)])
+
+micolumns = pd.MultiIndex.from_tuples([('a', 'foo'), ('a', 'bar'), ('b', 'foo'), ('b', 'bah')], names=['lvl0', 'lvl1'])
+
+dfmi = pd.DataFrame(np.arange(len(miindex) * len(micolumns)).reshape((len(miindex), len(micolumns))), index=miindex, columns=micolumns).sort_index().sort_index(axis=1)
+
+dfmi.loc[:, ('b', 'foo')] = np.arange(0, 16)
+# %%
+import plotly.express as px
+
+gapminder = px.data.gapminder()

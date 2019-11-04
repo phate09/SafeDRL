@@ -145,9 +145,40 @@ def generate_points(t_states, t):
     :return: random points and corresponding actions
     """
     # Generate random points and determines the action of the agent
-    random_points = generate_points_in_intervals(t_states[t][0], 500) if len(t_states[t][0])>0 else np.array([]).reshape((0,4))  # safe
-    random_points2 = generate_points_in_intervals(t_states[t][1], 500) if len(t_states[t][1])>0 else np.array([]).reshape((0,4)) # unsafe
-    random_points3 = generate_points_in_intervals(t_states[t][2], 500) if len(t_states[t][2])>0 else np.array([]).reshape((0,4)) # unsafe
-    random_points = np.concatenate((random_points, random_points2,random_points3))
+    random_points = generate_points_in_intervals(t_states[t][0], 500) if len(t_states[t][0]) > 0 else np.array([]).reshape((0, 4))  # safe
+    random_points2 = generate_points_in_intervals(t_states[t][1], 500) if len(t_states[t][1]) > 0 else np.array([]).reshape((0, 4))  # unsafe
+    random_points3 = generate_points_in_intervals(t_states[t][2], 500) if len(t_states[t][2]) > 0 else np.array([]).reshape((0, 4))  # unsafe
+    random_points = np.concatenate((random_points, random_points2, random_points3))
     assigned_actions = assign_action(random_points, t_states[t])
     return random_points, assigned_actions
+
+
+def calculate_area(state: np.ndarray):
+    """Given an interval state calculate the area of the interval"""
+    dom_sides: np.ndarray = np.abs(state[:, 0] - state[:, 1])
+    dom_area = dom_sides.prod()
+    return dom_area
+
+
+def generate_middle_points(t_states, t):
+    """
+    Generate the middle points of each inteval and determines the action of the agent given a collection of abstract states and a time step
+    :param t_states: list of list of arrays
+    :param t: timestep
+    :return: random points and corresponding actions
+    """
+    # Generate random points and determines the action of the agent
+    random_points = []
+    areas = []
+    for s in t_states[t][0]: #safe
+        random_points.append(np.average(s, axis=1))
+        areas.append(calculate_area(s))
+    for s in t_states[t][1]: #unsafe
+        random_points.append(np.average(s, axis=1))
+        areas.append(calculate_area(s))
+    for s in t_states[t][2]: #ignore
+        random_points.append(np.average(s, axis=1))
+        areas.append(calculate_area(s))
+    random_points = np.stack(random_points)
+    assigned_actions = assign_action(random_points, t_states[t])
+    return random_points,areas, assigned_actions
