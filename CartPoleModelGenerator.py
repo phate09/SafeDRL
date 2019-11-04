@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 import zmq
@@ -28,7 +30,7 @@ class CartPoleModelGenerator:
         torch.manual_seed(0)
         self.agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.agent.qnetwork_local.load_state_dict(torch.load('model.pth', map_location=self.device))
+        self.agent.load('./save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth')
 
     def start(self):
         while True:
@@ -177,5 +179,6 @@ class CartPoleModelGenerator:
 
 
 if __name__ == '__main__':
+    os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
     model = CartPoleModelGenerator(5558)
     model.start()
