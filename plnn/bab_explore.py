@@ -40,7 +40,7 @@ class DomainExplorer():
         global_min_area = float("inf")
         shortest_dimension = float("inf")
         if not ray.is_initialized():
-            ray.init()
+            ray.init(log_to_driver=False)
 
         message_queue = []
         if domains is None:

@@ -9,6 +9,7 @@ from proto.state_request_pb2 import StringVarNames, CartPoleState
 from mpmath import iv
 
 from symbolic.unroll_methods import interval_unwrap
+from verification_runs.aggregate_abstract_domain import aggregate
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 state_size = 4
@@ -39,7 +40,7 @@ class CartPoleAbstractModelGenerator:
         while True:
             message: list = self.socket.recv_multipart()  # receives a multipart message
             decode = message[0].decode('utf-8')
-            print(decode)
+            # print(decode)
             method_name = decode
             method = getattr(self, method_name, self.invalid_method)
             # Call the method as we return it
@@ -97,6 +98,7 @@ class CartPoleAbstractModelGenerator:
         self.current_t = state.t
         self.terminal = state.done
         self.t_states = self.assign_intervals(self.last_state, self.verification_model, self.explorer)
+        print(f"Current t:{self.current_t}")
         self.socket.send_string("OK")
 
     def assign_intervals(self, state, verification_model, explorer):
@@ -108,6 +110,9 @@ class CartPoleAbstractModelGenerator:
         safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
         unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
         ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
+        safe_next = aggregate(safe_next)
+        unsafe_next = aggregate(unsafe_next)
+        ignore_next = aggregate(ignore_next)
         return safe_next, unsafe_next, ignore_next
 
     def getNumChoices(self, message):
@@ -125,41 +130,42 @@ class CartPoleAbstractModelGenerator:
             self.socket.send_string(str(choices))  # returns only 1 choice
 
     def getNumTransitions(self, message):
+        i = int(message[1].decode('utf-8'))
         if self.current_t > self.max_n or self.terminal:  # if done
             self.socket.send_string(str(1))
         else:
-            self.socket.send_string(str(2))
+            if len(self.t_states[i]) == 0:  # if it's not the first go to the second list
+                i += 1
+            self.socket.send_string(str(len(self.t_states[i])))
 
     def getTransitionAction(self, message):
         pass
 
     def getTransitionProbability(self, message):
         i = int(message[1].decode('utf-8'))
+        if len(self.t_states[i]) == 0:  # if it's not the first go to the second list
+            i += 1
         offset = int(message[2].decode('utf-8'))
-        prob = 1.0 if (self.current_t > self.max_n or self.terminal) else (1 - self.p if offset == 0 else self.p)
+        # prob = 1.0 if (self.current_t > self.max_n or self.terminal) else (1 - self.p if offset == 0 else self.p)
+        # uniform probability
+        prob = 1.0 / len(self.t_states[i])
         self.socket.send_string(str(prob))
 
     def computeTransitionTarget(self, message):
         i = int(message[1].decode('utf-8'))
+        if len(self.t_states[i]) == 0:  # if it's not the first go to the second list
+            i += 1
         offset = int(message[2].decode('utf-8'))
         if self.current_t >= self.max_n or self.terminal:
             state = self.currentStateToProtobuf()  # append the current state values
         else:
             self.env.reset()
-            self.env.state = self.last_state
-            s_array = np.stack([interval_unwrap(self.last_state)])  # unwrap the intervals in an array representation
-            stats = self.explorer.explore(self.verification_model, s_array, debug=False)
-            safe_next = [i.cpu().numpy() for i in self.explorer.safe_domains]
-            unsafe_next = [i.cpu().numpy() for i in self.explorer.unsafe_domains]
-            ignore_next = [i.cpu().numpy() for i in self.explorer.ignore_domains]
-            safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
-            unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
-            ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-            t_states = [[safe_next, unsafe_next, ignore_next]]
-            state, reward, done, _ = self.env.step(action)
+            state = tuple([iv.mpf([x.item(0), x.item(1)]) for x in self.t_states[i][offset]])
+            self.env.state = state  # self.last_state
+            state, reward, done, _ = self.env.step(i)  # 0=safe, 1 = unsafe
             current_t = self.current_t + 1
-            if offset == 1 and not done:
-                state, reward, done, _ = self.env.step(action)
+            # if offset == 1 and not done:
+            #     state, reward, done, _ = self.env.step(action)
             state = self.stateToProtobuf(current_t, state, done)
         self.socket.send(state.SerializeToString())
 
@@ -201,7 +207,7 @@ class CartPoleAbstractModelGenerator:
         for i in range(4):
             lb = state.value[i * 2] / 1000.0
             ub = state.value[i * 2 + 1] / 1000.0
-            interval = iv.mpf(lb, ub)
+            interval = iv.mpf([lb, ub])
             intervals.append(interval)
 
         return np.asarray(intervals)
@@ -214,8 +220,8 @@ class CartPoleAbstractModelGenerator:
         state.t = t
         state.done = done
         for x in env_state:
-            state.value.append(int(x.a * 1000))  # multiply by 100 for rounding up integers
-            state.value.append(int(x.b * 1000))  # multiply by 100 for rounding up integers
+            state.value.append(int(float(x.a) * 1000))  # multiply by 100 for rounding up integers
+            state.value.append(int(float(x.b) * 1000))  # multiply by 100 for rounding up integers
         return state
 
 
