@@ -4,7 +4,9 @@ Collection of methods to use in unroll_abstract_env
 import jsonpickle
 import numpy as np
 import mpmath
+import progressbar
 from mpmath import iv
+# from interval import interval,imath
 import pandas as pd
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
@@ -17,39 +19,48 @@ import plotly.graph_objs as go
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+import intervals as I
+from typing import Tuple, List
+import functools
+import operator
 
 
-def interval_unwrap(state):
-    unwrapped_state = tuple([[float(x.a), float(x.b)] for x in state])
+def interval_unwrap(state: np.ndarray) -> np.ndarray:
+    """From array of intervals to array of floats"""
+    unwrapped_state: np.ndarray = np.array([(float(x.a), float(x.b)) for x in state])
     return unwrapped_state
 
 
-def step_state(state, action, env):
+def step_state(state: Tuple[Tuple], action, env) -> np.ndarray:
     # given a state and an action, calculate next state
     env.reset()
-    env.state = state
+    env.state = tuple([iv.mpf([float(x[0]), float(x[1])]) for x in state])
     next_state, _, _, _ = env.step(action)
-    return tuple(next_state)
+    return interval_unwrap(next_state)
 
 
-def abstract_step(abstract_states: np.ndarray, action, env: CartPoleEnv_abstract):
+def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract) -> List[np.ndarray]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
-    :param abstract_states: the abstract states from which to start
+    :param env:
+    :param abstract_states: the abstract states from which to start, list of tuples of intervals
     :param action: the action to take
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    for interval in abstract_states:
-        state = tuple([iv.mpf([x.item(0), x.item(1)]) for x in interval])
-        next_state = step_state(state, action, env)
-        unwrapped_next_state = interval_unwrap(next_state)
-        next_states.append(unwrapped_next_state)
-    next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
-    return next_states_array
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1).start()
+    for i, interval in enumerate(abstract_states):
+        next_state = step_state(interval, action, env)
+        # unwrapped_next_state = interval_unwrap(next_state)
+        next_states.append(next_state)
+        bar.update(i)
+    # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
+    bar.finish()
+    return next_states
 
 
-def explore_step(states: np.ndarray, action, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork):
+def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
+    List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
     next_states_array = abstract_step(states, action, env)
     explorer.reset()
     stats = explorer.explore(verification_model, next_states_array, min_area=1e-8, debug=True)
@@ -60,7 +71,7 @@ def explore_step(states: np.ndarray, action, env: CartPoleEnv_abstract, explorer
     return safe_next, unsafe_next, ignore_next
 
 
-def iteration(t: int, t_states, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork):
+def iteration(t: int, t_states: List[List[List[Tuple[I.Interval]]]], env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork):
     print(f"Iteration for time t={t}")
     safe_states, unsafe_states, ignore_states = t_states[t]
     safe_next_total = []
@@ -170,15 +181,45 @@ def generate_middle_points(t_states, t):
     # Generate random points and determines the action of the agent
     random_points = []
     areas = []
-    for s in t_states[t][0]: #safe
+    for s in t_states[t][0]:  # safe
         random_points.append(np.average(s, axis=1))
         areas.append(calculate_area(s))
-    for s in t_states[t][1]: #unsafe
+    for s in t_states[t][1]:  # unsafe
         random_points.append(np.average(s, axis=1))
         areas.append(calculate_area(s))
-    for s in t_states[t][2]: #ignore
+    for s in t_states[t][2]:  # ignore
         random_points.append(np.average(s, axis=1))
         areas.append(calculate_area(s))
     random_points = np.stack(random_points)
     assigned_actions = assign_action(random_points, t_states[t])
-    return random_points,areas, assigned_actions
+    return random_points, areas, assigned_actions
+
+
+def assign_action_to_blank_intervals(s_array: List[Tuple[I.Interval]], precision=1e-6) -> Tuple[List[Tuple]]:
+    # convert list of tuples to list of arrays
+    s_array = [np.array(x) for x in s_array]
+    explorer, verification_model = generateCartpoleDomainExplorer()
+    # given the initial states calculate which intervals go left or right
+    stats = explorer.explore(verification_model, s_array, debug=True)
+    print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
+    safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
+    unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]
+    ignore_next = [i.cpu().numpy() for i in explorer.ignore_domains]
+    safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
+    unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
+    ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
+    t_states = [tuple([(x.item(0), x.item(1)) for x in k]) for k in safe_next], [tuple([(x.item(0), x.item(1)) for x in k]) for k in unsafe_next], [tuple([(x.item(0), x.item(1)) for x in k]) for k in
+                                                                                                                                                    ignore_next]
+    return t_states
+
+
+def discard_negligibles(intervals: List[Tuple[float]]) -> List[Tuple[float]]:
+    """discards the intervals with area 0"""
+    result = []
+    for interval in intervals:
+        sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
+        if all([x > 1e-6 for x in sizes]):
+            # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
+            # if area > 1e-10:
+            result.append(interval)
+    return result

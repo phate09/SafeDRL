@@ -1,6 +1,6 @@
 # %%
 from symbolic.unroll_methods import *
-
+import torch
 # %%
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 pd.set_option('display.max_columns', 50)
@@ -8,28 +8,34 @@ pd.set_option('display.width', 1000)
 # %%
 env = CartPoleEnv_abstract()
 s = env.reset()
-s_array = np.stack([interval_unwrap(s)])
-
-# %%
+s_array = None #np.stack([interval_unwrap(s)])
+# with open("./save/queue.json", 'r') as f:
+#     s_array = jsonpickle.decode(f.read())
+#%%
 explorer, verification_model = generateCartpoleDomainExplorer()
 # %%
+with open("./save/safe_domains.json", 'r') as f:
+    explorer.safe_domains = jsonpickle.decode(f.read())
+with open("./save/unsafe_domains.json", 'r') as f:
+    explorer.unsafe_domains = jsonpickle.decode(f.read())
+# %%
 # given the initial states calculate which intervals go left or right
-# stats = explorer.explore(verification_model, s_array, debug=False)
-# print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
-# safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
-# unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]
-# ignore_next = [i.cpu().numpy() for i in explorer.ignore_domains]
-# safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
-# unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
-# ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-# t_states = [[safe_next, unsafe_next, ignore_next]]
+stats = explorer.explore(verification_model, s_array, debug=True)
+print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
+safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
+unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]
+ignore_next = [i.cpu().numpy() for i in explorer.ignore_domains]
+safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
+unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
+ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
+t_states = [[safe_next, unsafe_next, ignore_next]]
 
 # %%
-# for t in range(4):
-#     iteration(t, t_states, env, explorer, verification_model)
-# %%
-# with open("./save/t_states.json", 'w+') as f:
-#     f.write(jsonpickle.encode(t_states))
+for t in range(4):
+    iteration(t, t_states, env, explorer, verification_model)
+# %% SAVE CAUTION
+with open("./save/t_states.json", 'w+') as f:
+    f.write(jsonpickle.encode(t_states))
 # %%
 with open("./save/t_states.json", 'r') as f:
     t_states = jsonpickle.decode(f.read())
@@ -64,7 +70,7 @@ main_frame.head()
 # %%
 import plotly.express as px
 
-fig = px.scatter(main_frame, x="A", y="B",animation_frame="t",size="area", color="action",size_max=500,height=1200)
+fig = px.scatter(main_frame, x="A", y="B",size="area", color="action",size_max=100,height=1200)#,animation_frame="t"
 fig.write_html('first_figure.html', auto_open=True)  # # %%  # lca = LinearDiscriminantAnalysis(n_components=None)  # x = StandardScaler().fit_transform(original_frame.iloc[:, 0:4])  # linearDiscriminants = lca.fit_transform(x,original_frame["action"])  # lca_frame = pd.DataFrame(linearDiscriminants,columns=["C","D"])  # lca_result = pd.concat([pca_result, lca_frame], axis=1, sort=False)  # lca_result.head()  # #%%  # fig = px.scatter(pca_result, x="C", y="D", color="action")
 
 

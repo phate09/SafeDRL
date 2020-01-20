@@ -3,7 +3,8 @@ from math import sin
 import math
 
 class MyTestCase(unittest.TestCase):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(MyTestCase, self).__init__(*args, **kwargs)
         self.polemass_length = 1
         self.total_mass = 3
     def test_something(self):
