@@ -30,11 +30,29 @@ t = 0
 failed = []
 failed_area = 0
 print("Building the tree")
-safetree = scipy.spatial.cKDTree(data=safe_states[:, :, 0])
-safetree2 = scipy.spatial.cKDTree(data=safe_states[:, :, 1])
-unsafetree = scipy.spatial.cKDTree(data=unsafe_states[:, :, 0])
-unsafetree2 = scipy.spatial.cKDTree(data=unsafe_states[:, :, 1])
+with open("./save/safetree.json", 'r') as f:
+    safetree = jsonpickle.decode(f.read())
+with open("./save/safetree2.json", 'r') as f:
+    safetree2 = jsonpickle.decode(f.read())
+with open("./save/unsafetree.json", 'r') as f:
+    unsafetree = jsonpickle.decode(f.read())
+with open("./save/unsafetree2.json", 'r') as f:
+    unsafetree2 = jsonpickle.decode(f.read())
 print("Finished building the tree")
+# %% Save Tree -- CAUTION!
+# safetree = scipy.spatial.cKDTree(data=safe_states[:, :, 0])
+# safetree2 = scipy.spatial.cKDTree(data=safe_states[:, :, 1])
+# unsafetree = scipy.spatial.cKDTree(data=unsafe_states[:, :, 0])
+# unsafetree2 = scipy.spatial.cKDTree(data=unsafe_states[:, :, 1])
+with open("./save/safetree.json", 'w+') as f:
+    f.write(jsonpickle.encode(safetree))
+with open("./save/safetree2.json", 'w+') as f:
+    f.write(jsonpickle.encode(safetree2))
+with open("./save/unsafetree.json", 'w+') as f:
+    f.write(jsonpickle.encode(unsafetree))
+with open("./save/unsafetree2.json", 'w+') as f:
+        f.write(jsonpickle.encode(unsafetree2))
+# print("Finished building the tree")
 # %%
 for i in range(10):
     remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safe_states_total, safetree)  # checks areas not covered by total safe intervals

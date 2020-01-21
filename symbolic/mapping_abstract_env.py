@@ -1,8 +1,12 @@
 # %%
 import scipy.spatial
+from bidict import bidict
+
+from prism.state_storage import StateStorage
 from symbolic.unroll_methods import *
 from mosaic.utils import compute_remaining_intervals2, compute_remaining_intervals2_multi, truncate_multi, beep, compute_remaining_intervals3_multi
 
+storage = StateStorage()
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 env = CartPoleEnv_abstract()
 s = env.reset()
@@ -19,25 +23,39 @@ current_interval = tuple(
 safe_states_total = [tuple([(x[0], x[1]) for x in k]) for k in safe_states]
 unsafe_states_total = [tuple([(x[0], x[1]) for x in k]) for k in unsafe_states]
 remainings = [current_interval]
+parent_id = storage.store(current_interval)
 #
 last_time_remaining_number = -1
 precision = 1e-6
 t = 0
 safe_states_assigned = []  # only current iteration
 unsafe_states_assigned = []
-safetree = scipy.spatial.cKDTree(data=safe_states[:, :, 0])
-safetree2 = scipy.spatial.cKDTree(data=safe_states[:, :, 1])
-unsafetree = scipy.spatial.cKDTree(data=unsafe_states[:, :, 0])
-unsafetree2 = scipy.spatial.cKDTree(data=unsafe_states[:, :, 1])
+with open("./save/safetree.json", 'r') as f:
+    safetree = jsonpickle.decode(f.read())
+with open("./save/safetree2.json", 'r') as f:
+    safetree2 = jsonpickle.decode(f.read())
+with open("./save/unsafetree.json", 'r') as f:
+    unsafetree = jsonpickle.decode(f.read())
+with open("./save/unsafetree2.json", 'r') as f:
+    unsafetree2 = jsonpickle.decode(f.read())
+# safetree = scipy.spatial.cKDTree(data=safe_states[:, :, 0])
+# safetree2 = scipy.spatial.cKDTree(data=safe_states[:, :, 1])
+# unsafetree = scipy.spatial.cKDTree(data=unsafe_states[:, :, 0])
+# unsafetree2 = scipy.spatial.cKDTree(data=unsafe_states[:, :, 1])
 # %%
-remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safe_states_total,safetree)  # checks areas not covered by total safe intervals
-remainings, safe_intervals_union2 = compute_remaining_intervals3_multi(remainings, safe_states_total,safetree2)  # checks areas not covered by total safe intervals
-remainings, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, unsafe_states_total,unsafetree)  # checks areas not covered by total unsafe intervals
-remainings, unsafe_intervals_union2 = compute_remaining_intervals3_multi(remainings, unsafe_states_total,unsafetree2)  # checks areas not covered by total unsafe intervals
+remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safe_states_total, safetree)  # checks areas not covered by total safe intervals
+remainings, safe_intervals_union2 = compute_remaining_intervals3_multi(remainings, safe_states_total, safetree2)  # checks areas not covered by total safe intervals
+remainings, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, unsafe_states_total, unsafetree)  # checks areas not covered by total unsafe intervals
+remainings, unsafe_intervals_union2 = compute_remaining_intervals3_multi(remainings, unsafe_states_total, unsafetree2)  # checks areas not covered by total unsafe intervals
 print(f"Remainings before negligibles: {len(remainings)}")
 remainings = discard_negligibles(remainings)  # discard intervals with area 0
 print(f"Remainings : {len(remainings)}")
-#%%
+successors = safe_intervals_union + safe_intervals_union2 + unsafe_intervals_union + unsafe_intervals_union2
+for successor in successors:
+    storage.store_successor(successor, parent_id)
+safe_states_assigned = safe_intervals_union + safe_intervals_union2
+unsafe_states_assigned = unsafe_intervals_union + unsafe_intervals_union2
+# %%
 safe_states_current, unsafe_states_current, ignored = assign_action_to_blank_intervals(remainings, precision=precision)  # finds the action for intervals which are blanks
 safe_states_assigned.extend(safe_states_current)
 safe_states_assigned.extend(safe_intervals_union)
@@ -54,8 +72,8 @@ unsafe_states_total.extend(unsafe_states_assigned)  # appends the intervals that
 remainings = discard_negligibles(remainings)  # discard intervals with area 0
 assert len(remainings) == 0
 # %%
-next_states_array = abstract_step(safe_states_assigned, 0, env)  # performs a step in the environment with the assigned action and retrieve the result
-next_states_array2 = abstract_step(unsafe_states_assigned, 1, env)  # performs a step in the environment with the assigned action and retrieve the result
+next_states_array = abstract_step_store(safe_states_assigned, 0, env,storage)  # performs a step in the environment with the assigned action and retrieve the result
+next_states_array2 = abstract_step_store(unsafe_states_assigned, 1, env,storage)  # performs a step in the environment with the assigned action and retrieve the result
 # the result is appended to the list of remaining intervals to verify
 remainings.extend([tuple([(float(x[dimension].item(0)), float(x[dimension].item(1))) for dimension in range(len(x))]) for x in next_states_array])
 remainings.extend([tuple([(float(x[dimension].item(0)), float(x[dimension].item(1))) for dimension in range(len(x))]) for x in next_states_array2])
@@ -92,3 +110,12 @@ with open("./save/safe_states_total.json", 'w+') as f:
     f.write(jsonpickle.encode(safe_states_total))
 with open("./save/unsafe_states_total.json", 'w+') as f:
     f.write(jsonpickle.encode(unsafe_states_total))
+# %% Save Tree -- CAUTION!
+with open("./save/safetree.json", 'w+') as f:
+    f.write(jsonpickle.encode(safetree))
+with open("./save/safetree2.json", 'w+') as f:
+    f.write(jsonpickle.encode(safetree2))
+with open("./save/unsafetree.json", 'w+') as f:
+    f.write(jsonpickle.encode(unsafetree))
+with open("./save/unsafetree2.json", 'w+') as f:
+        f.write(jsonpickle.encode(unsafetree2))

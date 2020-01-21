@@ -10,6 +10,7 @@ from mpmath import iv
 import pandas as pd
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
+from prism.state_storage import StateStorage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 import os
@@ -25,13 +26,13 @@ import functools
 import operator
 
 
-def interval_unwrap(state: np.ndarray) -> np.ndarray:
-    """From array of intervals to array of floats"""
-    unwrapped_state: np.ndarray = np.array([(float(x.a), float(x.b)) for x in state])
+def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float,float]]:
+    """From array of intervals to tuple of floats"""
+    unwrapped_state = tuple([(float(x.a), float(x.b)) for x in state])
     return unwrapped_state
 
 
-def step_state(state: Tuple[Tuple], action, env) -> np.ndarray:
+def step_state(state: Tuple[Tuple], action, env) -> Tuple[Tuple]:
     # given a state and an action, calculate next state
     env.reset()
     env.state = tuple([iv.mpf([float(x[0]), float(x[1])]) for x in state])
@@ -58,6 +59,27 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     bar.finish()
     return next_states
 
+def abstract_step_store(abstract_states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage) -> List[np.ndarray]:
+    """
+    Given some abstract states, compute the next abstract states taking the action passed as parameter
+    :param env:
+    :param abstract_states: the abstract states from which to start, list of tuples of intervals
+    :param action: the action to take
+    :return: the next abstract states after taking the action (array)
+    """
+    next_states = []
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1).start()
+    for i, interval in enumerate(abstract_states):
+        parent_index = storage.dictionary.inverse[interval]
+        next_state = step_state(interval, action, env)
+        next_state = tuple(next_state)
+        storage.store_successor(next_state,parent_index)
+        # unwrapped_next_state = interval_unwrap(next_state)
+        next_states.append(next_state)
+        bar.update(i)
+    # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
+    bar.finish()
+    return next_states
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
     List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
