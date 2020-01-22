@@ -183,16 +183,17 @@ class DomainExplorer():
         return thawed
 
     def denormalise(self, state: Tuple[Tuple]):
-        elements =[]
+        elements = []
         for i, x in enumerate(state):
-            elements.append((float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), float(x[1]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item())))
+            elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),
+                             mosaic.utils.custom_rounding(float(x[1]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i])))
         denormalized_state = tuple(elements)
         # denormalized_state = tuple(
         #     [(float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item())), float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item()))) for i, x in
         #      enumerate(state)])
         return denormalized_state
 
-    def normalise(self, state: Tuple[Tuple]):
+    def normalise(self, state: Tuple[Tuple[float,float]]):
         normalized_state = tuple(
             [((float(x[0]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item()), (float(x[1]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item())) for i, x in
              enumerate(state)])
@@ -206,7 +207,6 @@ class DomainExplorer():
             precision = precision_constraint / value.item()
             precisions.append(precision)
         return precisions
-
 
     def find_groups(self, net):
         pass

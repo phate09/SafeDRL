@@ -26,7 +26,7 @@ import functools
 import operator
 
 
-def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float,float]]:
+def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float, float]]:
     """From array of intervals to tuple of floats"""
     unwrapped_state = tuple([(float(x.a), float(x.b)) for x in state])
     return unwrapped_state
@@ -59,27 +59,31 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     bar.finish()
     return next_states
 
-def abstract_step_store(abstract_states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage) -> List[np.ndarray]:
+
+def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> List[Tuple[Tuple[float, float]]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param env:
-    :param abstract_states: the abstract states from which to start, list of tuples of intervals
+    :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
     :param action: the action to take
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1).start()
-    for i, interval in enumerate(abstract_states):
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1).start()
+    for i, interval in enumerate(abstract_states_normalised):
         parent_index = storage.dictionary.inverse[interval]
-        next_state = step_state(interval, action, env)
-        next_state = tuple(next_state)
-        storage.store_successor(next_state,parent_index)
+        denormalised_interval = explorer.denormalise(interval)
+        next_state = step_state(denormalised_interval, action, env)
+        # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
+        normalised_next_state = explorer.normalise(next_state)
+        storage.store_successor(normalised_next_state, parent_index)
         # unwrapped_next_state = interval_unwrap(next_state)
-        next_states.append(next_state)
+        next_states.append(normalised_next_state)
         bar.update(i)
     # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
     bar.finish()
     return next_states
+
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
     List[np.ndarray], List[np.ndarray], List[np.ndarray]]:

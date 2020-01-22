@@ -9,9 +9,12 @@ class StateStorage():
         self.mdp = self.gateway.entry_point.getMdpSimple()
 
     def store(self, item):
-        self.last_index = self.mdp.addState()  # adds a state to mdpSimple, retrieve index
-        self.dictionary[self.last_index] = item
-        return self.last_index
+        if self.dictionary.inverse.get(item) is None:
+            self.last_index = self.mdp.addState()  # adds a state to mdpSimple, retrieve index
+            self.dictionary[self.last_index] = item
+            return self.last_index
+        else:
+            return self.dictionary.inverse.get(item)
 
     def store_successor(self, item, parent):
         last_index = self.store(item)
