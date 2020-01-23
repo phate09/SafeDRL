@@ -49,7 +49,7 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1,redirect_stdout=True).start()
     for i, interval in enumerate(abstract_states):
         next_state = step_state(interval, action, env)
         # unwrapped_next_state = interval_unwrap(next_state)

@@ -89,7 +89,7 @@ def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True
     if len(intervals_to_fill) == 0:
         return remaining_intervals, []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill)).start()
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill),redirect_stdout=True).start()
     for i, interval in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -202,7 +202,7 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, kdt
     total_area_expected = sum([area_numpy(x) for x in remaining_intervals])
     widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
     processed = 0
-    with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets) as bar:
+    with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:
         while len(remaining_intervals) != 0:
             current_interval = remaining_intervals.pop(0)
             relevant_intervals = filter_relevant_intervals2(current_interval, intervals_to_fill, kdtree)
