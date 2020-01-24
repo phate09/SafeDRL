@@ -1,3 +1,4 @@
+import shelve
 import itertools
 from collections import Iterable
 from typing import Tuple, List
@@ -89,7 +90,7 @@ def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True
     if len(intervals_to_fill) == 0:
         return remaining_intervals, []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill),redirect_stdout=True).start()
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), redirect_stdout=True).start()
     for i, interval in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -306,3 +307,26 @@ def beep():
     duration = 0.5  # seconds
     freq = 440  # Hz
     os.system('play -nq -t alsa synth {} sine {}'.format(duration, freq))
+
+
+def shelve_variables():
+    filename = '/tmp/shelve.out'
+    my_shelf = shelve.open(filename, 'n')  # 'n' for new
+
+    for key in dir():
+        try:
+            my_shelf[key] = globals()[key]
+        except TypeError:
+            #
+            # __builtins__, my_shelf, and imported modules can not be shelved.
+            #
+            print('ERROR shelving: {0}'.format(key))
+    my_shelf.close()
+
+
+def unshelve_variables():
+    filename = '/tmp/shelve.out'
+    my_shelf = shelve.open(filename)
+    for key in my_shelf:
+        globals()[key] = my_shelf[key]
+    my_shelf.close()
