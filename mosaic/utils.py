@@ -309,11 +309,10 @@ def beep():
     os.system('play -nq -t alsa synth {} sine {}'.format(duration, freq))
 
 
-def shelve_variables():
-    filename = '/tmp/shelve.out'
-    my_shelf = shelve.open(filename, 'n')  # 'n' for new
+def shelve_variables2():
+    my_shelf = shelve.open('/tmp/shelve.out', 'n')  # 'n' for new
 
-    for key in dir():
+    for key in globals():
         try:
             my_shelf[key] = globals()[key]
         except TypeError:
@@ -321,12 +320,13 @@ def shelve_variables():
             # __builtins__, my_shelf, and imported modules can not be shelved.
             #
             print('ERROR shelving: {0}'.format(key))
+        except:
+            print('GENERIC ERROR shelving: {0}'.format(key))
     my_shelf.close()
 
 
 def unshelve_variables():
-    filename = '/tmp/shelve.out'
-    my_shelf = shelve.open(filename)
+    my_shelf = shelve.open('/tmp/shelve.out')
     for key in my_shelf:
         globals()[key] = my_shelf[key]
     my_shelf.close()

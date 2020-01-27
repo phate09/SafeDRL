@@ -32,12 +32,12 @@ def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float, float]]:
     return unwrapped_state
 
 
-def step_state(state: Tuple[Tuple], action, env) -> Tuple[Tuple]:
+def step_state(state: Tuple[Tuple], action, env) -> Tuple[Tuple[Tuple], bool]:
     # given a state and an action, calculate next state
     env.reset()
     env.state = tuple([iv.mpf([float(x[0]), float(x[1])]) for x in state])
-    next_state, _, _, _ = env.step(action)
-    return interval_unwrap(next_state)
+    next_state, reward, done, _ = env.step(action)
+    return interval_unwrap(next_state), done
 
 
 def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract) -> List[np.ndarray]:
@@ -49,9 +49,9 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1,redirect_stdout=True).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True).start()
     for i, interval in enumerate(abstract_states):
-        next_state = step_state(interval, action, env)
+        next_state, done = step_state(interval, action, env)
         # unwrapped_next_state = interval_unwrap(next_state)
         next_states.append(next_state)
         bar.update(i)
@@ -73,7 +73,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     for i, interval in enumerate(abstract_states_normalised):
         parent_index = storage.dictionary.inverse[interval]
         denormalised_interval = explorer.denormalise(interval)
-        next_state = step_state(denormalised_interval, action, env)
+        next_state, done = step_state(denormalised_interval, action, env)
         # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
         normalised_next_state = explorer.normalise(next_state)
         storage.store_successor(normalised_next_state, parent_index)
@@ -83,6 +83,41 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
     bar.finish()
     return next_states
+
+
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> Tuple[
+    List[Tuple[Tuple[float, float]]], List[int]]:
+    """
+    Given some abstract states, compute the next abstract states taking the action passed as parameter
+    :param env:
+    :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
+    :param action: the action to take
+    :return: the next abstract states after taking the action (array)
+    """
+    next_states = []
+    terminal_states = []
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1).start()
+    for i, interval in enumerate(abstract_states_normalised):
+        parent_index = storage.dictionary.inverse[interval]
+        denormalised_interval = explorer.denormalise(interval)
+        next_state, done = step_state(denormalised_interval, action, env)
+        next_state_sticky, done_sticky = step_state(next_state, action, env)
+        # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
+        normalised_next_state = explorer.normalise(next_state)
+        normalised_next_state_sticky = explorer.normalise(next_state_sticky)
+        # todo check for terminal state?
+        successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, parent_index)
+        # unwrapped_next_state = interval_unwrap(next_state)
+        if done:
+            terminal_states.append(successor_id)
+        if done_sticky:
+            terminal_states.append(sticky_successor_id)
+        next_states.append(normalised_next_state)
+        next_states.append(normalised_next_state_sticky)
+        bar.update(i)
+    # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
+    bar.finish()
+    return next_states, terminal_states
 
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
@@ -239,7 +274,7 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[I.Interval]], precision
     return t_states
 
 
-def discard_negligibles(intervals: List[Tuple[float]]) -> List[Tuple[float]]:
+def discard_negligibles(intervals: List[Tuple[Tuple[float,float]]]) -> List[Tuple[Tuple[float,float]]]:
     """discards the intervals with area 0"""
     result = []
     for interval in intervals:
