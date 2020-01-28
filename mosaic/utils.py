@@ -330,3 +330,8 @@ def unshelve_variables():
     for key in my_shelf:
         globals()[key] = my_shelf[key]
     my_shelf.close()
+
+
+def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    for i, obj in enumerate(data):
+        yield (i, (obj[0][0][0], obj[0][0][1], obj[0][1][0], obj[0][1][1], obj[0][2][0], obj[0][2][1], obj[0][3][0], obj[0][3][1]), obj)
