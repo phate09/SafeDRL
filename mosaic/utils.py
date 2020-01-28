@@ -11,6 +11,7 @@ import decimal
 import ray
 import scipy.spatial
 import torch
+from rtree import index
 from scipy.spatial.ckdtree import cKDTreeNode
 
 
@@ -189,7 +190,7 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, kdtree: scipy.spatial.cKDTree) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]]]:
+def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, rtree: index.Index) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
@@ -206,8 +207,8 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, kdt
     with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:
         while len(remaining_intervals) != 0:
             current_interval = remaining_intervals.pop(0)
-            relevant_intervals = filter_relevant_intervals2(current_interval, intervals_to_fill, kdtree)
-            results, intersection = compute_remaining_intervals2(current_interval, relevant_intervals, False)
+            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, intervals_to_fill, rtree)
+            results, intersection = compute_remaining_intervals2(current_interval, relevant_intervals[:, 0], False)
             intersection_intervals.extend(intersection)
             total_area_done += sum([area_numpy(x) for x in intersection])  # the area done
             for result in results:
@@ -246,6 +247,17 @@ def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill
     #     result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
     final_list = [intervals_to_fill[i] for i in indices if interval_contains(intervals_to_fill[i], current_interval)]
     return final_list
+
+
+def filter_relevant_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill, rtree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    """Filter the intervals relevant to the current_interval"""
+    result = rtree.intersection(flatten_interval(current_interval), objects='raw')
+    return result
+
+
+def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
+    return (
+        current_interval[0][0], current_interval[0][1], current_interval[1][0], current_interval[1][1], current_interval[2][0], current_interval[2][1], current_interval[3][0], current_interval[3][1])
 
 
 def search_kd_tree(tree: cKDTreeNode, range: Tuple[Tuple]):
