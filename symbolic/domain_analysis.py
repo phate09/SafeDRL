@@ -24,7 +24,7 @@ current_interval = tuple(
      in enumerate(current_interval)])
 safe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in safe_states]
 unsafe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in unsafe_states]
-union_states_total= [(x,True) for x in safe_states_total]+[(x,False) for x in unsafe_states_total]
+union_states_total = [(x, True) for x in safe_states_total] + [(x, False) for x in unsafe_states_total]
 helper = bulk_load_rtree_helper(union_states_total)
 # print(list(helper))
 p = index.Property(dimension=4)
@@ -43,10 +43,7 @@ terminal_states = []
 # %%
 
 for i in range(5):
-    remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safe_states_total, rtree)  # checks areas not covered by total safe intervals
-    remainings, safe_intervals_union2 = compute_remaining_intervals3_multi(remainings, safe_states_total, rtree)  # checks areas not covered by total safe intervals
-    remainings, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, unsafe_states_total, rtree)  # checks areas not covered by total unsafe intervals
-    remainings, unsafe_intervals_union2 = compute_remaining_intervals3_multi(remainings, unsafe_states_total, rtree)  # checks areas not covered by total unsafe intervals
+    remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
     print(f"Remainings before negligibles: {len(remainings)}")
     remainings = discard_negligibles(remainings)  # discard intervals with area 0
     area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
@@ -58,9 +55,7 @@ for i in range(5):
     safe_states_assigned = []  # only current iteration
     unsafe_states_assigned = []
     safe_states_assigned.extend(safe_intervals_union)
-    safe_states_assigned.extend(safe_intervals_union2)
     unsafe_states_assigned.extend(unsafe_intervals_union)
-    unsafe_states_assigned.extend(unsafe_intervals_union2)
     successors = unsafe_states_assigned + safe_states_assigned
     for successor in successors:
         storage.store_successor(successor, parent_id)

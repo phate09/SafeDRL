@@ -131,6 +131,65 @@ def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True
     return remaining_intervals, union_intervals
 
 
+def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
+    """
+    Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
+    :param current_interval:
+    :param intervals_to_fill:
+    :return: the blank intervals and the union intervals
+    """
+    "Optimised version of compute_remaining_intervals"
+    examine_intervals = []
+    remaining_intervals = [current_interval]
+    union_safe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
+    union_unsafe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
+    dimensions = len(current_interval)
+    if len(intervals_to_fill) == 0:
+        return remaining_intervals, [], []
+    if debug:
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), redirect_stdout=True).start()
+    for i, (interval, action) in enumerate(intervals_to_fill):
+
+        examine_intervals.extend(remaining_intervals)
+        remaining_intervals = []
+        while len(examine_intervals) != 0:
+            examine_interval = examine_intervals.pop(0)
+            state = shrink(interval, examine_interval)
+            contains = interval_contains(state, examine_interval)  # check it is partially contained in every dimension
+            if contains:
+                points_of_interest = []
+                for dimension in range(dimensions):
+                    points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
+                    points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
+                    points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
+                points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
+                point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in
+                                             range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
+                permutations_indices = list(itertools.product(*point_of_interest_indices))
+                permutations_of_interest = []
+                for j, permutation_idx in enumerate(permutations_indices):
+                    permutations_of_interest.append(tuple(
+                        [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
+                for j, permutation in enumerate(permutations_of_interest):
+                    if permutation != state:
+                        if permutation != examine_interval:
+                            examine_intervals.append(permutation)
+                        else:
+                            remaining_intervals.append(permutation)
+                    else:
+                        if action:
+                            union_safe_intervals.append(permutation)
+                        else:
+                            union_unsafe_intervals.append(permutation)
+            else:
+                remaining_intervals.append(examine_interval)
+        if debug:
+            bar.update(i)
+    if debug:
+        bar.finish()
+    return remaining_intervals, union_safe_intervals, union_unsafe_intervals
+
+
 def truncate(number: float, decimal_points: int):
     decimal.getcontext().rounding = decimal.ROUND_DOWN
     c = decimal.Decimal(number)
@@ -190,7 +249,8 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, rtree: index.Index) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]]]:
+def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], rtree: index.Index) -> Tuple[
+    List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
@@ -199,7 +259,8 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, rtr
     """
     remaining_intervals = current_intervals.copy()
     archived_results = []
-    intersection_intervals = []
+    intersection_intervals_safe = []
+    intersection_intervals_unsafe = []
     total_area_done = 0
     total_area_expected = sum([area_numpy(x) for x in remaining_intervals])
     widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
@@ -207,10 +268,11 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, rtr
     with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:
         while len(remaining_intervals) != 0:
             current_interval = remaining_intervals.pop(0)
-            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, intervals_to_fill, rtree)
-            results, intersection = compute_remaining_intervals2(current_interval, relevant_intervals[:, 0], False)
-            intersection_intervals.extend(intersection)
-            total_area_done += sum([area_numpy(x) for x in intersection])  # the area done
+            intersection_safe, intersection_unsafe, results = compute_remaining_ray_helper(current_interval, intervals_to_fill, rtree)
+            intersection_intervals_safe.extend(intersection_safe)
+            intersection_intervals_unsafe.extend(intersection_unsafe)
+            total_area_done += sum([area_numpy(x) for x in intersection_safe])  # the area done
+            total_area_done += sum([area_numpy(x) for x in intersection_unsafe])  # the area done
             for result in results:
                 if result == current_interval:
                     archived_results.append(current_interval)
@@ -220,7 +282,13 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill, rtr
             processed += 1
             bar.update(processed, area=0 if total_area_done == 0 else total_area_done / total_area_expected)
     bar.finish()
-    return list(set(archived_results)), list(set(intersection_intervals))
+    return list(set(archived_results)), list(set(intersection_intervals_safe)), list(set(intersection_intervals_unsafe))
+
+# @ray.remote
+def compute_remaining_ray_helper(current_interval, intervals_to_fill, rtree):
+    relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, [x[0] for x in intervals_to_fill], rtree)
+    results, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
+    return intersection_safe, intersection_unsafe, results
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):
@@ -252,7 +320,7 @@ def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill
 def filter_relevant_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill, rtree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """Filter the intervals relevant to the current_interval"""
     result = rtree.intersection(flatten_interval(current_interval), objects='raw')
-    return result
+    return list(result)
 
 
 def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
