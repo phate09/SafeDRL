@@ -268,7 +268,8 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: Lis
     with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:
         while len(remaining_intervals) != 0:
             current_interval = remaining_intervals.pop(0)
-            intersection_safe, intersection_unsafe, results = compute_remaining_ray_helper(current_interval, intervals_to_fill, rtree)
+            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, [x[0] for x in intervals_to_fill], rtree)
+            results, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
             intersection_intervals_safe.extend(intersection_safe)
             intersection_intervals_unsafe.extend(intersection_unsafe)
             total_area_done += sum([area_numpy(x) for x in intersection_safe])  # the area done
@@ -283,12 +284,6 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: Lis
             bar.update(processed, area=0 if total_area_done == 0 else total_area_done / total_area_expected)
     bar.finish()
     return list(set(archived_results)), list(set(intersection_intervals_safe)), list(set(intersection_intervals_unsafe))
-
-# @ray.remote
-def compute_remaining_ray_helper(current_interval, intervals_to_fill, rtree):
-    relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, [x[0] for x in intervals_to_fill], rtree)
-    results, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-    return intersection_safe, intersection_unsafe, results
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):
