@@ -29,7 +29,11 @@ helper = bulk_load_rtree_helper(union_states_total)
 # print(list(helper))
 p = index.Property(dimension=4)
 print("Building the tree")
-rtree = index.Index('rtree', interleaved=False, properties=p)
+if os.path.exists('rtree.dat') and os.path.exists('rtree.idx'):
+    rtree = index.Index('rtree', interleaved=False, properties=p)
+else:
+    rtree = index.Index('rtree',helper, interleaved=False, properties=p)
+    rtree.flush()
 print("Finished building the tree")
 remainings = [current_interval]
 parent_id = storage.store(current_interval)

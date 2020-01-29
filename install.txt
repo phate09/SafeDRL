@@ -8,5 +8,6 @@ conda config --add channels http://conda.anaconda.org/gurobi
 conda install gurobi
 pip install ray
 pip install py4j
+pip install bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
