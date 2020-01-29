@@ -29,7 +29,7 @@ class TestR_trees(TestCase):
     def test_simple2(self):
         os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
         p = index.Property(dimension=4)
-        r = index.Index('rtree', properties=p, interleaved=False)
+        r = index.Index('save/rtree', properties=p, interleaved=False)
         print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw')))
         print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.6, 0.75))))
 

@@ -25,16 +25,18 @@ current_interval = tuple(
 safe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in safe_states]
 unsafe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in unsafe_states]
 union_states_total = [(x, True) for x in safe_states_total] + [(x, False) for x in unsafe_states_total]
-helper = bulk_load_rtree_helper(union_states_total)
-# print(list(helper))
 p = index.Property(dimension=4)
-print("Building the tree")
-if os.path.exists('rtree.dat') and os.path.exists('rtree.idx'):
-    rtree = index.Index('rtree', interleaved=False, properties=p)
+
+if os.path.exists('save/rtree.dat') and os.path.exists('save/rtree.idx'):
+    print("Loading the tree")
+    rtree = index.Index('save/rtree', interleaved=False, properties=p)
+    print("Finished loading the tree")
 else:
-    rtree = index.Index('rtree',helper, interleaved=False, properties=p)
+    print("Building the tree")
+    helper = bulk_load_rtree_helper(union_states_total)
+    rtree = index.Index('save/rtree', helper, interleaved=False, properties=p)
     rtree.flush()
-print("Finished building the tree")
+    print("Finished building the tree")
 remainings = [current_interval]
 parent_id = storage.store(current_interval)
 #
@@ -75,7 +77,7 @@ for i in range(5):
     print(f"Sucessors : {len(remainings)}")
     t = t + 1
     print(f"t:{t}")
-# storage.save_state()
+# storage.save_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 solution = gateway.entry_point.check_property(1188255)
 print(solution[1188255])

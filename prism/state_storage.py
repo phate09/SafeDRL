@@ -41,10 +41,10 @@ class StateStorage():
         distribution.add(successor_id, 1.0)
         self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
 
-    def save_state(self):
-        pickle.dump(self.dictionary, open("/tmp/dictionary.p", "wb+"))
-        pickle.dump(self.last_index, open("/tmp/last_index.p", "wb+"))
-        self.mdp.exportToPrismExplicit("/tmp/last_save.prism")
+    def save_state(self,folder_path):
+        pickle.dump(self.dictionary, open(folder_path+"/dictionary.p", "wb+"))
+        pickle.dump(self.last_index, open(folder_path+"/last_index.p", "wb+"))
+        self.mdp.exportToPrismExplicit(folder_path+"/last_save.prism")
         print("Mdp Saved")
 
     def load_state(self):
