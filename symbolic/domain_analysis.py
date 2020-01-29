@@ -42,7 +42,7 @@ failed_area = 0
 terminal_states = []
 # %%
 
-for i in range(2):
+for i in range(5):
     remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
     print(f"Remainings before negligibles: {len(remainings)}")
     remainings = discard_negligibles(remainings)  # discard intervals with area 0
@@ -71,9 +71,10 @@ for i in range(2):
     print(f"Sucessors : {len(remainings)}")
     t = t + 1
     print(f"t:{t}")
-storage.save_state()
+# storage.save_state()
 # %%
 solution = gateway.entry_point.check_property(1188255)
+print(solution[1188255])
 solution = gateway.entry_point.check_state_list(terminal_states)
 # gateway.entry_point.export_to_dot_file()
 # %%
