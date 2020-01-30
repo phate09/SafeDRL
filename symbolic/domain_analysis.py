@@ -50,6 +50,8 @@ terminal_states = []
 
 for i in range(5):
     remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
+    # todo construct a new tree to aggregate intervals?
+    rtree_safe = index.Index(bulk_load_rtree_helper([(x, True) for x in safe_intervals_union]), interleaved=False, properties=p)
     print(f"Remainings before negligibles: {len(remainings)}")
     remainings = discard_negligibles(remainings)  # discard intervals with area 0
     area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
@@ -58,18 +60,12 @@ for i in range(5):
     print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
     remainings = []  # reset remainings
 
-    safe_states_assigned = []  # only current iteration
-    unsafe_states_assigned = []
-    safe_states_assigned.extend(safe_intervals_union)
-    unsafe_states_assigned.extend(unsafe_intervals_union)
-    successors = unsafe_states_assigned + safe_states_assigned
+    successors = unsafe_intervals_union + safe_intervals_union
     for successor in successors:
         storage.store_successor(successor, parent_id)
-    # safe_states_denormalised = [explorer.denormalise(x) for x in safe_states_assigned]
-    # unsafe_states_denormalised = [explorer.denormalise(x) for x in unsafe_states_assigned]
 
-    next_states_array, terminal_states_id = abstract_step_store2(safe_states_assigned, 1, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
-    next_states_array2, terminal_states_id2 = abstract_step_store2(unsafe_states_assigned, 0, env, storage,
+    next_states_array, terminal_states_id = abstract_step_store2(safe_intervals_union, 1, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
+    next_states_array2, terminal_states_id2 = abstract_step_store2(unsafe_intervals_union, 0, env, storage,
                                                                    explorer)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states.extend(terminal_states_id)
     terminal_states.extend(terminal_states_id2)
@@ -85,4 +81,4 @@ solution = gateway.entry_point.check_state_list(terminal_states)
 # gateway.entry_point.export_to_dot_file()
 # %%
 
-storage.load_state()
+storage.load_state("/home/edoardo/Development/SafeDRL/save")

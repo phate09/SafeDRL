@@ -105,7 +105,6 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple]], action:
         # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
         normalised_next_state = explorer.normalise(next_state)
         normalised_next_state_sticky = explorer.normalise(next_state_sticky)
-        # todo check for terminal state?
         successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, parent_index)
         # unwrapped_next_state = interval_unwrap(next_state)
         if done:

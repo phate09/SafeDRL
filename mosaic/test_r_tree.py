@@ -33,6 +33,20 @@ class TestR_trees(TestCase):
         print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw')))
         print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.6, 0.75))))
 
+    def test_nearest(self):
+        os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+        p = index.Property(dimension=4)
+        r = index.Index('save/rtree', properties=p, interleaved=False)
+        nearest = list(r.nearest((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw'))
+        print(nearest)
+        # print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.6, 0.75))))
+    def test_leaves(self):
+        os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+        p = index.Property(dimension=4)
+        r = index.Index('save/rtree', properties=p, interleaved=False)
+        # nearest = list(r.nearest((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw'))
+        leaves = r.leaves()
+        print(leaves)
 
 def boxes15_stream(boxes15, interleaved=True):
     for i, (minx, miny, maxx, maxy) in enumerate(boxes15):

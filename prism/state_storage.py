@@ -47,8 +47,8 @@ class StateStorage():
         self.mdp.exportToPrismExplicit(folder_path+"/last_save.prism")
         print("Mdp Saved")
 
-    def load_state(self):
-        self.dictionary = pickle.load(open("/tmp/dictionary.p", "rb"))
-        self.last_index = pickle.load(open("/tmp/last_index.p", "rb"))
-        self.mdp.buildFromPrismExplicit("/tmp/last_save.prism.tra")
+    def load_state(self,folder_path):
+        self.dictionary = pickle.load(open(folder_path+"/dictionary.p", "rb"))
+        self.last_index = pickle.load(open(folder_path+"/last_index.p", "rb"))
+        self.mdp.buildFromPrismExplicit(folder_path+"/last_save.prism.tra")
         print("Mdp Loaded")
