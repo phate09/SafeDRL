@@ -10,6 +10,7 @@ class StateStorage():
         self.dictionary = bidict()
         self.last_index = 0
         self.gateway = JavaGateway()
+        self.gateway.entry_point.reset_mdp()
         self.mdp = self.gateway.entry_point.getMdpSimple()
 
     def store(self, item):

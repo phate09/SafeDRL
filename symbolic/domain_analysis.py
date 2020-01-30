@@ -51,7 +51,7 @@ terminal_states = []
 for i in range(5):
     remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
     # todo construct a new tree to aggregate intervals?
-    rtree_safe = index.Index(bulk_load_rtree_helper([(x, True) for x in safe_intervals_union]), interleaved=False, properties=p)
+    # rtree_safe = index.Index(bulk_load_rtree_helper([(x, True) for x in safe_intervals_union]), interleaved=False, properties=p)
     print(f"Remainings before negligibles: {len(remainings)}")
     remainings = discard_negligibles(remainings)  # discard intervals with area 0
     area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
@@ -77,8 +77,8 @@ for i in range(5):
 # %%
 solution = gateway.entry_point.check_property(1188255)
 print(solution[1188255])
-solution = gateway.entry_point.check_state_list(terminal_states)
+# solution = gateway.entry_point.check_state_list(terminal_states)
 # gateway.entry_point.export_to_dot_file()
 # %%
 
-storage.load_state("/home/edoardo/Development/SafeDRL/save")
+storage.load_state("/home/phate09/Development/SafeDRL/save")
