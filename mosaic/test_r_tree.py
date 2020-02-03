@@ -8,6 +8,8 @@ import numpy as np
 import intervals as I
 from rtree import index
 
+from verification_runs.aggregate_abstract_domain import merge_list_tuple
+
 
 class TestR_trees(TestCase):
     def test_simple(self):
@@ -38,8 +40,8 @@ class TestR_trees(TestCase):
         p = index.Property(dimension=4)
         r = index.Index('save/rtree', properties=p, interleaved=False)
         nearest = list(r.nearest((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw'))
-        print(nearest)
-        # print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.6, 0.75))))
+        print(nearest)  # print(list(r.intersection((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.6, 0.75))))
+
     def test_leaves(self):
         os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
         p = index.Property(dimension=4)
@@ -47,6 +49,23 @@ class TestR_trees(TestCase):
         # nearest = list(r.nearest((0.5, 1.0, 0, 0.25, 0.5, 0.75, 0.5, 0.75), objects='raw'))
         leaves = r.leaves()
         print(leaves)
+
+    def test_merge_adjacent(self):
+        os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+        with open("./save/t_states.json", 'r') as f:
+            t_states = jsonpickle.decode(f.read())
+        safe_states = t_states[0][0]
+        unsafe_states = t_states[0][1]
+        safe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), True) for k in safe_states]
+        unsafe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), False) for k in unsafe_states]
+        union_states_total = safe_states_total + unsafe_states_total
+        helper = bulk_load_rtree_helper(union_states_total)
+        # print(list(helper))
+        p = index.Property(dimension=4)
+        r = index.Index(helper, interleaved=False, properties=p)
+        result = merge_list_tuple(union_states_total, r)
+        print(len(result))
+
 
 def boxes15_stream(boxes15, interleaved=True):
     for i, (minx, miny, maxx, maxy) in enumerate(boxes15):

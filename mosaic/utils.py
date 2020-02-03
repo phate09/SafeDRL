@@ -370,7 +370,7 @@ def partially_contained(a: tuple, b: tuple):
 
 
 def partially_contained_interval(a: tuple, b: tuple):
-    return all([b[dimension][0] <= a[dimension][0] < b[dimension][1] or b[dimension][0] <= a[dimension][1] < b[dimension][1] for dimension in range(len(a))])
+    return all([b[dimension][0] <= a[dimension][0] <= b[dimension][1] or b[dimension][0] <= a[dimension][1] <= b[dimension][1] for dimension in range(len(a))])
 
 
 def non_zero_area(a: tuple):

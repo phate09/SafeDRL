@@ -2,9 +2,10 @@ from itertools import permutations
 from typing import Tuple, List
 
 import numpy as np
+import progressbar
 from rtree import index
 
-from mosaic.utils import flatten_interval
+from mosaic.utils import flatten_interval, partially_contained_interval
 
 
 def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
@@ -29,24 +30,75 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
     return np.stack(shrank)
 
 
-def merge_list_tuple(intervals: List[Tuple[Tuple[float, float]]], tree: index.Index) -> List[Tuple[Tuple[float, float]]]:
+def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = []
     handled_ids = dict()
-    for i, interval in enumerate(intervals):
-        if not handled_ids.get(i, False):
-            tree.nearest(flatten_interval(interval), num_results=10, objects='raw')
-            # todo check alignment/adjacency (check d-1 dimensions are the same)
-            aligned = False
-            if aligned:
-                # todo merge the two intervals
-                pass
+    handled_intervals = dict()
+    merged = True
+    # while merged:
+    #     merged = False
+    aggregated_count = 0
+    non_aggregated_count = 0
+    widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' aggregated (', progressbar.Variable('aggregated'),' non_aggregated (', progressbar.Variable('non_aggregated'), ')']
+    with progressbar.ProgressBar(max_value=len(intervals), redirect_stdout=True) as bar:
+        for i, interval in enumerate(intervals):
+            if not handled_ids.get(i, False) and not handled_intervals.get(interval, False):
+                near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
+                found_match = False
+                for neighbour in near_intervals:
+                    if not handled_intervals.get(neighbour, False) and neighbour[1] == interval[1]:
+                        new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
+                        if new_interval[0] is not None:
+                            aggregated_count += 1
+                            aggregated_list.append(new_interval)
+                            handled_intervals[neighbour] = True  # mark the interval as handled
+                            handled_intervals[interval] = True  # mark the interval as handled
+                            merged = True
+                            found_match = True
+                            break
+                if not found_match:
+                    aggregated_list.append(interval)
+                    non_aggregated_count += 1
+                handled_ids[i] = True  # mark the id as handled
             else:
-                aggregated_list.append(interval)
-            handled_ids[i] = True  # mark the id as handled
-        else:
-            # already handled previously
-            pass
-    return None
+                # already handled previously
+                pass
+            bar.update(i)#,aggregated=aggregated_count,non_aggregated=non_aggregated_count)
+    bar.finish()
+    return aggregated_list
+
+
+def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:
+    """
+    Check every dimension, if d-1 dimensions are the same and the last one is adjacent returns the merged interval
+    :param first: the first interval
+    :param second: the second interval
+    :return: the merged interval or None
+    """
+    n_dim = len(first)
+    if n_dim != len(second):
+        return None
+    n_same_dim = 0
+    n_different_dim = 0
+    # suitable = True
+    # for k in range(n_dim):
+    #     if first[k][0] != second[k][0] or first[k][1] != second[k][1]:
+    #         n_same_dim += 1
+    #     elif first[k][0] != second[k][1] or first[k][1] != second[k][0]:
+    #         if n_different_dim == -1:
+    #             n_different_dim = k
+    #         else:
+    #             suitable = False
+    #             break
+    #     else:  # the dimensions are detatched
+    #         suitable = False
+    #         break
+    suitable = partially_contained_interval(first, second)
+    if suitable:  # n_same_dim >= n_dim - 1 and
+        merged_interval = [(float(min(first[k][0], second[k][0])), float(max(first[k][1], second[k][1]))) for k in range(n_dim)]
+        return tuple(merged_interval)
+    else:
+        return None
 
 
 def merge_single(first, second, n_dims) -> np.ndarray:
