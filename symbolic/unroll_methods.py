@@ -85,21 +85,21 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     return next_states
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param env:
     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
-    :param action: the action to take
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
     terminal_states = []
     bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1).start()
     for i, interval in enumerate(abstract_states_normalised):
-        parent_index = storage.dictionary.inverse[interval]
-        denormalised_interval = explorer.denormalise(interval)
+        parent_index = storage.dictionary.inverse[interval[0]]
+        denormalised_interval = explorer.denormalise(interval[0])
+        action = 1 if interval[1] else 0  # 1 if safe 0 if not
         next_state, done = step_state(denormalised_interval, action, env)
         next_state_sticky, done_sticky = step_state(next_state, action, env)
         # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
@@ -273,7 +273,7 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[I.Interval]], precision
     return t_states
 
 
-def discard_negligibles(intervals: List[Tuple[Tuple[float,float]]]) -> List[Tuple[Tuple[float,float]]]:
+def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tuple[Tuple[float, float]]]:
     """discards the intervals with area 0"""
     result = []
     for interval in intervals:

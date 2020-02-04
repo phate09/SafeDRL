@@ -263,6 +263,7 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: Lis
     intersection_intervals_unsafe = []
     total_area_done = 0
     total_area_expected = sum([area_numpy(x) for x in remaining_intervals])
+    print(f"Total area expected: {total_area_expected}")
     widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
     processed = 0
     with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:

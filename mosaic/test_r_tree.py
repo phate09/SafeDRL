@@ -59,12 +59,24 @@ class TestR_trees(TestCase):
         safe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), True) for k in safe_states]
         unsafe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), False) for k in unsafe_states]
         union_states_total = safe_states_total + unsafe_states_total
+        union_states_total = union_states_total[0:1000]
+        previous_total_area = 0
+        for x in union_states_total:
+            x_array = np.array(x[0])
+            previous_total_area += area_numpy(x_array)
         helper = bulk_load_rtree_helper(union_states_total)
         # print(list(helper))
         p = index.Property(dimension=4)
         r = index.Index(helper, interleaved=False, properties=p)
         result = merge_list_tuple(union_states_total, r)
         print(len(result))
+
+        total_area = 0
+        for x in result:
+            x_array = np.array(x[0])
+            total_area += area_numpy(x_array)
+        # print(f"Area after merge:{total_area}")
+        assert previous_total_area==total_area
 
 
 def boxes15_stream(boxes15, interleaved=True):

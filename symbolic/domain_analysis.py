@@ -7,6 +7,8 @@ from mosaic.utils import compute_remaining_intervals2, compute_remaining_interva
     bulk_load_rtree_helper
 from py4j.java_gateway import JavaGateway
 
+from verification_runs.aggregate_abstract_domain import merge_list_tuple
+
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 gateway = JavaGateway()
 storage = StateStorage()
@@ -48,31 +50,36 @@ failed_area = 0
 terminal_states = []
 # %%
 
-for i in range(5):
-    remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
-    # todo construct a new tree to aggregate intervals?
-    # rtree_safe = index.Index(bulk_load_rtree_helper([(x, True) for x in safe_intervals_union]), interleaved=False, properties=p)
-    print(f"Remainings before negligibles: {len(remainings)}")
-    remainings = discard_negligibles(remainings)  # discard intervals with area 0
-    area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
-    failed.extend(remainings)
-    failed_area += area
-    print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
-    remainings = []  # reset remainings
+# for i in range(5):
+remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
+# todo construct a new tree to aggregate intervals?
+assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
+while True:
+    rtree_new = index.Index(bulk_load_rtree_helper(assigned_action_intervals), interleaved=False, properties=p)
+    old_size = len(assigned_action_intervals)
+    assigned_action_intervals = merge_list_tuple(assigned_action_intervals,rtree_new)
+    new_size = len(assigned_action_intervals)
+    print(f"Reduced size from {old_size} to {new_size}")
+    if old_size==new_size:
+        break
+# todo states should have an action that leads to aggregated states
+print(f"Remainings before negligibles: {len(remainings)}")
+remainings = discard_negligibles(remainings)  # discard intervals with area 0
+area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
+failed.extend(remainings)
+failed_area += area
+print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
+remainings = []  # reset remainings
 
-    successors = unsafe_intervals_union + safe_intervals_union
-    for successor in successors:
-        storage.store_successor(successor, parent_id)
+for successor in assigned_action_intervals:
+    storage.store_successor(successor[0], parent_id)
 
-    next_states_array, terminal_states_id = abstract_step_store2(safe_intervals_union, 1, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
-    next_states_array2, terminal_states_id2 = abstract_step_store2(unsafe_intervals_union, 0, env, storage,
-                                                                   explorer)  # performs a step in the environment with the assigned action and retrieve the result
-    terminal_states.extend(terminal_states_id)
-    terminal_states.extend(terminal_states_id2)
-    remainings = next_states_array + next_states_array2
-    print(f"Sucessors : {len(remainings)}")
-    t = t + 1
-    print(f"t:{t}")
+next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
+terminal_states.extend(terminal_states_id)
+remainings = next_states_array
+print(f"Sucessors : {len(remainings)}")
+t = t + 1
+print(f"t:{t}")
 # storage.save_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 solution = gateway.entry_point.check_property(1188255)
@@ -81,4 +88,4 @@ print(solution[1188255])
 # gateway.entry_point.export_to_dot_file()
 # %%
 
-storage.load_state("/home/phate09/Development/SafeDRL/save")
+# storage.load_state("/home/phate09/Development/SafeDRL/save")

@@ -182,7 +182,7 @@ class DomainExplorer():
         thawed: DomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
-    def denormalise(self, state: Tuple[Tuple]):
+    def denormalise(self, state: Tuple[Tuple[float,float]]):
         elements = []
         for i, x in enumerate(state):
             elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),

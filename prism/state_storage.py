@@ -24,7 +24,7 @@ class StateStorage():
         else:
             return self.dictionary.inverse.get(item)
 
-    def store_successor(self, item, parent):
+    def store_successor(self, item: Tuple[Tuple[float, float]], parent: int):
         last_index = self.store(item)
         self.add_successor(parent, last_index)
 
@@ -42,14 +42,14 @@ class StateStorage():
         distribution.add(successor_id, 1.0)
         self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
 
-    def save_state(self,folder_path):
-        pickle.dump(self.dictionary, open(folder_path+"/dictionary.p", "wb+"))
-        pickle.dump(self.last_index, open(folder_path+"/last_index.p", "wb+"))
-        self.mdp.exportToPrismExplicit(folder_path+"/last_save.prism")
+    def save_state(self, folder_path):
+        pickle.dump(self.dictionary, open(folder_path + "/dictionary.p", "wb+"))
+        pickle.dump(self.last_index, open(folder_path + "/last_index.p", "wb+"))
+        self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
         print("Mdp Saved")
 
-    def load_state(self,folder_path):
-        self.dictionary = pickle.load(open(folder_path+"/dictionary.p", "rb"))
-        self.last_index = pickle.load(open(folder_path+"/last_index.p", "rb"))
-        self.mdp.buildFromPrismExplicit(folder_path+"/last_save.prism.tra")
+    def load_state(self, folder_path):
+        self.dictionary = pickle.load(open(folder_path + "/dictionary.p", "rb"))
+        self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
+        self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
         print("Mdp Loaded")
