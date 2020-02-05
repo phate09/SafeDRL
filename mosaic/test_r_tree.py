@@ -66,9 +66,9 @@ class TestR_trees(TestCase):
             previous_total_area += area_numpy(x_array)
         helper = bulk_load_rtree_helper(union_states_total)
         # print(list(helper))
-        p = index.Property(dimension=4)
-        r = index.Index(helper, interleaved=False, properties=p)
-        result = merge_list_tuple(union_states_total, r)
+        # p = index.Property(dimension=4)
+        # r = index.Index(helper, interleaved=False, properties=p)
+        result = merge_list_tuple(union_states_total, None)
         print(len(result))
 
         total_area = 0
@@ -86,3 +86,4 @@ def boxes15_stream(boxes15, interleaved=True):
             yield (i, (minx, miny, maxx, maxy), 42)
         else:
             yield (i, (minx, maxx, miny, maxy), 42)
+
