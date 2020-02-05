@@ -367,7 +367,7 @@ def contained(a: tuple, b: tuple):
 
 
 def partially_contained(a: tuple, b: tuple):
-    return b[0] < a[0] < b[1] or b[0] < a[1] < b[1]
+    return b[0] <= a[0] <= b[1] or b[0] <= a[1] <= b[1]
 
 
 def partially_contained_interval(a: tuple, b: tuple):

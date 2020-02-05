@@ -59,7 +59,7 @@ class TestR_trees(TestCase):
         safe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), True) for k in safe_states]
         unsafe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), False) for k in unsafe_states]
         union_states_total = safe_states_total + unsafe_states_total
-        union_states_total = union_states_total[0:1000]
+        # union_states_total = union_states_total[0:1000]
         previous_total_area = 0
         for x in union_states_total:
             x_array = np.array(x[0])

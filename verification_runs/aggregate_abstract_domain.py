@@ -5,7 +5,7 @@ import numpy as np
 import progressbar
 from rtree import index
 
-from mosaic.utils import flatten_interval, partially_contained_interval
+from mosaic.utils import flatten_interval, partially_contained_interval, partially_contained
 
 
 def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
@@ -79,22 +79,22 @@ def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[flo
     if n_dim != len(second):
         return None
     n_same_dim = 0
-    n_different_dim = 0
-    # suitable = True
-    # for k in range(n_dim):
-    #     if first[k][0] != second[k][0] or first[k][1] != second[k][1]:
-    #         n_same_dim += 1
-    #     elif first[k][0] != second[k][1] or first[k][1] != second[k][0]:
-    #         if n_different_dim == -1:
-    #             n_different_dim = k
-    #         else:
-    #             suitable = False
-    #             break
-    #     else:  # the dimensions are detatched
-    #         suitable = False
-    #         break
-    suitable = partially_contained_interval(first, second)
-    if suitable:  # n_same_dim >= n_dim - 1 and
+    idx_different_dim = -1
+    suitable = True
+    for k in range(n_dim):
+        if first[k][0] == second[k][0] and first[k][1] == second[k][1]:
+            n_same_dim += 1
+        elif partially_contained(first[k],second[k]):
+            if idx_different_dim == -1:
+                idx_different_dim = k
+            else:
+                suitable = False
+                break
+        else:  # the dimensions are detatched
+            suitable = False
+            break
+    # suitable = partially_contained_interval(first, second)
+    if n_same_dim == n_dim - 1 and suitable :
         merged_interval = [(float(min(first[k][0], second[k][0])), float(max(first[k][1], second[k][1]))) for k in range(n_dim)]
         return tuple(merged_interval)
     else:
