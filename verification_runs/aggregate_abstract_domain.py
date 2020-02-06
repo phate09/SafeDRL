@@ -43,23 +43,27 @@ def init(lb, lh, val, path, union_states_total):
 
 
 def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    # path = 'save/rtree'
-    widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' aggregated (', progressbar.Variable('aggregated'), ' non_aggregated (', progressbar.Variable('non_aggregated'), ')']
-    # with progressbar.ProgressBar(max_value=len(intervals), redirect_stdout=True) as bar:
-    lh = mp.Lock()
-    lb = mp.Lock()
-    progress = mp.Value('i', 0)
-    with mp.Pool(mp.cpu_count(), initializer=init, initargs=(lb, lh, progress, None, intervals)) as pool:
-        # manager = mp.Manager()
-        handled_intervals = dict()
-        max_value = len(intervals)
-        print("About to start the merging process")
-        func = partial(merge_worker, handled_intervals, max_value)
-        # aggregated_list = [x for x in progressbar.progressbar(pool.imap_unordered(func, intervals,100),max_value=len(intervals))]
+    aggregated_list = intervals
+    while True:
+        old_size = len(aggregated_list)
+        # path = 'save/rtree'
+        lh = mp.Lock()
+        lb = mp.Lock()
+        progress = mp.Value('i', 0)
+        with mp.Pool(mp.cpu_count(), initializer=init, initargs=(lb, lh, progress, None, aggregated_list)) as pool:
+            # manager = mp.Manager()
+            handled_intervals = dict()
+            print("About to start the merging process")
+            func = partial(merge_worker, handled_intervals, old_size)
+            # aggregated_list = [x for x in progressbar.progressbar(pool.imap_unordered(func, intervals,100),max_value=len(intervals))]
 
-        aggregated_list = pool.map(func, intervals, chunksize=100)
-        print()
-        print("Finished!")
+            aggregated_list = [x for x in pool.map(func, aggregated_list, chunksize=100) if x is not None]
+            print()
+            print("Finished!")
+        new_size = len(aggregated_list)
+        print(f"Reduced size from {old_size} to {new_size}")
+        if old_size == new_size:
+            break
     # bar.finish()
     return aggregated_list
 

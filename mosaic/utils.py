@@ -24,7 +24,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     """
     points_of_interest = []
     dimensions = len(current_interval)
-    bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1).start()
+    bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1,is_terminal=True).start()
     for dimension in range(dimensions):  # adds the upper and lower bounds from the starting interval as points of interest
         points_of_interest.append({current_interval[dimension][0], current_interval[dimension][1]})
     bar.update(1)
@@ -37,7 +37,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in range(dimensions)]
     permutations_indices = list(itertools.product(*point_of_interest_indices))
     permutations_of_interest = []
-    bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices)).start()
+    bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices),is_terminal=True).start()
     for i, permutation_idx in enumerate(permutations_indices):
         permutations_of_interest.append(
             tuple([(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
@@ -49,7 +49,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     #     dictionary_covered[permutation] = False
     #     bar.update(i)
     # bar.finish()
-    bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest)).start()
+    bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest),is_terminal=True).start()
     for i, interval in enumerate(intervals_to_fill):
         for j, permutation in enumerate(permutations_of_interest):
             if not dictionary_covered.get(permutation):
@@ -91,7 +91,7 @@ def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True
     if len(intervals_to_fill) == 0:
         return remaining_intervals, []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), redirect_stdout=True).start()
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill),is_terminal=True).start()
     for i, interval in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -147,7 +147,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     if len(intervals_to_fill) == 0:
         return remaining_intervals, [], []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), redirect_stdout=True).start()
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), is_terminal=True).start()
     for i, (interval, action) in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -266,7 +266,7 @@ def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: Lis
     print(f"Total area expected: {total_area_expected}")
     widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
     processed = 0
-    with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True) as bar:
+    with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True,is_terminal=True) as bar:
         while len(remaining_intervals) != 0:
             current_interval = remaining_intervals.pop(0)
             relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, [x[0] for x in intervals_to_fill], rtree)

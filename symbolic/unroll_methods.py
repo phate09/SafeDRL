@@ -49,7 +49,7 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True,is_terminal=True).start()
     for i, interval in enumerate(abstract_states):
         next_state, done = step_state(interval, action, env)
         # unwrapped_next_state = interval_unwrap(next_state)
@@ -69,7 +69,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1,is_terminal=True).start()
     for i, interval in enumerate(abstract_states_normalised):
         parent_index = storage.dictionary.inverse[interval]
         denormalised_interval = explorer.denormalise(interval)
@@ -95,7 +95,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     """
     next_states = []
     terminal_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1,is_terminal=True).start()
     for i, interval in enumerate(abstract_states_normalised):
         parent_index = storage.dictionary.inverse[interval[0]]
         denormalised_interval = explorer.denormalise(interval[0])

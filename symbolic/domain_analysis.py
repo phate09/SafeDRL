@@ -8,7 +8,6 @@ from mosaic.utils import compute_remaining_intervals2, compute_remaining_interva
 from py4j.java_gateway import JavaGateway
 
 from verification_runs.aggregate_abstract_domain import merge_list_tuple
-
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 gateway = JavaGateway()
 storage = StateStorage()
@@ -50,37 +49,29 @@ failed_area = 0
 terminal_states = []
 # %%
 
-# for i in range(5):
-remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
-# todo construct a new tree to aggregate intervals?
-assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
-while True:
-    rtree_new = index.Index(bulk_load_rtree_helper(assigned_action_intervals), interleaved=False, properties=p)
-    old_size = len(assigned_action_intervals)
-    assigned_action_intervals = merge_list_tuple(assigned_action_intervals,rtree_new)
-    new_size = len(assigned_action_intervals)
-    print(f"Reduced size from {old_size} to {new_size}")
-    if old_size==new_size:
-        break
-# todo states should have an action that leads to aggregated states
-print(f"Remainings before negligibles: {len(remainings)}")
-remainings = discard_negligibles(remainings)  # discard intervals with area 0
-area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
-failed.extend(remainings)
-failed_area += area
-print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
-remainings = []  # reset remainings
+for i in range(5):
+    remainings, safe_intervals_union, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, union_states_total, rtree)  # checks areas not covered by total intervals
+    assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
+    assigned_action_intervals = merge_list_tuple(assigned_action_intervals) #aggregate intervals
+    # todo states should have an action that leads to aggregated states
+    print(f"Remainings before negligibles: {len(remainings)}")
+    remainings = discard_negligibles(remainings)  # discard intervals with area 0
+    area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
+    failed.extend(remainings)
+    failed_area += area
+    print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
+    remainings = []  # reset remainings
 
-for successor in assigned_action_intervals:
-    storage.store_successor(successor[0], parent_id)
+    for successor in assigned_action_intervals:
+        storage.store_successor(successor[0], parent_id)
 
-next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
-terminal_states.extend(terminal_states_id)
-remainings = next_states_array
-print(f"Sucessors : {len(remainings)}")
-t = t + 1
-print(f"t:{t}")
-# storage.save_state("/home/edoardo/Development/SafeDRL/save")
+    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, storage, explorer)  # performs a step in the environment with the assigned action and retrieve the result
+    terminal_states.extend(terminal_states_id)
+    remainings = next_states_array
+    print(f"Sucessors : {len(remainings)}")
+    t = t + 1
+    print(f"t:{t}")
+storage.save_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 solution = gateway.entry_point.check_property(1188255)
 print(solution[1188255])
