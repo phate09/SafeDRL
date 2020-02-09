@@ -1,5 +1,5 @@
 import pickle
-from typing import Tuple
+from typing import Tuple, List
 
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
@@ -13,7 +13,7 @@ class StateStorage():
         self.gateway.entry_point.reset_mdp()
         self.mdp = self.gateway.entry_point.getMdpSimple()
 
-    def store(self, item):
+    def store(self, item) -> int:
         if self.dictionary.inverse.get(item) is None:
             # if self.last_index != 0:  # skip the first one as it starts already with a single state
             self.last_index = self.mdp.addState()  # adds a state to mdpSimple, retrieve index
@@ -24,9 +24,10 @@ class StateStorage():
         else:
             return self.dictionary.inverse.get(item)
 
-    def store_successor(self, item: Tuple[Tuple[float, float]], parent: int):
+    def store_successor(self, item: Tuple[Tuple[float, float]], parent: int) -> int:
         last_index = self.store(item)
         self.add_successor(parent, last_index)
+        return last_index
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], parent_id: int):
         successor_id = self.store(successor)
@@ -53,3 +54,6 @@ class StateStorage():
         self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
         self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
         print("Mdp Loaded")
+
+    def mark_as_fail(self, fail_states_ids: List[int]):
+        self.gateway.update_fail_label_list(fail_states_ids)
