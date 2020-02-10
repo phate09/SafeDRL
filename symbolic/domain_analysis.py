@@ -14,7 +14,8 @@ from verification_runs.aggregate_abstract_domain import merge_list_tuple
 
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 gateway = JavaGateway()
-storage = get_storage()#StateStorage()
+storage = get_storage()
+storage.reset()
 env = CartPoleEnv_abstract()
 s = env.reset()
 current_interval = s

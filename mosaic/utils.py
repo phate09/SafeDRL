@@ -6,6 +6,7 @@ from typing import Tuple, List
 import multiprocessing as mp
 import numpy as np
 import progressbar
+import psutil
 import ray
 import intervals as I
 import decimal
@@ -16,6 +17,7 @@ from rtree import index
 from scipy.spatial.ckdtree import cKDTreeNode
 from prism.state_storage import get_storage
 from prism.state_storage import StateStorage
+from itertools import cycle
 
 
 def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
@@ -252,70 +254,52 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def init(tree, bar, storage, total_area_done, total_area_expected):
-    global tree_global, progress_bar, lock_total_area_done, lock_storage, total_area_done_global, total_area_expected_global, progress_val  # queue_safe, queue_unsafe, queue_remain, queue_terminal_ids,
-    # queue_safe = mp.Queue()
-    # queue_unsafe = mp.Queue()
-    # queue_remain = mp.Queue()
-    # queue_terminal_ids = mp.Queue()
-    lock_total_area_done = mp.Lock()
-    lock_storage = mp.Lock()
-    tree_global = tree
-    # storage_global = storage
-    progress_bar = bar
-    progress_val = mp.Value('i', 0)
-    total_area_done_global = total_area_done
-    total_area_expected_global = total_area_expected
-
-
 def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    # storage = get_storage()
-    remaining_intervals = current_intervals.copy()
-    total_area_done = mp.Value('d', 0.0)
-    total_area_expected = mp.Value('d', sum([area_numpy(x) for x in remaining_intervals]))
-    # print(f"Total area expected: {total_area_expected}")
-    # widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
-    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(remaining_intervals), is_terminal=True) as bar:
-        with mp.Pool(mp.cpu_count(), initializer=init, initargs=(rtree, bar, None, total_area_done, total_area_expected)) as pool:
-            # func = partial(compute_remaining_worker)
-            parallel_result = pool.map(compute_remaining_worker, remaining_intervals)
-            archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
-        bar.finish()
+    num_cpus = psutil.cpu_count(logical=True)
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+    workers = cycle([RemainingWorker.remote(rtree) for _ in range(num_cpus)])
+    proc_ids = []
+    with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
+        for i, x in enumerate(current_intervals):
+            proc_ids.append(next(workers).compute_remaining_worker.remote(x))
+            bar.update(i)
+    parallel_result = []
+    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True) as bar:
+        for i, x in enumerate(proc_ids):
+            parallel_result.append(ray.get(x))
+            bar.update(i)
+    archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
     return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
 
+
 @ray.remote
-def compute_remaining_worker(current_interval):
-    storage = get_storage()
-    lock_storage.acquire()
-    parent_id = storage.store(current_interval)
-    lock_storage.release()
-    relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, tree_global)
-    remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-    remaining_ids = []
-    lock_storage.acquire()
-    for interval in intersection_safe:
-        storage.store_successor(interval, parent_id)
-    lock_storage.release()
-    lock_storage.acquire()
-    for interval in intersection_unsafe:
-        storage.store_successor(interval, parent_id)
-    lock_storage.release()
-    lock_storage.acquire()
-    for interval in remaining:  # mark as terminal?
-        remaining_ids.append(storage.store_successor(interval, parent_id))
-    lock_storage.release()
-    # area = sum([area_numpy(x) for x in intersection_safe]) + sum([area_numpy(x) for x in intersection_unsafe]) + sum([area_numpy(x) for x in remaining])
-    lock_total_area_done.acquire()
-    # total_area_done_global.value += area  # the area done
-    progress_val.value += 1
-    progress_bar.update(progress_val.value)  # , area=0 if total_area_done_global.value == 0 else total_area_done_global.value / total_area_expected_global.value)
-    lock_total_area_done.release()
-    return remaining, intersection_safe, intersection_unsafe, remaining_ids
+class RemainingWorker():
+    def __init__(self, tree):
+        self.tree = tree
+        # self.storage = get_storage()
+
+    def compute_remaining_worker(self, current_interval):
+        storage = get_storage()
+        parent_id = storage.store(current_interval)
+        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, self.tree)
+        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
+        remaining_ids = []
+        for interval in intersection_safe:
+            storage.store_successor(interval, parent_id)
+        for interval in intersection_unsafe:
+            storage.store_successor(interval, parent_id)
+        for interval in remaining:  # mark as terminal?
+            remaining_ids.append(storage.store_successor(interval, parent_id))
+        storage.close()
+        return remaining, intersection_safe, intersection_unsafe, remaining_ids
+
+    # def __del__(self):  #     self.storage.close()
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):

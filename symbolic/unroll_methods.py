@@ -97,7 +97,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     terminal_states = []
     bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1,is_terminal=True).start()
     for i, interval in enumerate(abstract_states_normalised):
-        parent_index = storage.dictionary.inverse[interval[0]]
+        parent_index = storage.get_inverse(interval[0])
         denormalised_interval = explorer.denormalise(interval[0])
         action = 1 if interval[1] else 0  # 1 if safe 0 if not
         next_state, done = step_state(denormalised_interval, action, env)

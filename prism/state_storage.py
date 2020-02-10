@@ -4,6 +4,7 @@ import zmq
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
 import zerorpc
+from py4j.java_collections import ListConverter
 
 
 class StateStorage():
@@ -11,6 +12,13 @@ class StateStorage():
         self.dictionary = bidict()
         self.last_index = 0
         self.gateway = JavaGateway()
+        self.gateway.entry_point.reset_mdp()
+        self.mdp = self.gateway.entry_point.getMdpSimple()
+
+    def reset(self):
+        print("Resetting the StateStorage")
+        self.dictionary = bidict()
+        self.last_index = 0
         self.gateway.entry_point.reset_mdp()
         self.mdp = self.gateway.entry_point.getMdpSimple()
 
@@ -59,11 +67,19 @@ class StateStorage():
         print("Mdp Loaded")
 
     def mark_as_fail(self, fail_states_ids: List[int]):
-        self.gateway.update_fail_label_list(fail_states_ids)
+        java_list = ListConverter().convert(fail_states_ids, self.gateway._gateway_client)
+        self.gateway.entry_point.update_fail_label_list(java_list)
+
+    def get_inverse(self, interval):
+        interval = tuple([tuple(x) for x in interval])
+        return self.dictionary.inverse[interval]
+
+    def get_forward(self, id):
+        return self.dictionary[id]
 
 
 def get_storage():
-    c = zerorpc.Client()
+    c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
     # c.connect("ipc:///tmp/state_storage")
     c.connect("tcp://127.0.0.1:4242")
     return c
@@ -73,4 +89,5 @@ if __name__ == '__main__':
     s = zerorpc.Server(StateStorage())
     # s.bind("ipc:///tmp/state_storage")
     s.bind("tcp://0.0.0.0:4242")
+    print("Storage server started")
     s.run()
