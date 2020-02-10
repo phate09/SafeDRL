@@ -54,10 +54,12 @@ t = 0
 failed = []
 failed_area = 0
 terminal_states = []
+local_mode = False
 # %%
-
+if not ray.is_initialized():
+    ray.init(local_mode=local_mode)
 for i in range(200):
-    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree)  # checks areas not covered by total intervals
+    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, local_mode)  # checks areas not covered by total intervals
     assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
     # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
     terminal_states.extend(terminal_states_id)
@@ -68,8 +70,8 @@ for i in range(200):
     failed_area += area
     print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
     # todo assign an action to remainings (it might be that our tree does not include the given interval)
-    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, storage,
-                                                                 explorer)  # performs a step in the environment with the assigned action and retrieve the result
+    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, explorer,
+                                                                 local_mode)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states.extend(terminal_states_id)
     remainings = next_states_array
     print(f"Sucessors : {len(remainings)}")

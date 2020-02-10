@@ -254,16 +254,14 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index,local_mode:bool) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    num_cpus = psutil.cpu_count(logical=True)
-    if not ray.is_initialized():
-        ray.init(ignore_reinit_error=True)
-    workers = cycle([RemainingWorker.remote(rtree) for _ in range(num_cpus)])
+    n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
+    workers = cycle([RemainingWorker.remote(rtree) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
         for i, x in enumerate(current_intervals):
@@ -281,8 +279,7 @@ def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index) ->
 @ray.remote
 class RemainingWorker():
     def __init__(self, tree):
-        self.tree = tree
-        # self.storage = get_storage()
+        self.tree = tree  # self.storage = get_storage()
 
     def compute_remaining_worker(self, current_interval):
         storage = get_storage()

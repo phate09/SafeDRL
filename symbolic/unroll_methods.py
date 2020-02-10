@@ -1,16 +1,19 @@
 """
 Collection of methods to use in unroll_abstract_env
 """
+from itertools import cycle
+
 import jsonpickle
 import numpy as np
 import mpmath
 import progressbar
+import ray
 from mpmath import iv
 # from interval import interval,imath
 import pandas as pd
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
-from prism.state_storage import StateStorage
+from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 import os
@@ -49,7 +52,7 @@ def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPol
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True,is_terminal=True).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True, is_terminal=True).start()
     for i, interval in enumerate(abstract_states):
         next_state, done = step_state(interval, action, env)
         # unwrapped_next_state = interval_unwrap(next_state)
@@ -69,7 +72,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1,is_terminal=True).start()
+    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1, is_terminal=True).start()
     for i, interval in enumerate(abstract_states_normalised):
         parent_index = storage.dictionary.inverse[interval]
         denormalised_interval = explorer.denormalise(interval)
@@ -85,26 +88,51 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     return next_states
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, local_mode: bool) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
+    :param local_mode:
+    :param explorer:
     :param env:
     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
     terminal_states = []
-    bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1,is_terminal=True).start()
-    for i, interval in enumerate(abstract_states_normalised):
+    n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
+    workers = cycle([AbstractStepWorker.remote(explorer) for _ in range(n_workers)])
+    proc_ids = []
+    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(abstract_states_normalised), is_terminal=True) as bar:
+        for i, interval in enumerate(abstract_states_normalised):
+            proc_ids.append(next(workers).work.remote(interval))
+            bar.update(i)
+    with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True) as bar:
+        for i, id in enumerate(proc_ids):
+            next_states_local, terminal_states_local = ray.get(id)
+            next_states.extend(next_states_local)
+            terminal_states.extend(terminal_states_local)
+            bar.update(i)
+    return next_states, terminal_states
+
+
+@ray.remote
+class AbstractStepWorker:
+    def __init__(self, explorer):
+        self.env = CartPoleEnv_abstract()  # todo find a way to define the initialiser for the environment
+        self.explorer = explorer
+
+    def work(self, interval):
+        storage = get_storage()
+        next_states = []
+        terminal_states = []
         parent_index = storage.get_inverse(interval[0])
-        denormalised_interval = explorer.denormalise(interval[0])
+        denormalised_interval = self.explorer.denormalise(interval[0])
         action = 1 if interval[1] else 0  # 1 if safe 0 if not
-        next_state, done = step_state(denormalised_interval, action, env)
-        next_state_sticky, done_sticky = step_state(next_state, action, env)
-        # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
-        normalised_next_state = explorer.normalise(next_state)
-        normalised_next_state_sticky = explorer.normalise(next_state_sticky)
+        next_state, done = step_state(denormalised_interval, action, self.env)
+        next_state_sticky, done_sticky = step_state(next_state, action, self.env)
+        normalised_next_state = self.explorer.normalise(next_state)
+        normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
         successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, parent_index)
         # unwrapped_next_state = interval_unwrap(next_state)
         if done:
@@ -113,10 +141,8 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
             terminal_states.append(sticky_successor_id)
         next_states.append(normalised_next_state)
         next_states.append(normalised_next_state_sticky)
-        bar.update(i)
-    # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
-    bar.finish()
-    return next_states, terminal_states
+        storage.close()
+        return next_states, terminal_states
 
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
