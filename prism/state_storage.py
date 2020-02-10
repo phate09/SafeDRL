@@ -1,8 +1,9 @@
 import pickle
 from typing import Tuple, List
-
+import zmq
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
+import zerorpc
 
 
 class StateStorage():
@@ -14,6 +15,8 @@ class StateStorage():
         self.mdp = self.gateway.entry_point.getMdpSimple()
 
     def store(self, item) -> int:
+        item = tuple([tuple(x) for x in item])
+        print(f"store {item}")
         if self.dictionary.inverse.get(item) is None:
             # if self.last_index != 0:  # skip the first one as it starts already with a single state
             self.last_index = self.mdp.addState()  # adds a state to mdpSimple, retrieve index
@@ -57,3 +60,17 @@ class StateStorage():
 
     def mark_as_fail(self, fail_states_ids: List[int]):
         self.gateway.update_fail_label_list(fail_states_ids)
+
+
+def get_storage():
+    c = zerorpc.Client()
+    # c.connect("ipc:///tmp/state_storage")
+    c.connect("tcp://127.0.0.1:4242")
+    return c
+
+
+if __name__ == '__main__':
+    s = zerorpc.Server(StateStorage())
+    # s.bind("ipc:///tmp/state_storage")
+    s.bind("tcp://0.0.0.0:4242")
+    s.run()

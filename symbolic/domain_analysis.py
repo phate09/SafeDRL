@@ -4,6 +4,7 @@ import pickle
 import scipy.spatial
 from rtree import index
 
+from prism.state_storage import get_storage
 from symbolic.unroll_methods import *
 from mosaic.utils import compute_remaining_intervals2, compute_remaining_intervals2_multi, truncate_multi, beep, compute_remaining_intervals3_multi, shelve_variables2, unshelve_variables, \
     bulk_load_rtree_helper
@@ -13,7 +14,7 @@ from verification_runs.aggregate_abstract_domain import merge_list_tuple
 
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 gateway = JavaGateway()
-storage = StateStorage()
+storage = get_storage()#StateStorage()
 env = CartPoleEnv_abstract()
 s = env.reset()
 current_interval = s
@@ -55,8 +56,7 @@ terminal_states = []
 # %%
 
 for i in range(200):
-    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree,
-                                                                                                                      storage)  # checks areas not covered by total intervals
+    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree)  # checks areas not covered by total intervals
     assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
     # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
     terminal_states.extend(terminal_states_id)
