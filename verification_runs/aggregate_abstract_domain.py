@@ -31,12 +31,13 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
     return np.stack(shrank)
 
 
-def init(lb, lh, val, path, union_states_total):
-    global lock_bar_global, lock_handled_global, progress_val, tree_global
-    lock_bar_global = lb
-    lock_handled_global = lh
-    progress_val = val
-    print("Creating a new shared tree")
+def init(bar, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    global lock_bar_global, lock_handled_global, progress_val, tree_global, progress_bar_global
+    lock_bar_global = mp.Lock()
+    lock_handled_global = mp.Lock()
+    progress_val = mp.Value('i', 0)
+    progress_bar_global = bar
+    # print("Creating a new shared tree")
     p = index.Property(dimension=4)
     helper = bulk_load_rtree_helper(union_states_total)
     tree_global = index.Index(helper, properties=p, interleaved=False)
@@ -47,19 +48,15 @@ def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -
     while True:
         old_size = len(aggregated_list)
         # path = 'save/rtree'
-        lh = mp.Lock()
-        lb = mp.Lock()
-        progress = mp.Value('i', 0)
-        with mp.Pool(mp.cpu_count(), initializer=init, initargs=(lb, lh, progress, None, aggregated_list)) as pool:
-            # manager = mp.Manager()
-            handled_intervals = dict()
-            print("About to start the merging process")
-            func = partial(merge_worker, handled_intervals, old_size)
-            # aggregated_list = [x for x in progressbar.progressbar(pool.imap_unordered(func, intervals,100),max_value=len(intervals))]
 
-            aggregated_list = [x for x in pool.map(func, aggregated_list, chunksize=100) if x is not None]
-            print()
-            print("Finished!")
+        print("About to start the merging process")
+        with progressbar.ProgressBar(prefix="Merging intervals", max_value=old_size, is_terminal=True) as bar:
+            with mp.Pool(mp.cpu_count(), initializer=init, initargs=(bar, aggregated_list)) as pool:
+                # manager = mp.Manager()
+                handled_intervals = dict()
+                func = partial(merge_worker, handled_intervals, old_size)
+                aggregated_list = [x for x in pool.map(func, aggregated_list) if x is not None]
+        print("Finished!")
         new_size = len(aggregated_list)
         print(f"Reduced size from {old_size} to {new_size}")
         if old_size == new_size:
@@ -106,7 +103,8 @@ def merge_worker(handled_intervals: dict, max_value: int, interval: Tuple[Tuple[
     # bar.update(bar.value + 1)
     # i += 1
     progress_val.value += 1
-    print(f"\r{progress_val.value / max_value:02%} - {progress_val.value} of {max_value}", end="")
+    # print(f"\r{progress_val.value / max_value:02%} - {progress_val.value} of {max_value}", end="")
+    progress_bar_global.update(progress_val.value + 1)
     lock_bar_global.release()
     return result
 

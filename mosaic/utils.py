@@ -1,8 +1,9 @@
 import shelve
 import itertools
 from collections import Iterable
+from functools import partial
 from typing import Tuple, List
-
+import multiprocessing as mp
 import numpy as np
 import progressbar
 import ray
@@ -14,6 +15,8 @@ import torch
 from rtree import index
 from scipy.spatial.ckdtree import cKDTreeNode
 
+from prism.state_storage import StateStorage
+
 
 def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     """
@@ -24,7 +27,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     """
     points_of_interest = []
     dimensions = len(current_interval)
-    bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1,is_terminal=True).start()
+    bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1, is_terminal=True).start()
     for dimension in range(dimensions):  # adds the upper and lower bounds from the starting interval as points of interest
         points_of_interest.append({current_interval[dimension][0], current_interval[dimension][1]})
     bar.update(1)
@@ -37,7 +40,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in range(dimensions)]
     permutations_indices = list(itertools.product(*point_of_interest_indices))
     permutations_of_interest = []
-    bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices),is_terminal=True).start()
+    bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices), is_terminal=True).start()
     for i, permutation_idx in enumerate(permutations_indices):
         permutations_of_interest.append(
             tuple([(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
@@ -49,7 +52,7 @@ def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
     #     dictionary_covered[permutation] = False
     #     bar.update(i)
     # bar.finish()
-    bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest),is_terminal=True).start()
+    bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest), is_terminal=True).start()
     for i, interval in enumerate(intervals_to_fill):
         for j, permutation in enumerate(permutations_of_interest):
             if not dictionary_covered.get(permutation):
@@ -91,7 +94,7 @@ def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True
     if len(intervals_to_fill) == 0:
         return remaining_intervals, []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill),is_terminal=True).start()
+        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), is_terminal=True).start()
     for i, interval in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -249,42 +252,69 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], rtree: index.Index) -> Tuple[
-    List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]]]:
+def init(tree, bar, storage, total_area_done, total_area_expected):
+    global tree_global, progress_bar, storage_global, lock_total_area_done, lock_storage, total_area_done_global, total_area_expected_global, progress_val  # queue_safe, queue_unsafe, queue_remain, queue_terminal_ids,
+    # queue_safe = mp.Queue()
+    # queue_unsafe = mp.Queue()
+    # queue_remain = mp.Queue()
+    # queue_terminal_ids = mp.Queue()
+    lock_total_area_done = mp.Lock()
+    lock_storage = mp.Lock()
+    tree_global = tree
+    storage_global = storage
+    progress_bar = bar
+    progress_val = mp.Value('i', 0)
+    total_area_done_global = total_area_done
+    total_area_expected_global = total_area_expected
+
+
+def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, storage: StateStorage) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
-    :param intervals_to_fill:
     :return: the blank intervals and the intersection intervals
     """
     remaining_intervals = current_intervals.copy()
-    archived_results = []
-    intersection_intervals_safe = []
-    intersection_intervals_unsafe = []
-    total_area_done = 0
-    total_area_expected = sum([area_numpy(x) for x in remaining_intervals])
-    print(f"Total area expected: {total_area_expected}")
-    widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
-    processed = 0
-    with progressbar.ProgressBar(max_value=progressbar.UnknownLength, widgets=widgets, redirect_stdout=True,is_terminal=True) as bar:
-        while len(remaining_intervals) != 0:
-            current_interval = remaining_intervals.pop(0)
-            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, [x[0] for x in intervals_to_fill], rtree)
-            results, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-            intersection_intervals_safe.extend(intersection_safe)
-            intersection_intervals_unsafe.extend(intersection_unsafe)
-            total_area_done += sum([area_numpy(x) for x in intersection_safe])  # the area done
-            total_area_done += sum([area_numpy(x) for x in intersection_unsafe])  # the area done
-            for result in results:
-                if result == current_interval:
-                    archived_results.append(current_interval)
-                    total_area_done += area_numpy(current_interval)
-                else:
-                    remaining_intervals.append(result)
-            processed += 1
-            bar.update(processed, area=0 if total_area_done == 0 else total_area_done / total_area_expected)
-    bar.finish()
-    return list(set(archived_results)), list(set(intersection_intervals_safe)), list(set(intersection_intervals_unsafe))
+    total_area_done = mp.Value('d', 0.0)
+    total_area_expected = mp.Value('d', sum([area_numpy(x) for x in remaining_intervals]))
+    # print(f"Total area expected: {total_area_expected}")
+    # widgets = ['Processed: ', progressbar.Counter('%(value)05d'), ' intervals (', progressbar.Variable('area'), ')']
+    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(remaining_intervals), is_terminal=True) as bar:
+        with mp.Pool(mp.cpu_count(), initializer=init, initargs=(rtree, bar, storage, total_area_done, total_area_expected)) as pool:
+            # func = partial(compute_remaining_worker)
+            manager = mp.Manager()
+            parallel_result = pool.map(compute_remaining_worker, remaining_intervals)
+            archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
+        bar.finish()
+    return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
+
+
+def compute_remaining_worker(current_interval):
+    lock_storage.acquire()
+    parent_id = storage_global.store(current_interval)
+    lock_storage.release()
+    relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, tree_global)
+    remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
+    remaining_ids = []
+    lock_storage.acquire()
+    for interval in intersection_safe:
+        storage_global.store_successor(interval, parent_id)
+    lock_storage.release()
+    lock_storage.acquire()
+    for interval in intersection_unsafe:
+        storage_global.store_successor(interval, parent_id)
+    lock_storage.release()
+    lock_storage.acquire()
+    for interval in remaining:  # mark as terminal?
+        remaining_ids.append(storage_global.store_successor(interval, parent_id))
+    lock_storage.release()
+    # area = sum([area_numpy(x) for x in intersection_safe]) + sum([area_numpy(x) for x in intersection_unsafe]) + sum([area_numpy(x) for x in remaining])
+    lock_total_area_done.acquire()
+    # total_area_done_global.value += area  # the area done
+    progress_val.value += 1
+    progress_bar.update(progress_val.value)  # , area=0 if total_area_done_global.value == 0 else total_area_done_global.value / total_area_expected_global.value)
+    lock_total_area_done.release()
+    return remaining, intersection_safe, intersection_unsafe, remaining_ids
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):
@@ -301,19 +331,11 @@ def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill
     """Filter the intervals relevant to the current_interval"""
     k = 100
     result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
-    # data_points_list, indices_list = search_kd_tree(tree=kdtree.tree, range=current_interval)
-    # final_list = [intervals_to_fill[i] for i in indices_list]
-    # iterations = 0
-    # while len(final_list) == 0:
-    #     iterations += 1
-    #     print(f"did not find any neighbour, expanding k, iteration: {iterations}")
-    #     k += 100
-    #     result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
     final_list = [intervals_to_fill[i] for i in indices if interval_contains(intervals_to_fill[i], current_interval)]
     return final_list
 
 
-def filter_relevant_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill, rtree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def filter_relevant_intervals3(current_interval: Tuple[Tuple[float, float]], rtree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """Filter the intervals relevant to the current_interval"""
     result = rtree.intersection(flatten_interval(current_interval), objects='raw')
     return list(result)
@@ -411,4 +433,3 @@ def unshelve_variables():
 def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
     for i, obj in enumerate(data):
         yield (i, (obj[0][0][0], obj[0][0][1], obj[0][1][0], obj[0][1][1], obj[0][2][0], obj[0][2][1], obj[0][3][0], obj[0][3][1]), obj)
-

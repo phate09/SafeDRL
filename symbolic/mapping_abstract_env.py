@@ -43,10 +43,10 @@ with open("./save/unsafetree2.json", 'r') as f:
 # unsafetree = scipy.spatial.cKDTree(data=unsafe_states[:, :, 0])
 # unsafetree2 = scipy.spatial.cKDTree(data=unsafe_states[:, :, 1])
 # %%
-remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safe_states_total, safetree)  # checks areas not covered by total safe intervals
-remainings, safe_intervals_union2 = compute_remaining_intervals3_multi(remainings, safe_states_total, safetree2)  # checks areas not covered by total safe intervals
-remainings, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, unsafe_states_total, unsafetree)  # checks areas not covered by total unsafe intervals
-remainings, unsafe_intervals_union2 = compute_remaining_intervals3_multi(remainings, unsafe_states_total, unsafetree2)  # checks areas not covered by total unsafe intervals
+remainings, safe_intervals_union = compute_remaining_intervals3_multi(remainings, safetree)  # checks areas not covered by total safe intervals
+remainings, safe_intervals_union2 = compute_remaining_intervals3_multi(remainings, safetree2)  # checks areas not covered by total safe intervals
+remainings, unsafe_intervals_union = compute_remaining_intervals3_multi(remainings, unsafetree)  # checks areas not covered by total unsafe intervals
+remainings, unsafe_intervals_union2 = compute_remaining_intervals3_multi(remainings, unsafetree2)  # checks areas not covered by total unsafe intervals
 print(f"Remainings before negligibles: {len(remainings)}")
 remainings = discard_negligibles(remainings)  # discard intervals with area 0
 print(f"Remainings : {len(remainings)}")
