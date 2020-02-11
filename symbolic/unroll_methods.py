@@ -88,7 +88,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     return next_states
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, local_mode: bool) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, n_workers: int) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
@@ -100,7 +100,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     """
     next_states = []
     terminal_states = []
-    n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
+
     workers = cycle([AbstractStepWorker.remote(explorer) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(abstract_states_normalised), is_terminal=True) as bar:
