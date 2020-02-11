@@ -108,11 +108,12 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
             proc_ids.append(next(workers).work.remote(interval))
             bar.update(i)
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True) as bar:
-        for i, id in enumerate(proc_ids):
-            next_states_local, terminal_states_local = ray.get(id)
+        while len(proc_ids)!=0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            next_states_local, terminal_states_local = ray.get(ready_ids[0])
             next_states.extend(next_states_local)
             terminal_states.extend(terminal_states_local)
-            bar.update(i)
+            bar.update(bar.value+1)
     return next_states, terminal_states
 
 

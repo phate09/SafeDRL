@@ -269,9 +269,10 @@ def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index,loc
             bar.update(i)
     parallel_result = []
     with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True) as bar:
-        for i, x in enumerate(proc_ids):
-            parallel_result.append(ray.get(x))
-            bar.update(i)
+        while len(proc_ids)!=0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            parallel_result.append(ray.get(ready_ids[0]))
+            bar.update(bar.value+1)
     archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
     return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
 
