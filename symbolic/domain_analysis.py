@@ -2,6 +2,7 @@
 import pickle
 
 import scipy.spatial
+from py4j.java_collections import ListConverter
 from rtree import index
 
 from prism.state_storage import get_storage
@@ -55,10 +56,11 @@ failed = []
 failed_area = 0
 terminal_states = []
 local_mode = False
-n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
+
 # %%
 if not ray.is_initialized():
     ray.init(local_mode=local_mode)
+n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 for i in range(200):
     remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, n_workers)  # checks areas not covered by total intervals
     assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
@@ -87,11 +89,12 @@ for i in range(200):
 # %%
 # solution = gateway.entry_point.check_property(1188255)
 # print(solution[1188255])
-solution = gateway.entry_point.check_state_list(terminal_states)
+terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
+solution = gateway.entry_point.check_state_list(terminal_states_java)
 gateway.entry_point.export_to_dot_file()  # %%
 
 # storage.load_state("/home/phate09/Development/SafeDRL/save")
 # %%
 terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
-storage.load_state("/home/phate09/Development/SafeDRL/save")
+storage.load_state("/home/edoardo/Development/SafeDRL/save")
