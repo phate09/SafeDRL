@@ -2,3 +2,4 @@
 /dqn/data/
 /runs/
 */__pycache__/*
+save/**
