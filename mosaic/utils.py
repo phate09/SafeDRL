@@ -254,13 +254,13 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    workers = cycle([RemainingWorker.remote(rtree) for _ in range(n_workers)])
+    workers = cycle([RemainingWorker.remote(rtree, t) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
         for i, x in enumerate(current_intervals):
@@ -278,21 +278,22 @@ def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, n_
 
 @ray.remote
 class RemainingWorker():
-    def __init__(self, tree):
+    def __init__(self, tree, t):
         self.tree = tree  # self.storage = get_storage()
+        self.t = t
 
     def compute_remaining_worker(self, current_interval):
         storage = get_storage()
-        parent_id = storage.store(current_interval)
+        parent_id = storage.store(current_interval, self.t)
         relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, self.tree)
         remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
         remaining_ids = []
         for interval in intersection_safe:
-            storage.store_successor(interval, parent_id)
+            storage.store_successor(interval, self.t, parent_id)
         for interval in intersection_unsafe:
-            storage.store_successor(interval, parent_id)
+            storage.store_successor(interval, self.t, parent_id)
         for interval in remaining:  # mark as terminal?
-            remaining_ids.append(storage.store_successor(interval, parent_id))
+            remaining_ids.append(storage.store_successor(interval, self.t, parent_id))
         storage.close()
         return remaining, intersection_safe, intersection_unsafe, remaining_ids
 

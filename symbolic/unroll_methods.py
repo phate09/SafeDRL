@@ -88,7 +88,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     return next_states
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, n_workers: int) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer,t:int, n_workers: int) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
@@ -101,27 +101,28 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     next_states = []
     terminal_states = []
 
-    workers = cycle([AbstractStepWorker.remote(explorer) for _ in range(n_workers)])
+    workers = cycle([AbstractStepWorker.remote(explorer,t) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(abstract_states_normalised), is_terminal=True) as bar:
         for i, interval in enumerate(abstract_states_normalised):
             proc_ids.append(next(workers).work.remote(interval))
             bar.update(i)
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True) as bar:
-        while len(proc_ids)!=0:
+        while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             next_states_local, terminal_states_local = ray.get(ready_ids[0])
             next_states.extend(next_states_local)
             terminal_states.extend(terminal_states_local)
-            bar.update(bar.value+1)
+            bar.update(bar.value + 1)
     return next_states, terminal_states
 
 
 @ray.remote
 class AbstractStepWorker:
-    def __init__(self, explorer):
+    def __init__(self, explorer, t):
         self.env = CartPoleEnv_abstract()  # todo find a way to define the initialiser for the environment
         self.explorer = explorer
+        self.t = t
 
     def work(self, interval):
         storage = get_storage()
@@ -134,7 +135,7 @@ class AbstractStepWorker:
         next_state_sticky, done_sticky = step_state(next_state, action, self.env)
         normalised_next_state = self.explorer.normalise(next_state)
         normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
-        successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, parent_index)
+        successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
         # unwrapped_next_state = interval_unwrap(next_state)
         if done:
             terminal_states.append(successor_id)
