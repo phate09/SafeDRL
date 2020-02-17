@@ -48,7 +48,7 @@ else:
     print("Finished building the tree")
 remainings = [current_interval]
 t = 0
-parent_id = storage.store(current_interval,t)
+parent_id = storage.store(current_interval, t)
 #
 last_time_remaining_number = -1
 precision = 1e-6
@@ -61,7 +61,7 @@ local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
-for i in range(2):
+for i in range(4):
     remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
     assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
     # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
@@ -82,19 +82,21 @@ for i in range(2):
     print(f"t:{t}")
     if len(terminal_states) != 0:
         storage.mark_as_fail(terminal_states)
-    storage.save_state("/home/phate09/Development/SafeDRL/save")
-    pickle.dump(terminal_states, open("/home/phate09/Development/SafeDRL/save/terminal_states.p", "wb+"))
-    pickle.dump(t, open("/home/phate09/Development/SafeDRL/save/t.p", "wb+"))
+    storage.save_state("/home/edoardo/Development/SafeDRL/save")
+    pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
+    pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 
 # %%
-# solution = gateway.entry_point.check_property(1188255)
-# print(solution[1188255])
 terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
-solution = gateway.entry_point.check_state_list(terminal_states_java)
-gateway.entry_point.export_to_dot_file()  # %%
-
-# storage.load_state("/home/phate09/Development/SafeDRL/save")
+solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
+solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
+t_ids = storage.get_t_layer(f"{0}.split")
+probabilities = []
+for i in t_ids:
+    probabilities.append((solution_min[i],solution_max[i]))
+print(probabilities)
+# probabilities = list_t_layer(0, solution_min,solution_max)
 # %%
-# terminal_states = pickle.load(open("/home/phate09/Development/SafeDRL/save/terminal_states.p", "rb"))
-# t = pickle.load(open("/home/phate09/Development/SafeDRL/save/t.p", "rb"))
-# storage.load_state("/home/phate09/Development/SafeDRL/save")
+terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
+t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
+storage.load_state("/home/edoardo/Development/SafeDRL/save")

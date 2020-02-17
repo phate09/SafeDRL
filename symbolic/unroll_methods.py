@@ -88,7 +88,7 @@ def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: 
     return next_states
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer,t:int, n_workers: int) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
@@ -101,7 +101,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     next_states = []
     terminal_states = []
 
-    workers = cycle([AbstractStepWorker.remote(explorer,t) for _ in range(n_workers)])
+    workers = cycle([AbstractStepWorker.remote(explorer, t) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(abstract_states_normalised), is_terminal=True) as bar:
         for i, interval in enumerate(abstract_states_normalised):
@@ -310,4 +310,13 @@ def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tup
             # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
             # if area > 1e-10:
             result.append(interval)
+    return result
+
+
+def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
+    storage = get_storage()
+    t_ids = storage.get_t_layer(t)
+    result = []
+    for i in t_ids:
+        result.append((solution_min[i],solution_max[i]))
     return result

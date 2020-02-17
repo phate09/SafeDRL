@@ -289,11 +289,11 @@ class RemainingWorker():
         remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
         remaining_ids = []
         for interval in intersection_safe:
-            storage.store_successor(interval, self.t, parent_id)
+            storage.store_successor(interval, f"{self.t}.split", parent_id)
         for interval in intersection_unsafe:
-            storage.store_successor(interval, self.t, parent_id)
+            storage.store_successor(interval, f"{self.t}.split", parent_id)
         for interval in remaining:  # mark as terminal?
-            remaining_ids.append(storage.store_successor(interval, self.t, parent_id))
+            remaining_ids.append(storage.store_successor(interval, f"{self.t}.split", parent_id))
         storage.close()
         return remaining, intersection_safe, intersection_unsafe, remaining_ids
 

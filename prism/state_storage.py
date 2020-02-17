@@ -1,4 +1,5 @@
 import pickle
+from collections import defaultdict
 from typing import Tuple, List
 import zmq
 from py4j.java_gateway import JavaGateway
@@ -11,7 +12,7 @@ from utility.bidict_multi import bidict_multi
 class StateStorage():
     def __init__(self):
         self.dictionary = bidict()
-        self.t_dictionary = bidict_multi()
+        self.t_dictionary = dict()
         self.last_index = 0
         self.gateway = JavaGateway()
         self.gateway.entry_point.reset_mdp()
@@ -20,7 +21,7 @@ class StateStorage():
     def reset(self):
         print("Resetting the StateStorage")
         self.dictionary = bidict()
-        self.t_dictionary = bidict_multi()
+        self.t_dictionary = dict()
         self.last_index = 0
         self.gateway.entry_point.reset_mdp()
         self.mdp = self.gateway.entry_point.getMdpSimple()
@@ -82,6 +83,16 @@ class StateStorage():
 
     def get_forward(self, id):
         return self.dictionary[id]
+
+    def reversed_t_dictionary(self) -> dict:
+        print("Reverse")
+        inv_map = defaultdict(list)  # defaults to empty list
+        for k, v in self.t_dictionary.items():
+            inv_map[v].append(k)
+        return inv_map
+
+    def get_t_layer(self, t: int) -> List[int]:
+        return self.reversed_t_dictionary()[t]
 
 
 def get_storage():
