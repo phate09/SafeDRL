@@ -93,10 +93,21 @@ solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
 t_ids = storage.get_t_layer(f"{0}.split")
 probabilities = []
 for i in t_ids:
-    probabilities.append((solution_min[i],solution_max[i]))
+    probabilities.append((solution_min[i], solution_max[i]))
 print(probabilities)
 # probabilities = list_t_layer(0, solution_min,solution_max)
 # %%
 terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
 storage.load_state("/home/edoardo/Development/SafeDRL/save")
+# %%
+safe_threshold = 0.8
+for i, interval_probability in enumerate(probabilities):
+    if interval_probability[0] >= safe_threshold:
+        print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
+    elif interval_probability[1] < safe_threshold:
+        print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
+    else:
+        print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
+        #todo split
+        # storage.purge(0,[t_ids[i]])

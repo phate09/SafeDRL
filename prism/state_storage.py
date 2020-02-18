@@ -94,6 +94,14 @@ class StateStorage():
     def get_t_layer(self, t: int) -> List[int]:
         return self.reversed_t_dictionary()[t]
 
+    def purge(self, parent_id: int, target_states_id: List[int]):
+        java_list = ListConverter().convert(target_states_id, self.gateway._gateway_client)
+        self.gateway.purge_states(parent_id, java_list)
+        for id in target_states_id:
+            self.dictionary.pop(id)
+            self.t_dictionary.pop(id)
+            print(f"Purged id {id}")
+
 
 def get_storage():
     c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
