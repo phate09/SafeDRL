@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Tuple
 
 import ray
@@ -182,7 +183,7 @@ class DomainExplorer():
         thawed: DomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
-    def denormalise(self, state: Tuple[Tuple[float,float]]):
+    def denormalise(self, state: Tuple[Tuple[float, float]]):
         elements = []
         for i, x in enumerate(state):
             elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),
@@ -193,7 +194,7 @@ class DomainExplorer():
         #      enumerate(state)])
         return denormalized_state
 
-    def normalise(self, state: Tuple[Tuple[float,float]]):
+    def normalise(self, state: Tuple[Tuple[float, float]]):
         normalized_state = tuple(
             [((float(x[0]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item()), (float(x[1]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item())) for i, x in
              enumerate(state)])
@@ -299,6 +300,20 @@ class DomainExplorer():
 
         sub_domains = [dom1, dom2]
 
+        return sub_domains
+
+    @staticmethod
+    def box_split_tuple(domain: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[float, float]]]:
+        domain_array = np.array(domain)
+        diff = domain_array[:, 1] - domain_array[:, 0]
+        edgelength = np.max(diff, 0).item()
+        dim = np.argmax(diff, 0).item()
+        half_length = edgelength / 2
+        dom1 = domain_array.copy()
+        dom1[dim, 1] -= half_length
+        dom2 = domain_array.copy()
+        dom2[dim, 0] += half_length
+        sub_domains = [mosaic.utils.array_to_tuple(dom1), mosaic.utils.array_to_tuple(dom2)]
         return sub_domains
 
     @staticmethod

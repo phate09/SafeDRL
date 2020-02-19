@@ -15,7 +15,7 @@ from verification_runs.aggregate_abstract_domain import merge_list_tuple
 
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 gateway = JavaGateway()
-storage = get_storage()
+storage: StateStorage = get_storage()
 storage.reset()
 env = CartPoleEnv_abstract()
 s = env.reset()
@@ -56,58 +56,60 @@ failed = []
 failed_area = 0
 terminal_states = []
 local_mode = False
-
-# %%
 if not ray.is_initialized():
     ray.init(local_mode=local_mode)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
-for i in range(4):
-    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
-    assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
-    # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
-    terminal_states.extend(terminal_states_id)
-    print(f"Remainings before negligibles: {len(remainings)}")
-    remainings = discard_negligibles(remainings)  # discard intervals with area 0
-    area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
-    failed.extend(remainings)
-    failed_area += area
-    print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area}")
-    # todo assign an action to remainings (it might be that our tree does not include the given interval)
-    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
-                                                                 n_workers)  # performs a step in the environment with the assigned action and retrieve the result
-    terminal_states.extend(terminal_states_id)
-    remainings = next_states_array
-    print(f"Sucessors : {len(remainings)}")
-    t = t + 1
-    print(f"t:{t}")
-    if len(terminal_states) != 0:
-        storage.mark_as_fail(terminal_states)
-    storage.save_state("/home/edoardo/Development/SafeDRL/save")
-    pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
-    pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 
 # %%
-terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
-solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
-solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
-t_ids = storage.get_t_layer(f"{0}.split")
-probabilities = []
-for i in t_ids:
-    probabilities.append((solution_min[i], solution_max[i]))
-print(probabilities)
-# probabilities = list_t_layer(0, solution_min,solution_max)
+
+# for i in range(4):
+#     analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area])
+#     t = t + 1
+#     storage.save_state("/home/edoardo/Development/SafeDRL/save")
+#     pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
+#     pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 # %%
 terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
 storage.load_state("/home/edoardo/Development/SafeDRL/save")
 # %%
-safe_threshold = 0.8
-for i, interval_probability in enumerate(probabilities):
-    if interval_probability[0] >= safe_threshold:
-        print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
-    elif interval_probability[1] < safe_threshold:
-        print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
-    else:
-        print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
-        #todo split
-        # storage.purge(0,[t_ids[i]])
+while True:
+    split_performed = False
+    analysis_t = 0  # for now we analyse the layer t=0 after it gets splitted
+    terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
+    solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
+    solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
+    t_ids = storage.get_t_layer(f"{analysis_t}.split")
+    probabilities = []
+    for id in t_ids:
+        probabilities.append((solution_min[id], solution_max[id]))
+        # print(f"Interval {id} ({solution_min[id]},{solution_max[id]})")
+
+    safe_threshold = 0.8
+    to_analyse = []
+    safe_count = 0
+    unsafe_count = 0
+    for i, interval_probability in enumerate(probabilities):
+        if interval_probability[0] >= 1-safe_threshold:
+            # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
+            unsafe_count+=1
+        elif interval_probability[1] < 1-safe_threshold:
+            # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
+            safe_count+=1
+        else:
+            print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
+            split_performed = True
+            interval_to_split = storage.dictionary_get(t_ids[i])
+            dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split)
+            storage.purge(0, [t_ids[i]])
+            storage.store_successor(dom1, f"{analysis_t}.split", 0)
+            storage.store_successor(dom2, f"{analysis_t}.split", 0)
+            to_analyse.append(dom1)
+            to_analyse.append(dom2)
+    t = analysis_t + 1  # start inserting the new values after the current timestep
+    print(f"Safe: {safe_count} Unsafe: {unsafe_count}")
+    for i in range(4):
+        to_analyse = analysis_iteration(to_analyse, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area])
+        t = t + 1
+    if not split_performed:
+        break

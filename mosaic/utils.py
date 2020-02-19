@@ -81,6 +81,12 @@ def compute_remaining_intervals_multi(current_intervals, intervals_to_fill) -> s
     return set(final_list)
 
 
+def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
+    array_of_tuples = map(tuple, array)
+    tuple_of_tuples = tuple(array_of_tuples)
+    return tuple_of_tuples
+
+
 def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True):
     """
     Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
@@ -272,7 +278,10 @@ def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, t:
             ready_ids, proc_ids = ray.wait(proc_ids)
             parallel_result.append(ray.get(ready_ids[0]))
             bar.update(bar.value + 1)
-    archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
+    if len(parallel_result)!=0:
+        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
+    else:
+        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = [],[],[],[]
     return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
 
 
@@ -416,3 +425,6 @@ def unshelve_variables():
 def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
     for i, obj in enumerate(data):
         yield (i, (obj[0][0][0], obj[0][0][1], obj[0][1][0], obj[0][1][1], obj[0][2][0], obj[0][2][1], obj[0][3][0], obj[0][3][1]), obj)
+
+
+

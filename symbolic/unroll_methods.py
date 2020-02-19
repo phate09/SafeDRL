@@ -11,6 +11,9 @@ import ray
 from mpmath import iv
 # from interval import interval,imath
 import pandas as pd
+from rtree import index
+
+from mosaic.utils import compute_remaining_intervals3_multi
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
 from prism.state_storage import StateStorage, get_storage
@@ -318,5 +321,30 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
     t_ids = storage.get_t_layer(t)
     result = []
     for i in t_ids:
-        result.append((solution_min[i],solution_max[i]))
+        result.append((solution_min[i], solution_max[i]))
     return result
+
+
+def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: index.Index, env, explorer, storage: StateStorage,
+                       failed_area: List) -> List[Tuple[Tuple[float, float]]]:
+    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
+    assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
+    # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
+    terminal_states.extend(terminal_states_id)
+    print(f"Remainings before negligibles: {len(remainings)}")
+    remainings = discard_negligibles(remainings)  # discard intervals with area 0
+    area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
+    failed.extend(remainings)
+    failed_area[0] += area
+    print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area[0]}")
+    # todo assign an action to remainings (it might be that our tree does not include the given interval)
+    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
+                                                                 n_workers)  # performs a step in the environment with the assigned action and retrieve the result
+    terminal_states.extend(terminal_states_id)
+    remainings = next_states_array
+    print(f"Sucessors : {len(remainings)}")
+
+    print(f"t:{t} Finished")
+    if len(terminal_states) != 0:
+        storage.mark_as_fail(terminal_states)
+    return remainings

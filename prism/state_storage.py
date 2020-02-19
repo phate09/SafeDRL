@@ -102,6 +102,9 @@ class StateStorage():
             self.t_dictionary.pop(id)
             print(f"Purged id {id}")
 
+    def dictionary_get(self, id) -> Tuple[Tuple[float, float]]:
+        return self.dictionary[id]
+
 
 def get_storage():
     c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
