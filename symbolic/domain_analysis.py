@@ -101,7 +101,8 @@ while True:
             split_performed = True
             interval_to_split = storage.dictionary_get(t_ids[i])
             dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split)
-            storage.purge(0, [t_ids[i]])
+            # storage.purge(0, [t_ids[i]])
+            storage.purge_branch(t_ids[i],0)
             storage.store_successor(dom1, f"{analysis_t}.split", 0)
             storage.store_successor(dom2, f"{analysis_t}.split", 0)
             to_analyse.append(dom1)

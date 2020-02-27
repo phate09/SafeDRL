@@ -7,6 +7,7 @@ from bidict import bidict
 import zerorpc
 from py4j.java_collections import ListConverter
 from utility.bidict_multi import bidict_multi
+import networkx as nx
 
 
 class StateStorage():
@@ -17,6 +18,8 @@ class StateStorage():
         self.gateway = JavaGateway()
         self.gateway.entry_point.reset_mdp()
         self.mdp = self.gateway.entry_point.getMdpSimple()
+        self.graph = nx.DiGraph()
+        self.prism_needs_update = False
 
     def reset(self):
         print("Resetting the StateStorage")
@@ -31,7 +34,7 @@ class StateStorage():
         print(f"store {item}")
         if self.dictionary.inverse.get(item) is None:
             # if self.last_index != 0:  # skip the first one as it starts already with a single state
-            self.last_index = self.mdp.addState()  # adds a state to mdpSimple, retrieve index
+            self.last_index =  self.mdp.addState()  # adds a state to mdpSimple, retrieve index
             self.dictionary[self.last_index] = item
             self.t_dictionary[self.last_index] = t
             # if self.last_index == 0:
@@ -40,30 +43,31 @@ class StateStorage():
         else:
             return self.dictionary.inverse.get(item)
 
-    def store_successor(self, item: Tuple[Tuple[float, float]], t: int, parent: int) -> int:
-        last_index = self.store(item, t)
-        self.add_successor(parent, last_index)
-        return last_index
+    def store_successor(self, item: Tuple[Tuple[float, float]], t: int, parent_id: int) -> int:
+        successor_id = self.store(item, t)
+        self.graph.add_edge(parent_id, successor_id, p=1.0)
+        distribution = self.gateway.newDistribution()
+        distribution.add(successor_id, 1.0)
+        self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+        return successor_id
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], t: int, parent_id: int):
         successor_id = self.store(successor, t)
         sticky_successor_id = self.store(sticky_successor, t)
+        self.graph.add_edge(parent_id, successor_id, p=0.8)
+        self.graph.add_edge(parent_id, sticky_successor_id, p=0.2)
         distribution = self.gateway.newDistribution()
         distribution.add(successor_id, 0.8)
         distribution.add(sticky_successor_id, 0.2)
         self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
         return successor_id, sticky_successor_id
 
-    def add_successor(self, parent_id, successor_id):
-        distribution = self.gateway.newDistribution()
-        distribution.add(successor_id, 1.0)
-        self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
-
     def save_state(self, folder_path):
         pickle.dump(self.dictionary, open(folder_path + "/dictionary.p", "wb+"))
         pickle.dump(self.t_dictionary, open(folder_path + "/t_dictionary.p", "wb+"))
         pickle.dump(self.last_index, open(folder_path + "/last_index.p", "wb+"))
         self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
+        nx.write_gml(self.graph, folder_path + "/nx_graph.gml")
         print("Mdp Saved")
 
     def load_state(self, folder_path):
@@ -71,6 +75,7 @@ class StateStorage():
         self.t_dictionary = pickle.load(open(folder_path + "/t_dictionary.p", "rb"))
         self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
         self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
+        self.graph = nx.read_gml(folder_path + "/nx_graph.gml")
         print("Mdp Loaded")
 
     def mark_as_fail(self, fail_states_ids: List[int]):
@@ -104,6 +109,13 @@ class StateStorage():
 
     def dictionary_get(self, id) -> Tuple[Tuple[float, float]]:
         return self.dictionary[id]
+
+    def purge_branch(self, index_to_remove, initial_state=0):
+        """Removes the given index and all the unconnected successors from the initial state after it"""
+        self.graph.remove_node(index_to_remove)
+        for component in nx.connected_components(self.graph.to_undirected()):
+            if initial_state not in component:
+                self.graph.remove_nodes_from(component)
 
 
 def get_storage():

@@ -101,6 +101,7 @@ class CartPoleEnv_abstract(gym.Env):
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
         done = x < -self.x_threshold or x > self.x_threshold or theta < -self.theta_threshold_radians or theta > self.theta_threshold_radians
+        done = done or not -0.015 < x_dot < 0.015 or not -0.015 < theta_dot < 0.015
         done = bool(done)
 
         if not done:
@@ -111,7 +112,8 @@ class CartPoleEnv_abstract(gym.Env):
             reward = 1.0
         else:
             if self.steps_beyond_done == 0:
-                logger.warn("You are calling 'step()' even though this environment has already returned done = True. You should always call 'reset()' once you receive 'done = True' -- any further steps are undefined behavior.")
+                logger.warn(
+                    "You are calling 'step()' even though this environment has already returned done = True. You should always call 'reset()' once you receive 'done = True' -- any further steps are undefined behavior.")
             self.steps_beyond_done += 1
             reward = 0.0
 
