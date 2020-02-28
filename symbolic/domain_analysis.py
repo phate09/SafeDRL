@@ -57,17 +57,17 @@ failed_area = 0
 terminal_states = []
 local_mode = False
 if not ray.is_initialized():
-    ray.init(local_mode=local_mode)
+    ray.init(local_mode=local_mode,include_webui=True)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 
 # %%
 
-# for i in range(4):
-#     analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area])
-#     t = t + 1
-#     storage.save_state("/home/edoardo/Development/SafeDRL/save")
-#     pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
-#     pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
+for i in range(2):
+    analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area])
+    t = t + 1
+    storage.save_state("/home/edoardo/Development/SafeDRL/save")
+    pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
+    pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 # %%
 terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
@@ -91,10 +91,10 @@ while True:
     unsafe_count = 0
     for i, interval_probability in enumerate(probabilities):
         if interval_probability[0] >= 1-safe_threshold:
-            # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
+            print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
             unsafe_count+=1
         elif interval_probability[1] < 1-safe_threshold:
-            # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
+            print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
             safe_count+=1
         else:
             print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
