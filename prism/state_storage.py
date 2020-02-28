@@ -34,7 +34,7 @@ class StateStorage():
         print(f"store {item}")
         if self.dictionary.inverse.get(item) is None:
             # if self.last_index != 0:  # skip the first one as it starts already with a single state
-            self.last_index =  self.mdp.addState()  # adds a state to mdpSimple, retrieve index
+            self.last_index = self.last_index + 1  # self.mdp.addState()  # adds a state to mdpSimple, retrieve index
             self.dictionary[self.last_index] = item
             self.t_dictionary[self.last_index] = t
             # if self.last_index == 0:
@@ -46,9 +46,9 @@ class StateStorage():
     def store_successor(self, item: Tuple[Tuple[float, float]], t: int, parent_id: int) -> int:
         successor_id = self.store(item, t)
         self.graph.add_edge(parent_id, successor_id, p=1.0)
-        distribution = self.gateway.newDistribution()
-        distribution.add(successor_id, 1.0)
-        self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+        # distribution = self.gateway.newDistribution()
+        # distribution.add(successor_id, 1.0)
+        # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
         return successor_id
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], t: int, parent_id: int):
@@ -56,10 +56,10 @@ class StateStorage():
         sticky_successor_id = self.store(sticky_successor, t)
         self.graph.add_edge(parent_id, successor_id, p=0.8)
         self.graph.add_edge(parent_id, sticky_successor_id, p=0.2)
-        distribution = self.gateway.newDistribution()
-        distribution.add(successor_id, 0.8)
-        distribution.add(sticky_successor_id, 0.2)
-        self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+        # distribution = self.gateway.newDistribution()
+        # distribution.add(successor_id, 0.8)
+        # distribution.add(sticky_successor_id, 0.2)
+        # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
         return successor_id, sticky_successor_id
 
     def save_state(self, folder_path):
@@ -99,13 +99,13 @@ class StateStorage():
     def get_t_layer(self, t: int) -> List[int]:
         return self.reversed_t_dictionary()[t]
 
-    def purge(self, parent_id: int, target_states_id: List[int]):
-        java_list = ListConverter().convert(target_states_id, self.gateway._gateway_client)
-        self.gateway.purge_states(parent_id, java_list)
-        for id in target_states_id:
-            self.dictionary.pop(id)
-            self.t_dictionary.pop(id)
-            print(f"Purged id {id}")
+    # def purge(self, parent_id: int, target_states_id: List[int]):
+    #     java_list = ListConverter().convert(target_states_id, self.gateway._gateway_client)
+    #     self.gateway.purge_states(parent_id, java_list)
+    #     for id in target_states_id:
+    #         self.dictionary.pop(id)
+    #         self.t_dictionary.pop(id)
+    #         print(f"Purged id {id}")
 
     def dictionary_get(self, id) -> Tuple[Tuple[float, float]]:
         return self.dictionary[id]
@@ -116,6 +116,19 @@ class StateStorage():
         for component in nx.connected_components(self.graph.to_undirected()):
             if initial_state not in component:
                 self.graph.remove_nodes_from(component)
+
+    def recreate_prism(self):
+        self.mdp = self.gateway.entry_point.getMdpSimple()
+        for i in range(self.last_index): #generate the states
+            index = self.mdp.addState()
+        for parent_id, successors in self.graph.adjacency(): #generate the edges
+            distribution = self.gateway.newDistribution()
+            if len(successors.items()) != 0:
+                for successor_id, eattr in successors.items():
+                    # print(f"u:{parent_id} v:{successor_id} wt:{eattr}")
+                    distribution.add(successor_id, eattr.get("p", 1.0 / len(successors.items())))
+                self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+        print("Prism updated with new data")
 
 
 def get_storage():

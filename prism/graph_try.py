@@ -10,3 +10,16 @@ for component in nx.connected_components(G.to_undirected()):
     if 0 not in component:
         G.remove_nodes_from(component)
 print(G.nodes)
+
+#%%
+for (u, v,wt) in G.out_edges.data('p'):
+    print(f"u:{u} v:{v} wt:{wt}")
+#%%
+for n, nbrs in G.adjacency():
+    for nbr, eattr in nbrs.items():
+        print(f"u:{n} v:{nbr} wt:{eattr.get('p',0)}")
+#%%
+nodes = [0]
+while len(nodes)!=0:
+    node = nodes.pop()
+    G.adjacency()
