@@ -29,14 +29,17 @@ else:
     safe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in safe_states]
     unsafe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in unsafe_states]
     union_states_total = [(x, True) for x in safe_states_total] + [(x, False) for x in unsafe_states_total]
-
+local_mode = True
+if not ray.is_initialized():
+    ray.init(local_mode=local_mode, include_webui=True)
+n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 if os.path.exists('save/rtree.dat') and os.path.exists('save/rtree.idx'):
     print("Loading the tree")
     p = index.Property(dimension=4)
     rtree = index.Index('save/rtree', interleaved=False, properties=p)
     print("Finished loading the tree")
 else:
-    rtree = rebuild_tree(union_states_total)
+    rtree = rebuild_tree(union_states_total, n_workers)
 remainings = [current_interval]
 t = 0
 parent_id = storage.store(current_interval, t)
@@ -46,11 +49,9 @@ precision = 1e-6
 failed = []
 failed_area = 0
 terminal_states = []
-local_mode = False
-if not ray.is_initialized():
-    ray.init(local_mode=local_mode, include_webui=True)
-n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 
+#%%
+merge_list_tuple(union_states_total,n_workers)
 # %%
 
 for i in range(6):

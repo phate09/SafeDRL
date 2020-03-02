@@ -45,14 +45,13 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
 #     tree_global = index.Index(helper, properties=p, interleaved=False)
 
 
-def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]],n_workers: int = 8) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = intervals
     shared_dict = get_shared_dictionary()
     shared_dict.reset()  # reset the dictionary
     while True:
         old_size = len(aggregated_list)
         # path = 'save/rtree'
-        n_workers: int = 1
         proc_ids = []
         print("About to start the merging process")
         workers = cycle([MergingWorker.remote(aggregated_list) for _ in range(n_workers)])

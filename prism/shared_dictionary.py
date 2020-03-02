@@ -11,9 +11,11 @@ class SharedDict():
         self.dictionary = dict()
 
     def get(self, key, default=None):
+        key = tuple([tuple(x) for x in key])
         return self.dictionary.get(key, default)
 
     def set(self, key, value):
+        key = tuple([tuple(x) for x in key])
         self.dictionary[key] = value
 
 

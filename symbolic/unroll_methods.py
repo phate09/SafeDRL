@@ -358,7 +358,7 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
             safe_intervals_union2, unsafe_intervals_union2, ignore_intervals = assign_action_to_blank_intervals([boundaries])
             union_states_total.extend([(x, True) for x in safe_intervals_union2])
             union_states_total.extend([(x, False) for x in unsafe_intervals_union2])
-            rtree = rebuild_tree(union_states_total)  # rebuild the tree to cover the areas that weren't covered before
+            rtree = rebuild_tree(union_states_total,n_workers)  # rebuild the tree to cover the areas that weren't covered before
         else:  # if no more remainings exit
             break
     terminal_states.extend(remainings_id)
@@ -377,9 +377,9 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
     return next_states_array, rtree
 
 
-def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> index.Index:
+def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]],n_workers: int = 8) -> index.Index:
     p = index.Property(dimension=4)
-    union_states_total = merge_list_tuple(union_states_total)  # aggregate intervals
+    union_states_total = merge_list_tuple(union_states_total,n_workers)  # aggregate intervals
     print("Building the tree")
     helper = bulk_load_rtree_helper(union_states_total)
     rtree = index.Index('save/rtree', helper, interleaved=False, properties=p)
