@@ -5,8 +5,8 @@ import ray
 
 @ray.remote
 def count(i: int):
-    c = get_storage()
-    return c.store([(i, i + 1)])
+    with get_storage() as c:
+        return c.store([(i, i + 1)])
 
 
 ray.init()

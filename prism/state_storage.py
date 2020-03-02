@@ -9,8 +9,11 @@ import zerorpc
 from py4j.java_collections import ListConverter
 from utility.bidict_multi import bidict_multi
 import networkx as nx
+import Pyro5.api
 
 
+@Pyro5.api.expose
+@Pyro5.api.behavior(instance_mode="single")
 class StateStorage():
     def __init__(self):
         self.dictionary = bidict()
@@ -35,7 +38,7 @@ class StateStorage():
             self.prism_needs_update = False
 
     def store(self, item, t) -> int:
-        item = tuple([tuple(x) for x in item])
+        # item = tuple([tuple(x) for x in item])
         # print(f"store {item}")
         self.prism_needs_update = True
         if self.dictionary.inverse.get(item) is None:
@@ -157,15 +160,18 @@ class StateStorage():
 
 
 def get_storage():
-    c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
-    c.connect("ipc:///tmp/state_storage")
-    # c.connect("tcp://127.0.0.1:4242")
-    return c
+    # c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
+    # c.connect("ipc:///tmp/state_storage")
+    # # c.connect("tcp://127.0.0.1:4242")
+    # return c
+    storage = Pyro5.api.Proxy("PYRONAME:prism.statestorage")
+    return storage
 
 
 if __name__ == '__main__':
-    s = zerorpc.Server(StateStorage())
-    s.bind("ipc:///tmp/state_storage")
-    # s.bind("tcp://0.0.0.0:4242")
-    print("Storage server started")
-    s.run()
+    # s = zerorpc.Server(StateStorage())
+    # s.bind("ipc:///tmp/state_storage")
+    # # s.bind("tcp://0.0.0.0:4242")
+    # print("Storage server started")
+    # s.run()
+    Pyro5.api.Daemon.serveSimple({StateStorage: "prism.statestorage"}, ns=True)

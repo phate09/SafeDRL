@@ -128,26 +128,25 @@ class AbstractStepWorker:
         self.t = t
 
     def work(self, interval):
-        storage = get_storage()
-        next_states = []
-        terminal_states = []
-        parent_index = storage.get_inverse(interval[0])
-        denormalised_interval = self.explorer.denormalise(interval[0])
-        action = 1 if interval[1] else 0  # 1 if safe 0 if not
-        next_state, done = step_state(denormalised_interval, action, self.env)
-        next_state_sticky, done_sticky = step_state(next_state, action, self.env)
-        normalised_next_state = self.explorer.normalise(next_state)
-        normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
-        successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
-        # unwrapped_next_state = interval_unwrap(next_state)
-        if done:
-            terminal_states.append(successor_id)
-        if done_sticky:
-            terminal_states.append(sticky_successor_id)
-        next_states.append(normalised_next_state)
-        next_states.append(normalised_next_state_sticky)
-        storage.close()
-        return next_states, terminal_states
+        with get_storage() as storage:
+            next_states = []
+            terminal_states = []
+            parent_index = storage.get_inverse(interval[0])
+            denormalised_interval = self.explorer.denormalise(interval[0])
+            action = 1 if interval[1] else 0  # 1 if safe 0 if not
+            next_state, done = step_state(denormalised_interval, action, self.env)
+            next_state_sticky, done_sticky = step_state(next_state, action, self.env)
+            normalised_next_state = self.explorer.normalise(next_state)
+            normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
+            successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
+            # unwrapped_next_state = interval_unwrap(next_state)
+            if done:
+                terminal_states.append(successor_id)
+            if done_sticky:
+                terminal_states.append(sticky_successor_id)
+            next_states.append(normalised_next_state)
+            next_states.append(normalised_next_state_sticky)
+            return next_states, terminal_states
 
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
@@ -325,12 +324,12 @@ def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]], intervals_i
 
 
 def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
-    storage = get_storage()
-    t_ids = storage.get_t_layer(t)
-    result = []
-    for i in t_ids:
-        result.append((solution_min[i], solution_max[i]))
-    return result
+    with get_storage() as storage:
+        t_ids = storage.get_t_layer(t)
+        result = []
+        for i in t_ids:
+            result.append((solution_min[i], solution_max[i]))
+        return result
 
 
 def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: index.Index, env, explorer, storage: StateStorage, failed_area: List,

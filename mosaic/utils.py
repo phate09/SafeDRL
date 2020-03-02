@@ -292,19 +292,18 @@ class RemainingWorker():
         self.t = t
 
     def compute_remaining_worker(self, current_interval):
-        storage = get_storage()
-        parent_id = storage.store(current_interval, self.t)
-        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, self.tree)
-        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-        remaining_ids = []
-        for interval in intersection_safe:
-            storage.store_successor(interval, f"{self.t}.split", parent_id)
-        for interval in intersection_unsafe:
-            storage.store_successor(interval, f"{self.t}.split", parent_id)
-        for interval in remaining:  # mark as terminal?
-            remaining_ids.append(storage.store_successor(interval, f"{self.t}.split", parent_id))
-        storage.close()
-        return remaining, intersection_safe, intersection_unsafe, remaining_ids
+        with get_storage() as storage:
+            parent_id = storage.store(current_interval, self.t)
+            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, self.tree)
+            remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
+            remaining_ids = []
+            for interval in intersection_safe:
+                storage.store_successor(interval, f"{self.t}.split", parent_id)
+            for interval in intersection_unsafe:
+                storage.store_successor(interval, f"{self.t}.split", parent_id)
+            for interval in remaining:  # mark as terminal?
+                remaining_ids.append(storage.store_successor(interval, f"{self.t}.split", parent_id))
+            return remaining, intersection_safe, intersection_unsafe, remaining_ids
 
     # def __del__(self):  #     self.storage.close()
 
