@@ -1,12 +1,14 @@
 from functools import partial
-from itertools import permutations
+from itertools import permutations, cycle
 from typing import Tuple, List
 import multiprocessing as mp
 import numpy as np
 import progressbar
+import ray
 from rtree import index
 
 from mosaic.utils import flatten_interval, partially_contained_interval, partially_contained, bulk_load_rtree_helper
+from prism.shared_dictionary import get_shared_dictionary, SharedDict
 
 
 def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
@@ -31,82 +33,87 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
     return np.stack(shrank)
 
 
-def init(bar, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-    global lock_bar_global, lock_handled_global, progress_val, tree_global, progress_bar_global
-    lock_bar_global = mp.Lock()
-    lock_handled_global = mp.Lock()
-    progress_val = mp.Value('i', 0)
-    progress_bar_global = bar
-    # print("Creating a new shared tree")
-    p = index.Property(dimension=4)
-    helper = bulk_load_rtree_helper(union_states_total)
-    tree_global = index.Index(helper, properties=p, interleaved=False)
+# def init(bar, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+#     global lock_bar_global, lock_handled_global, progress_val, tree_global, progress_bar_global
+#     lock_bar_global = mp.Lock()
+#     lock_handled_global = mp.Lock()
+#     progress_val = mp.Value('i', 0)
+#     progress_bar_global = bar
+#     # print("Creating a new shared tree")
+#     p = index.Property(dimension=4)
+#     helper = bulk_load_rtree_helper(union_states_total)
+#     tree_global = index.Index(helper, properties=p, interleaved=False)
 
 
 def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = intervals
+    shared_dict = get_shared_dictionary()
+    shared_dict.reset()  # reset the dictionary
     while True:
         old_size = len(aggregated_list)
         # path = 'save/rtree'
-
+        n_workers: int = 1
+        proc_ids = []
         print("About to start the merging process")
-        with progressbar.ProgressBar(prefix="Merging intervals", max_value=old_size, is_terminal=True) as bar:
-            with mp.Pool(mp.cpu_count(), initializer=init, initargs=(bar, aggregated_list)) as pool:
-                # manager = mp.Manager()
-                handled_intervals = dict()
-                func = partial(merge_worker, handled_intervals, old_size)
-                aggregated_list = [x for x in pool.map(func, aggregated_list) if x is not None]
+        workers = cycle([MergingWorker.remote(aggregated_list) for _ in range(n_workers)])
+        with progressbar.ProgressBar(prefix="Starting workers", max_value=old_size, is_terminal=True) as bar:
+            for i, x in enumerate(aggregated_list):
+                proc_ids.append(next(workers).merge_worker.remote(x))
+                bar.update(i)
+        aggregated_list = []
+        with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True) as bar:
+            while len(proc_ids) != 0:
+                ready_ids, proc_ids = ray.wait(proc_ids)
+                result = ray.get(ready_ids[0])
+                if result is not None:
+                    aggregated_list.append(result)
+                bar.update(bar.value + 1)
         print("Finished!")
         new_size = len(aggregated_list)
         print(f"Reduced size from {old_size} to {new_size}")
         if old_size == new_size:
             break
-    # bar.finish()
+    shared_dict.close()
     return aggregated_list
 
 
-def merge_worker(handled_intervals: dict, max_value: int, interval: Tuple[Tuple[Tuple[float, float]], bool]):
-    # print(f"starting process {i}")
-    result = None
-    lock_handled_global.acquire()
-    handled = handled_intervals.get(interval, False)
-    lock_handled_global.release()
-    # p = index.Property(dimension=4)
-    # tree = index.Index(path, properties=p, interleaved=False)
-    if not handled:
-        near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree_global.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
-        found_match = False
-        for neighbour in near_intervals:
-            lock_handled_global.acquire()
-            neighbour_handled = handled_intervals.get(neighbour, False)
-            lock_handled_global.release()
-            same_action = neighbour[1] == interval[1]
-            if not neighbour_handled and same_action:
-                new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
-                if new_interval[0] is not None:
-                    # aggregated_list.append(new_interval)
-                    result = new_interval
-                    lock_handled_global.acquire()
-                    handled_intervals[neighbour] = True  # mark the interval as handled
-                    handled_intervals[interval] = True  # mark the interval as handled
-                    lock_handled_global.release()
-                    found_match = True
-                    break
-        if not found_match:
-            # aggregated_list.append(interval)
-            result = interval
-    else:
-        # already handled previously
-        pass
-    # print(i)
-    lock_bar_global.acquire()
-    # bar.update(bar.value + 1)
-    # i += 1
-    progress_val.value += 1
-    # print(f"\r{progress_val.value / max_value:02%} - {progress_val.value} of {max_value}", end="")
-    progress_bar_global.update(progress_val.value + 1)
-    lock_bar_global.release()
-    return result
+@ray.remote
+class MergingWorker():
+    def __init__(self, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+        p = index.Property(dimension=4)
+        helper = bulk_load_rtree_helper(union_states_total)
+        self.tree_global = index.Index(helper, properties=p, interleaved=False)
+
+    def merge_worker(self, interval: Tuple[Tuple[Tuple[float, float]], bool]):
+        handled_intervals: SharedDict = get_shared_dictionary()
+        # print(f"starting process {i}")
+        result = None
+        handled = handled_intervals.get(interval, False)
+        # p = index.Property(dimension=4)
+        # tree = index.Index(path, properties=p, interleaved=False)
+        if not handled:
+            near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree_global.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
+            found_match = False
+            for neighbour in near_intervals:
+                neighbour_handled = handled_intervals.get(neighbour, False)
+                same_action = neighbour[1] == interval[1]
+                if not neighbour_handled and same_action:
+                    new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
+                    if new_interval[0] is not None:
+                        # aggregated_list.append(new_interval)
+                        result = new_interval
+                        handled_intervals.set(neighbour, True)  # mark the interval as handled
+                        handled_intervals.set(interval, True)  # mark the interval as handled
+                        found_match = True
+                        break
+            if not found_match:
+                # aggregated_list.append(interval)
+                result = interval
+        else:
+            # already handled previously
+            pass
+        handled_intervals.close()
+        return result
 
 
 def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:
