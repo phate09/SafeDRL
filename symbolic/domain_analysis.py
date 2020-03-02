@@ -29,7 +29,7 @@ else:
     safe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in safe_states]
     unsafe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in unsafe_states]
     union_states_total = [(x, True) for x in safe_states_total] + [(x, False) for x in unsafe_states_total]
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -52,6 +52,8 @@ terminal_states = []
 
 #%%
 merge_list_tuple(union_states_total,n_workers)
+print("finished")
+input("Press key")
 # %%
 
 for i in range(6):

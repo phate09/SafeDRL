@@ -164,6 +164,7 @@ def get_storage():
     # c.connect("ipc:///tmp/state_storage")
     # # c.connect("tcp://127.0.0.1:4242")
     # return c
+    Pyro5.api.config.SERIALIZER = "marshal"
     storage = Pyro5.api.Proxy("PYRONAME:prism.statestorage")
     return storage
 
@@ -174,4 +175,5 @@ if __name__ == '__main__':
     # # s.bind("tcp://0.0.0.0:4242")
     # print("Storage server started")
     # s.run()
+    Pyro5.api.config.SERIALIZER = "marshal"
     Pyro5.api.Daemon.serveSimple({StateStorage: "prism.statestorage"}, ns=True)
