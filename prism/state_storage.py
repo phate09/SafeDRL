@@ -1,5 +1,6 @@
 import pickle
 from collections import defaultdict
+import threading
 from typing import Tuple, List
 import zmq
 from py4j.java_gateway import JavaGateway
@@ -20,26 +21,28 @@ class StateStorage():
         self.mdp = self.gateway.entry_point.getMdpSimple()
         self.graph = nx.DiGraph()
         self.prism_needs_update = False
+        self.lock = threading.RLock()
 
     def reset(self):
-        print("Resetting the StateStorage")
-        self.dictionary = bidict()
-        self.t_dictionary = defaultdict(list)
-        self.last_index = 0
-        self.gateway.entry_point.reset_mdp()
-        self.mdp = self.gateway.entry_point.getMdpSimple()
-        self.graph = nx.DiGraph()
-        self.prism_needs_update = False
+        with self.lock:
+            print("Resetting the StateStorage")
+            self.dictionary = bidict()
+            self.t_dictionary = defaultdict(list)
+            self.last_index = 0
+            self.gateway.entry_point.reset_mdp()
+            self.mdp = self.gateway.entry_point.getMdpSimple()
+            self.graph = nx.DiGraph()
+            self.prism_needs_update = False
 
     def store(self, item, t) -> int:
         item = tuple([tuple(x) for x in item])
-        print(f"store {item}")
+        # print(f"store {item}")
         self.prism_needs_update = True
         if self.dictionary.inverse.get(item) is None:
             # if self.last_index != 0:  # skip the first one as it starts already with a single state
-            self.last_index = self.last_index + 1  # self.mdp.addState()  # adds a state to mdpSimple, retrieve index
             self.dictionary[self.last_index] = item
             self.t_dictionary[t].append(self.last_index)
+            self.last_index = self.last_index + 1  # self.mdp.addState()  # adds a state to mdpSimple, retrieve index
             # if self.last_index == 0:
             #     self.last_index += 1
             return self.last_index
@@ -48,7 +51,7 @@ class StateStorage():
 
     def store_successor(self, item: Tuple[Tuple[float, float]], t: int, parent_id: int) -> int:
         successor_id = self.store(item, t)
-        self.graph.add_edge(parent_id, successor_id, p=1.0)
+        self.graph.add_edge(parent_id, successor_id, p=1.0, a=successor_id)
         # distribution = self.gateway.newDistribution()
         # distribution.add(successor_id, 1.0)
         # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
@@ -58,8 +61,8 @@ class StateStorage():
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], t: int, parent_id: int):
         successor_id = self.store(successor, t)
         sticky_successor_id = self.store(sticky_successor, t)
-        self.graph.add_edge(parent_id, successor_id, p=0.8)
-        self.graph.add_edge(parent_id, sticky_successor_id, p=0.2)
+        self.graph.add_edge(parent_id, successor_id, p=0.8, a=successor_id)
+        self.graph.add_edge(parent_id, sticky_successor_id, p=0.2, a=successor_id)
         # distribution = self.gateway.newDistribution()
         # distribution.add(successor_id, 0.8)
         # distribution.add(sticky_successor_id, 0.2)
@@ -127,18 +130,30 @@ class StateStorage():
         self.prism_needs_update = True
 
     def recreate_prism(self):
-        self.mdp = self.gateway.entry_point.getMdpSimple()
-        for i in range(self.last_index):  # generate the states
-            index = self.mdp.addState()
-        for parent_id, successors in self.graph.adjacency():  # generate the edges
-            distribution = self.gateway.newDistribution()
-            if len(successors.items()) != 0:
-                for successor_id, eattr in successors.items():
-                    # print(f"u:{parent_id} v:{successor_id} wt:{eattr}")
-                    distribution.add(successor_id, eattr.get("p", 1.0 / len(successors.items())))
-                self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
-        print("Prism updated with new data")
-        self.prism_needs_update = False
+        with self.lock:
+
+            self.mdp = self.gateway.entry_point.reset_mdp()
+            for i in range(self.last_index):  # generate the states
+                index = self.mdp.addState()
+            for parent_id, successors in self.graph.adjacency():  # generate the edges
+                last_distribution_name = None
+                distribution = None
+                last_successor = None
+                if len(successors.items()) != 0:
+                    for successor_id, eattr in successors.items():
+                        # print(f"u:{parent_id} v:{successor_id} wt:{eattr}")
+                        p = eattr.get("p", 1.0 / len(successors.items()))
+                        a = eattr.get("a")
+                        if last_distribution_name != a:
+                            if distribution is not None:  # save the previous distribution to prism
+                                self.mdp.addActionLabelledChoice(int(parent_id), distribution, int(last_successor))
+                            distribution = self.gateway.newDistribution()
+                            last_distribution_name = a
+                        last_successor = successor_id
+                        distribution.add(int(successor_id), p)
+                    self.mdp.addActionLabelledChoice(int(parent_id), distribution, int(successor_id))
+            print("Prism updated with new data")
+            self.prism_needs_update = False
 
 
 def get_storage():

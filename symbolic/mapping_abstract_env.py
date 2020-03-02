@@ -56,7 +56,7 @@ for successor in successors:
 safe_states_assigned = safe_intervals_union + safe_intervals_union2
 unsafe_states_assigned = unsafe_intervals_union + unsafe_intervals_union2
 # %%
-safe_states_current, unsafe_states_current, ignored = assign_action_to_blank_intervals(remainings, precision=precision)  # finds the action for intervals which are blanks
+safe_states_current, unsafe_states_current, ignored = assign_action_to_blank_intervals(remainings)  # finds the action for intervals which are blanks
 safe_states_assigned.extend(safe_states_current)
 safe_states_assigned.extend(safe_intervals_union)
 unsafe_states_assigned.extend(unsafe_states_current)

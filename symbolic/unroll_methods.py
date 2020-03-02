@@ -13,14 +13,14 @@ from mpmath import iv
 import pandas as pd
 from rtree import index
 
-from mosaic.utils import compute_remaining_intervals3_multi
+from mosaic.utils import compute_remaining_intervals3_multi, bulk_load_rtree_helper
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 import os
-from verification_runs.aggregate_abstract_domain import aggregate
+from verification_runs.aggregate_abstract_domain import aggregate, merge_list_tuple
 import random
 import plotly.graph_objs as go
 from sklearn.decomposition import PCA
@@ -286,7 +286,12 @@ def generate_middle_points(t_states, t):
     return random_points, areas, assigned_actions
 
 
-def assign_action_to_blank_intervals(s_array: List[Tuple[I.Interval]], precision=1e-6) -> Tuple[List[Tuple]]:
+def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]]) -> Tuple[List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
+    """
+    Given a list of intervals, calculate the intervals where the agent will take a given action
+    :param s_array: the list of intervals
+    :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
+    """
     # convert list of tuples to list of arrays
     s_array = [np.array(x) for x in s_array]
     explorer, verification_model = generateCartpoleDomainExplorer()
@@ -299,21 +304,24 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[I.Interval]], precision
     safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
     unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-    t_states = [tuple([(x.item(0), x.item(1)) for x in k]) for k in safe_next], [tuple([(x.item(0), x.item(1)) for x in k]) for k in unsafe_next], [tuple([(x.item(0), x.item(1)) for x in k]) for k in
-                                                                                                                                                    ignore_next]
+    t_states = ([tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in safe_next], [tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in unsafe_next],
+                [tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in ignore_next])
     return t_states
 
 
-def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tuple[Tuple[float, float]]]:
+def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]], intervals_id: List[int] = None) -> Tuple[List[Tuple[Tuple[float, float]]], List[int]]:
     """discards the intervals with area 0"""
     result = []
-    for interval in intervals:
+    result_ids = []
+    for i, interval in enumerate(intervals):
         sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
         if all([x > 1e-6 for x in sizes]):
             # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
             # if area > 1e-10:
             result.append(interval)
-    return result
+            if intervals_id is not None:
+                result_ids.append(intervals_id[i])
+    return result, result_ids
 
 
 def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
@@ -325,26 +333,56 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
     return result
 
 
-def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: index.Index, env, explorer, storage: StateStorage,
-                       failed_area: List) -> List[Tuple[Tuple[float, float]]]:
-    remainings, safe_intervals_union, unsafe_intervals_union, terminal_states_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
-    assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
-    # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
-    terminal_states.extend(terminal_states_id)
-    print(f"Remainings before negligibles: {len(remainings)}")
-    remainings = discard_negligibles(remainings)  # discard intervals with area 0
+def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: index.Index, env, explorer, storage: StateStorage, failed_area: List,
+                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> Tuple[List[Tuple[Tuple[float, float]]], index.Index]:
+    while True:
+        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
+        assigned_action_intervals = [(x, True) for x in safe_intervals_union] + [(x, False) for x in unsafe_intervals_union]
+        # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
+
+        print(f"Remainings before negligibles: {len(remainings)}")
+        remainings, remainings_id = discard_negligibles(remainings, remainings_id)  # discard intervals with area 0
+        # todo assign an action to remainings (it might be that our tree does not include the given interval)
+
+        if len(remainings) != 0:
+            print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
+            # get max of every dimension
+            boundaries = []
+            for d in range(len(remainings[0])):
+                dimension_slice = [(x[d][0], x[d][1]) for x in remainings]
+                maximum = float(max(x[1] for x in dimension_slice))
+                minimum = float(min(x[0] for x in dimension_slice))
+                boundaries.append((minimum, maximum))
+            boundaries = tuple(boundaries)
+            # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
+            safe_intervals_union2, unsafe_intervals_union2, ignore_intervals = assign_action_to_blank_intervals([boundaries])
+            union_states_total.extend([(x, True) for x in safe_intervals_union2])
+            union_states_total.extend([(x, False) for x in unsafe_intervals_union2])
+            rtree = rebuild_tree(union_states_total)  # rebuild the tree to cover the areas that weren't covered before
+        else:  # if no more remainings exit
+            break
+    terminal_states.extend(remainings_id)
     area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
     failed.extend(remainings)
     failed_area[0] += area
     print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area[0]}")
-    # todo assign an action to remainings (it might be that our tree does not include the given interval)
-    next_states_array, terminal_states_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
-                                                                 n_workers)  # performs a step in the environment with the assigned action and retrieve the result
-    terminal_states.extend(terminal_states_id)
-    remainings = next_states_array
-    print(f"Sucessors : {len(remainings)}")
+    next_states_array, remainings_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
+                                                            n_workers)  # performs a step in the environment with the assigned action and retrieve the result
+    terminal_states.extend(remainings_id)
+    print(f"Sucessors : {len(next_states_array)}")
 
     print(f"t:{t} Finished")
     if len(terminal_states) != 0:
         storage.mark_as_fail(terminal_states)
-    return remainings
+    return next_states_array, rtree
+
+
+def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> index.Index:
+    p = index.Property(dimension=4)
+    union_states_total = merge_list_tuple(union_states_total)  # aggregate intervals
+    print("Building the tree")
+    helper = bulk_load_rtree_helper(union_states_total)
+    rtree = index.Index('save/rtree', helper, interleaved=False, properties=p)
+    rtree.flush()
+    print("Finished building the tree")
+    return rtree

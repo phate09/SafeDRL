@@ -77,7 +77,11 @@ class TestR_trees(TestCase):
             total_area += area_numpy(x_array)
         # print(f"Area after merge:{total_area}")
         assert previous_total_area==total_area
-
+    def test_size(self):
+        os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+        p = index.Property(dimension=4)
+        r = index.Index('save/rtree', properties=p, interleaved=False)
+        print(f"size:{r.__sizeof__()}")
 
 def boxes15_stream(boxes15, interleaved=True):
     for i, (minx, miny, maxx, maxy) in enumerate(boxes15):
