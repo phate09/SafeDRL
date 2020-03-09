@@ -1,4 +1,5 @@
 import os
+import pickle
 from unittest import TestCase
 
 import jsonpickle
@@ -83,6 +84,16 @@ class TestR_trees(TestCase):
         r = index.Index('save/rtree', properties=p, interleaved=False)
         print(f"size:{r.__sizeof__()}")
 
+    def test_create_and_save_tree(self):
+        os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+        union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
+        union_states_total = union_states_total[0:1000]
+        helper = bulk_load_rtree_helper(union_states_total)
+        p = index.Property(dimension=4)
+        r = index.Index('save/rtree_test',helper, interleaved=False, properties=p)
+        r.flush()
+        r.close()
+
 def boxes15_stream(boxes15, interleaved=True):
     for i, (minx, miny, maxx, maxy) in enumerate(boxes15):
 
@@ -90,4 +101,5 @@ def boxes15_stream(boxes15, interleaved=True):
             yield (i, (minx, miny, maxx, maxy), 42)
         else:
             yield (i, (minx, maxx, miny, maxy), 42)
+
 

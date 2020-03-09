@@ -5,7 +5,6 @@ from typing import Tuple, List
 import zmq
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
-import zerorpc
 from py4j.java_collections import ListConverter
 from utility.bidict_multi import bidict_multi
 import networkx as nx

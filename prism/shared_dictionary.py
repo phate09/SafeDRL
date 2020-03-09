@@ -1,5 +1,4 @@
 import Pyro5.api
-import zerorpc
 
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="single")

@@ -1,13 +1,14 @@
 conda deactivate
 conda remove --name safedrl --all
-conda create --name safedrl python=3.6 numpy pyzmq protobu
+conda create --name safedrl python=3.7 numpy pyzmq protobuf
 conda activate safedrl
 pip install torch gym
-python CartPoleModelGenerator.py
 conda config --add channels http://conda.anaconda.org/gurobi
-conda install gurobi
+conda install gurobi=8
 pip install ray
 pip install py4j
+pip install Pyro5
 pip install bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
+pip install mpmath progressbar2 jsonpickle networkx python-intervals simpy

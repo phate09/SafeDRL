@@ -37,15 +37,12 @@ class DomainExplorer():
         self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
         self.precision_constraints = DomainExplorer.generate_precision(self.domain_width, precision)
 
-    def explore(self, net, domains: List[np.ndarray], debug=True):
+    def explore(self, net, domains: List[np.ndarray], n_workers: int, debug=True):
         # eps = 1e-3
         # precision = 1e-3  # does not allow precision of any dimension to go under this amount
         # min_area = 1e-5  # minimum area of the domain for it to be considered
         global_min_area = float("inf")
         shortest_dimension = float("inf")
-        if not ray.is_initialized():
-            ray.init(log_to_driver=False, include_webui=True)
-        n_workers = int(ray.cluster_resources()["CPU"])
         message_queue = []
         queue = []  # queue of domains to explore
         if domains is None:
@@ -58,8 +55,7 @@ class DomainExplorer():
         last_save = time.time()
         while len(queue) > 0:
             while len(queue) > 0:
-                available_workers = int(ray.available_resources().get("CPU", 0))
-                for i in range(min(len(queue), available_workers)):
+                for i in range(min(len(queue), n_workers)):
                     global_min_area, shortest_dimension = self.start_explore_one_domain(global_min_area, message_queue, net, queue, shortest_dimension)
                 while len(message_queue) > n_workers:
                     message_queue = self.process_one_queue_element(message_queue, queue)
