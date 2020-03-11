@@ -16,65 +16,65 @@ from prism.shared_rtree import get_rtree
 from prism.state_storage import get_storage
 
 
-def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
-    """
-    Returns the intervals not covered by @intervals_to_fill within @current_interval
-    :param current_interval: the intervals to check against for coverage, the base (list of tuples of tuples)
-    :param intervals_to_fill: the list of intervals to check membership against (list of tuples of tuples)
-    :return: the list of remaining intervals not covered by @intervals_to_fill
-    """
-    points_of_interest = []
-    dimensions = len(current_interval)
-    bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1, is_terminal=True).start()
-    for dimension in range(dimensions):  # adds the upper and lower bounds from the starting interval as points of interest
-        points_of_interest.append({current_interval[dimension][0], current_interval[dimension][1]})
-    bar.update(1)
-    for i, interval in enumerate(intervals_to_fill):  # adds the upper and lower bounds from every other interval interval as points of interest
-        for dimension in range(dimensions):
-            points_of_interest[dimension].add(max(current_interval[dimension][0], interval[dimension][0]))  # lb
-            points_of_interest[dimension].add(min(current_interval[dimension][1], interval[dimension][1]))  # ub
-        bar.update(i + 1)
-    bar.finish()
-    point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in range(dimensions)]
-    permutations_indices = list(itertools.product(*point_of_interest_indices))
-    permutations_of_interest = []
-    bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices), is_terminal=True).start()
-    for i, permutation_idx in enumerate(permutations_indices):
-        permutations_of_interest.append(
-            tuple([(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
-        bar.update(i)
-    bar.finish()
-    dictionary_covered = {}  # dictionary to flag a covered section
-    # bar = progressbar.ProgressBar(prefix="Filling dictionary...", max_value=len(permutations_of_interest)).start()
-    # for i, permutation in enumerate(permutations_of_interest):
-    #     dictionary_covered[permutation] = False
-    #     bar.update(i)
-    # bar.finish()
-    bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest), is_terminal=True).start()
-    for i, interval in enumerate(intervals_to_fill):
-        for j, permutation in enumerate(permutations_of_interest):
-            if not dictionary_covered.get(permutation):
-                contains = all([contained(permutation[dimension], interval[dimension]) for dimension in range(dimensions)])  # check it is partially contained in every dimension
-                if contains:
-                    dictionary_covered[permutation] = True
-            bar.update(i * len(permutations_of_interest) + j)
-    bar.finish()
-    remaining_intervals = [x for x in permutations_of_interest if not dictionary_covered.get(x)]
-    return set(remaining_intervals)  # these are the remaining areas not covered by any of the "intervals_to_check" list
-
-
-def compute_remaining_intervals_multi(current_intervals, intervals_to_fill) -> set:
-    """Parallelised version of @see compute_remaining_intervals """
-    if not ray.is_initialized():
-        ray.init(log_to_driver=False)
-    results = []
-    for current_interval in current_intervals:
-        remote_func = ray.remote(compute_remaining_intervals)
-        results.append(remote_func.remote(current_interval, intervals_to_fill))
-    final_list = []
-    for result in results:
-        final_list.extend(ray.get(result))
-    return set(final_list)
+# def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
+#     """
+#     Returns the intervals not covered by @intervals_to_fill within @current_interval
+#     :param current_interval: the intervals to check against for coverage, the base (list of tuples of tuples)
+#     :param intervals_to_fill: the list of intervals to check membership against (list of tuples of tuples)
+#     :return: the list of remaining intervals not covered by @intervals_to_fill
+#     """
+#     points_of_interest = []
+#     dimensions = len(current_interval)
+#     bar = progressbar.ProgressBar(prefix="Generating points of interest...", max_value=len(intervals_to_fill) + 1, is_terminal=True).start()
+#     for dimension in range(dimensions):  # adds the upper and lower bounds from the starting interval as points of interest
+#         points_of_interest.append({current_interval[dimension][0], current_interval[dimension][1]})
+#     bar.update(1)
+#     for i, interval in enumerate(intervals_to_fill):  # adds the upper and lower bounds from every other interval interval as points of interest
+#         for dimension in range(dimensions):
+#             points_of_interest[dimension].add(max(current_interval[dimension][0], interval[dimension][0]))  # lb
+#             points_of_interest[dimension].add(min(current_interval[dimension][1], interval[dimension][1]))  # ub
+#         bar.update(i + 1)
+#     bar.finish()
+#     point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in range(dimensions)]
+#     permutations_indices = list(itertools.product(*point_of_interest_indices))
+#     permutations_of_interest = []
+#     bar = progressbar.ProgressBar(prefix="Generating permutations...", max_value=len(permutations_indices), is_terminal=True).start()
+#     for i, permutation_idx in enumerate(permutations_indices):
+#         permutations_of_interest.append(
+#             tuple([(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
+#         bar.update(i)
+#     bar.finish()
+#     dictionary_covered = {}  # dictionary to flag a covered section
+#     # bar = progressbar.ProgressBar(prefix="Filling dictionary...", max_value=len(permutations_of_interest)).start()
+#     # for i, permutation in enumerate(permutations_of_interest):
+#     #     dictionary_covered[permutation] = False
+#     #     bar.update(i)
+#     # bar.finish()
+#     bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill) * len(permutations_of_interest), is_terminal=True).start()
+#     for i, interval in enumerate(intervals_to_fill):
+#         for j, permutation in enumerate(permutations_of_interest):
+#             if not dictionary_covered.get(permutation):
+#                 contains = all([contained(permutation[dimension], interval[dimension]) for dimension in range(dimensions)])  # check it is partially contained in every dimension
+#                 if contains:
+#                     dictionary_covered[permutation] = True
+#             bar.update(i * len(permutations_of_interest) + j)
+#     bar.finish()
+#     remaining_intervals = [x for x in permutations_of_interest if not dictionary_covered.get(x)]
+#     return set(remaining_intervals)  # these are the remaining areas not covered by any of the "intervals_to_check" list
+#
+#
+# def compute_remaining_intervals_multi(current_intervals, intervals_to_fill) -> set:
+#     """Parallelised version of @see compute_remaining_intervals """
+#     if not ray.is_initialized():
+#         ray.init(log_to_driver=False)
+#     results = []
+#     for current_interval in current_intervals:
+#         remote_func = ray.remote(compute_remaining_intervals)
+#         results.append(remote_func.remote(current_interval, intervals_to_fill))
+#     final_list = []
+#     for result in results:
+#         final_list.extend(ray.get(result))
+#     return set(final_list)
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -83,59 +83,59 @@ def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
     return tuple_of_tuples
 
 
-def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True):
-    """
-    Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
-    :param current_interval:
-    :param intervals_to_fill:
-    :return: the blank intervals and the union intervals
-    """
-    "Optimised version of compute_remaining_intervals"
-    examine_intervals = []
-    remaining_intervals = [current_interval]
-    union_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
-    dimensions = len(current_interval)
-    if len(intervals_to_fill) == 0:
-        return remaining_intervals, []
-    if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), is_terminal=True).start()
-    for i, interval in enumerate(intervals_to_fill):
-
-        examine_intervals.extend(remaining_intervals)
-        remaining_intervals = []
-        while len(examine_intervals) != 0:
-            examine_interval = examine_intervals.pop(0)
-            state = shrink(interval, examine_interval)
-            contains = interval_contains(state, examine_interval)  # check it is partially contained in every dimension
-            if contains:
-                points_of_interest = []
-                for dimension in range(dimensions):
-                    points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
-                    points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
-                    points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
-                points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
-                point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in
-                                             range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
-                permutations_indices = list(itertools.product(*point_of_interest_indices))
-                permutations_of_interest = []
-                for j, permutation_idx in enumerate(permutations_indices):
-                    permutations_of_interest.append(tuple(
-                        [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
-                for j, permutation in enumerate(permutations_of_interest):
-                    if permutation != state:
-                        if permutation != examine_interval:
-                            examine_intervals.append(permutation)
-                        else:
-                            remaining_intervals.append(permutation)
-                    else:
-                        union_intervals.append(permutation)
-            else:
-                remaining_intervals.append(examine_interval)
-        if debug:
-            bar.update(i)
-    if debug:
-        bar.finish()
-    return remaining_intervals, union_intervals
+# def compute_remaining_intervals2(current_interval, intervals_to_fill, debug=True):
+#     """
+#     Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
+#     :param current_interval:
+#     :param intervals_to_fill:
+#     :return: the blank intervals and the union intervals
+#     """
+#     "Optimised version of compute_remaining_intervals"
+#     examine_intervals = []
+#     remaining_intervals = [current_interval]
+#     union_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
+#     dimensions = len(current_interval)
+#     if len(intervals_to_fill) == 0:
+#         return remaining_intervals, []
+#     if debug:
+#         bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), is_terminal=True).start()
+#     for i, interval in enumerate(intervals_to_fill):
+#
+#         examine_intervals.extend(remaining_intervals)
+#         remaining_intervals = []
+#         while len(examine_intervals) != 0:
+#             examine_interval = examine_intervals.pop(0)
+#             state = shrink(interval, examine_interval)
+#             contains = interval_contains(state, examine_interval)  # check it is partially contained in every dimension
+#             if contains:
+#                 points_of_interest = []
+#                 for dimension in range(dimensions):
+#                     points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
+#                     points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
+#                     points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
+#                 points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
+#                 point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in
+#                                              range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
+#                 permutations_indices = list(itertools.product(*point_of_interest_indices))
+#                 permutations_of_interest = []
+#                 for j, permutation_idx in enumerate(permutations_indices):
+#                     permutations_of_interest.append(tuple(
+#                         [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
+#                 for j, permutation in enumerate(permutations_of_interest):
+#                     if permutation != state:
+#                         if permutation != examine_interval:
+#                             examine_intervals.append(permutation)
+#                         else:
+#                             remaining_intervals.append(permutation)
+#                     else:
+#                         union_intervals.append(permutation)
+#             else:
+#                 remaining_intervals.append(examine_interval)
+#         if debug:
+#             bar.update(i)
+#     if debug:
+#         bar.finish()
+#     return remaining_intervals, union_intervals
 
 
 def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
@@ -214,27 +214,27 @@ def custom_rounding(x, prec=3, base=.05):
     return round(base * round(float(x) / base), prec)
 
 
-def compute_remaining_intervals2_multi(current_intervals, intervals_to_fill):
-    """
-    Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
-    :param current_intervals:
-    :param intervals_to_fill:
-    :return: the blank intervals and the intersection intervals
-    """
-    remaining_intervals = current_intervals.copy()
-    archived_results = []
-    intersection_intervals = []
-    while len(remaining_intervals) != 0:
-        current_interval = remaining_intervals.pop(0)
-        # relevant_intervals = filter_relevant_intervals(current_interval, intervals_to_fill)
-        results, intersection = compute_remaining_intervals2(current_interval, intervals_to_fill)
-        intersection_intervals.extend(intersection)
-        for result in results:
-            if result == current_interval:
-                archived_results.append(current_interval)
-            else:
-                remaining_intervals.append(result)
-    return list(set(archived_results)), list(set(intersection_intervals))
+# def compute_remaining_intervals2_multi(current_intervals, intervals_to_fill):
+#     """
+#     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
+#     :param current_intervals:
+#     :param intervals_to_fill:
+#     :return: the blank intervals and the intersection intervals
+#     """
+#     remaining_intervals = current_intervals.copy()
+#     archived_results = []
+#     intersection_intervals = []
+#     while len(remaining_intervals) != 0:
+#         current_interval = remaining_intervals.pop(0)
+#         # relevant_intervals = filter_relevant_intervals(current_interval, intervals_to_fill)
+#         results, intersection = compute_remaining_intervals2(current_interval, intervals_to_fill)
+#         intersection_intervals.extend(intersection)
+#         for result in results:
+#             if result == current_interval:
+#                 archived_results.append(current_interval)
+#             else:
+#                 remaining_intervals.append(result)
+#     return list(set(archived_results)), list(set(intersection_intervals))
 
 
 def area_tensor(domain: torch.Tensor) -> float:
@@ -256,7 +256,7 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+def compute_remaining_intervals3_multi(current_intervals:List[Tuple[Tuple[float, float]]], t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
@@ -265,8 +265,8 @@ def compute_remaining_intervals3_multi(current_intervals, t: int, n_workers: int
     workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
-        for i, x in enumerate(current_intervals):
-            proc_ids.append(next(workers).compute_remaining_worker.remote(x))
+        for i, intervals in enumerate(chunks(current_intervals,200)):
+            proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
             bar.update(i)
     parallel_result = []
     with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True) as bar:
@@ -288,18 +288,27 @@ class RemainingWorker():
         self.t = t
         self.storage = get_storage()
 
-    def compute_remaining_worker(self, current_interval):
-        parent_id = self.storage.store(current_interval, self.t)
-        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(current_interval)
-        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-        remaining_ids = []
-        for interval in intersection_safe:
-            self.storage.store_successor(interval, f"{self.t}.split", parent_id)
-        for interval in intersection_unsafe:
-            self.storage.store_successor(interval, f"{self.t}.split", parent_id)
-        for interval in remaining:  # mark as terminal?
-            remaining_ids.append(self.storage.store_successor(interval, f"{self.t}.split", parent_id))
-        return remaining, intersection_safe, intersection_unsafe, remaining_ids
+    def compute_remaining_worker(self, current_intervals:List[Tuple[Tuple[float, float]]]):
+        remaining_total =[]
+        intersection_safe_total =[]
+        intersection_unsafe_total =[]
+        remaining_ids_total =[]
+        for interval in current_intervals:
+            parent_id = self.storage.store(interval, self.t)
+            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval)
+            remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
+            remaining_ids = []
+            for interval in intersection_safe:
+                self.storage.store_successor(interval, f"{self.t}.split", parent_id)
+            for interval in intersection_unsafe:
+                self.storage.store_successor(interval, f"{self.t}.split", parent_id)
+            for interval in remaining:  # mark as terminal?
+                remaining_ids.append(self.storage.store_successor(interval, f"{self.t}.split", parent_id))
+            remaining_total.extend(remaining)
+            intersection_safe_total.extend(intersection_safe)
+            intersection_unsafe_total.extend(intersection_unsafe)
+            remaining_ids_total.extend(remaining_ids)
+        return remaining_total, intersection_safe_total, intersection_unsafe_total, remaining_ids_total
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):
@@ -402,3 +411,8 @@ def unshelve_variables():
     for key in my_shelf:
         globals()[key] = my_shelf[key]
     my_shelf.close()
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]

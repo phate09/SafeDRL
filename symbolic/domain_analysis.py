@@ -64,7 +64,7 @@ terminal_states = []
 # input("Press key")
 # %%
 # remainings = [((0.4939272701740265, 0.5060727596282959), (0.47243446111679077, 0.5275655388832092), (0.5377258062362671, 0.5754516124725342), (0.9780327081680298, 1.009901523590088))]
-for i in range(6):
+for i in range(3):
     remainings = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
     t = t + 1
     storage.save_state("/home/edoardo/Development/SafeDRL/save")
@@ -113,7 +113,7 @@ while True:
             to_analyse.append(dom1)
             to_analyse.append(dom2)
     t = analysis_t + 1  # start inserting the new values after the current timestep
-    print(f"Safe: {safe_count} Unsafe: {unsafe_count}")
+    print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
     if len(to_analyse) != 0:
         for i in range(4):
             to_analyse, rtree = analysis_iteration(to_analyse, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
