@@ -1,31 +1,27 @@
 """
 Collection of methods to use in unroll_abstract_env
 """
-import pickle
+import random
 from itertools import cycle
+from typing import Tuple, List
 
-import jsonpickle
+import intervals as I
 import numpy as np
-import mpmath
 import progressbar
 import ray
 from mpmath import iv
-# from interval import interval,imath
-from rtree import index
 
-from mosaic.utils import compute_remaining_intervals3_multi, bulk_load_rtree_helper, flatten_interval
+from mosaic.utils import compute_remaining_intervals3_multi
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
+from prism.shared_rtree import flatten_interval, SharedRtree
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
+from verification_runs.aggregate_abstract_domain import aggregate
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
-import os
-from verification_runs.aggregate_abstract_domain import aggregate, merge_list_tuple
-import random
-import intervals as I
-from typing import Tuple, List
-import functools
-import operator
+
+
+# from interval import interval,imath
 
 
 def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -122,27 +118,27 @@ class AbstractStepWorker:
         self.env = CartPoleEnv_abstract()  # todo find a way to define the initialiser for the environment
         self.explorer = explorer
         self.t = t
+        self.storage = get_storage()
 
     def work(self, interval):
-        with get_storage() as storage:
-            next_states = []
-            terminal_states = []
-            parent_index = storage.get_inverse(interval[0])
-            denormalised_interval = self.explorer.denormalise(interval[0])
-            action = 1 if interval[1] else 0  # 1 if safe 0 if not
-            next_state, done = step_state(denormalised_interval, action, self.env)
-            next_state_sticky, done_sticky = step_state(next_state, action, self.env)
-            normalised_next_state = self.explorer.normalise(next_state)
-            normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
-            successor_id, sticky_successor_id = storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
-            # unwrapped_next_state = interval_unwrap(next_state)
-            if done:
-                terminal_states.append(successor_id)
-            if done_sticky:
-                terminal_states.append(sticky_successor_id)
-            next_states.append(normalised_next_state)
-            next_states.append(normalised_next_state_sticky)
-            return next_states, terminal_states
+        next_states = []
+        terminal_states = []
+        parent_index = self.storage.get_inverse(interval[0])
+        denormalised_interval = self.explorer.denormalise(interval[0])
+        action = 1 if interval[1] else 0  # 1 if safe 0 if not
+        next_state, done = step_state(denormalised_interval, action, self.env)
+        next_state_sticky, done_sticky = step_state(next_state, action, self.env)
+        normalised_next_state = self.explorer.normalise(next_state)
+        normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
+        successor_id, sticky_successor_id = self.storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
+        # unwrapped_next_state = interval_unwrap(next_state)
+        if done:
+            terminal_states.append(successor_id)
+        if done_sticky:
+            terminal_states.append(sticky_successor_id)
+        next_states.append(normalised_next_state)
+        next_states.append(normalised_next_state_sticky)
+        return next_states, terminal_states
 
 
 def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
@@ -330,11 +326,11 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
         return result
 
 
-def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: index.Index, env, explorer, storage: StateStorage, failed_area: List,
-                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> Tuple[List[Tuple[Tuple[float, float]]], index.Index]:
+def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, storage: StateStorage, failed_area: List,
+                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
     while True:
-        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, rtree, t, n_workers)  # checks areas not covered by total intervals
+        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, t, n_workers)  # checks areas not covered by total intervals
         assigned_action_intervals.extend([(x, True) for x in safe_intervals_union])
         assigned_action_intervals.extend([(x, False) for x in unsafe_intervals_union])
         # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
@@ -358,13 +354,11 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
             union_states_total.extend([(x, True) for x in safe_intervals_union2])
             union_states_total.extend([(x, False) for x in unsafe_intervals_union2])
             for x in [(x, True) for x in safe_intervals_union2]:
-                coordinates = flatten_interval(x[0])
-                rtree.insert(storage.store(x, t), coordinates, x)
-                assert len(list(rtree.intersection(coordinates, objects='raw'))) != 0
-            for x in [(x, False) for x in safe_intervals_union2]:
-                coordinates = flatten_interval(x[0])
-                rtree.insert(storage.store(x, t), flatten_interval(x[0]), x)
-                assert len(list(rtree.intersection(coordinates, objects='raw'))) != 0
+                rtree.add_single(storage.store(x, t), x)
+                assert len(rtree.filter_relevant_intervals3(x[0])) != 0
+            for x in [(x, False) for x in unsafe_intervals_union2]:
+                rtree.add_single(storage.store(x, t), x)
+                assert len(rtree.filter_relevant_intervals3(x[0])) != 0
             rtree.flush()
 
             # rtree, _ = rebuild_tree(union_states_total, n_workers)  # rebuild the tree to cover the areas that weren't covered before
@@ -378,20 +372,9 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
     next_states_array, remainings_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
                                                             n_workers)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states.extend(remainings_id)
-    print(f"Sucessors : {len(next_states_array)}")
+    print(f"Sucessors : {len(next_states_array)} Terminals : {len(remainings_id)}")
 
     print(f"t:{t} Finished")
     if len(terminal_states) != 0:
         storage.mark_as_fail(terminal_states)
-    return next_states_array, rtree
-
-
-def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> Tuple[index.Index, List[Tuple[Tuple[Tuple[float, float]], bool]]]:
-    p = index.Property(dimension=4)
-    # union_states_total = merge_list_tuple(union_states_total, n_workers)  # aggregate intervals
-    print("Building the tree")
-    helper = bulk_load_rtree_helper(union_states_total)
-    rtree = index.Index('save/rtree', helper, interleaved=False, properties=p, overwrite=True)
-    rtree.flush()
-    print("Finished building the tree")
-    return rtree, union_states_total
+    return next_states_array

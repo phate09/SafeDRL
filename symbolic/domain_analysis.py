@@ -1,6 +1,10 @@
 # %%
+import os
 import pickle
 import gym
+import jsonpickle
+
+from prism.shared_rtree import get_rtree
 
 gym.logger.set_level(40)
 from py4j.java_collections import ListConverter
@@ -31,17 +35,19 @@ else:
     safe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in safe_states]
     unsafe_states_total = [tuple([(float(x[0]), float(x[1])) for x in k]) for k in unsafe_states]
     union_states_total = [(x, True) for x in safe_states_total] + [(x, False) for x in unsafe_states_total]
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True,log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 if os.path.exists('save/rtree.dat') and os.path.exists('save/rtree.idx'):
     print("Loading the tree")
-    p = index.Property(dimension=4)
-    rtree = index.Index('save/rtree', interleaved=False, properties=p)
+    rtree = get_rtree()
     print("Finished loading the tree")
 else:
-    rtree, union_states_total = rebuild_tree(union_states_total, n_workers)
+    print(f"Tree is missing, rebuilding it")
+    rtree = get_rtree()
+    rtree.load(union_states_total)
+    print(f"Finished building the tree")
 remainings = [current_interval]
 t = 0
 parent_id = storage.store(current_interval, t)
@@ -57,14 +63,14 @@ terminal_states = []
 # print("finished")
 # input("Press key")
 # %%
-remainings = [((0.4939272701740265, 0.5060727596282959), (0.47243446111679077, 0.5275655388832092), (0.5377258062362671, 0.5754516124725342), (0.9780327081680298, 1.009901523590088))]
-for i in range(1):
-    remainings, rtree = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
+# remainings = [((0.4939272701740265, 0.5060727596282959), (0.47243446111679077, 0.5275655388832092), (0.5377258062362671, 0.5754516124725342), (0.9780327081680298, 1.009901523590088))]
+for i in range(6):
+    remainings = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
     t = t + 1
-    # storage.save_state("/home/edoardo/Development/SafeDRL/save")
-    # pickle.dump(union_states_total, open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "wb+"))
-    # pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
-    # pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
+    storage.save_state("/home/edoardo/Development/SafeDRL/save")
+    pickle.dump(union_states_total, open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "wb+"))
+    pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
+    pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 # %%
 # union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
 # terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
@@ -72,7 +78,7 @@ for i in range(1):
 # storage.load_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 while True:
-    if storage.prism_needs_update:
+    if storage.needs_update:
         storage.recreate_prism()
     split_performed = False
     analysis_t = 0  # for now we analyse the layer t=0 after it gets splitted

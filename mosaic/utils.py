@@ -1,23 +1,19 @@
-import shelve
+import decimal
 import itertools
-from collections import Iterable
-from functools import partial
+import shelve
+from itertools import cycle
 from typing import Tuple, List
-import multiprocessing as mp
+
+import intervals as I
 import numpy as np
 import progressbar
-import psutil
-import ray
-import intervals as I
-import decimal
 import ray
 import scipy.spatial
 import torch
-from rtree import index
 from scipy.spatial.ckdtree import cKDTreeNode
+
+from prism.shared_rtree import get_rtree
 from prism.state_storage import get_storage
-from prism.state_storage import StateStorage
-from itertools import cycle
 
 
 def compute_remaining_intervals(current_interval, intervals_to_fill) -> set:
@@ -260,13 +256,13 @@ def area_numpy(domain: np.ndarray) -> float:
     return float(dom_area.item())
 
 
-def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+def compute_remaining_intervals3_multi(current_intervals, t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    workers = cycle([RemainingWorker.remote(rtree, t) for _ in range(n_workers)])
+    workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
         for i, x in enumerate(current_intervals):
@@ -278,34 +274,32 @@ def compute_remaining_intervals3_multi(current_intervals, rtree: index.Index, t:
             ready_ids, proc_ids = ray.wait(proc_ids)
             parallel_result.append(ray.get(ready_ids[0]))
             bar.update(bar.value + 1)
-    if len(parallel_result)!=0:
+    if len(parallel_result) != 0:
         archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
     else:
-        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = [],[],[],[]
+        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = [], [], [], []
     return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
 
 
 @ray.remote
 class RemainingWorker():
-    def __init__(self, tree, t):
-        self.tree = tree  # self.storage = get_storage()
+    def __init__(self, t):
+        self.tree = get_rtree()
         self.t = t
+        self.storage = get_storage()
 
     def compute_remaining_worker(self, current_interval):
-        with get_storage() as storage:
-            parent_id = storage.store(current_interval, self.t)
-            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(current_interval, self.tree)
-            remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
-            remaining_ids = []
-            for interval in intersection_safe:
-                storage.store_successor(interval, f"{self.t}.split", parent_id)
-            for interval in intersection_unsafe:
-                storage.store_successor(interval, f"{self.t}.split", parent_id)
-            for interval in remaining:  # mark as terminal?
-                remaining_ids.append(storage.store_successor(interval, f"{self.t}.split", parent_id))
-            return remaining, intersection_safe, intersection_unsafe, remaining_ids
-
-    # def __del__(self):  #     self.storage.close()
+        parent_id = self.storage.store(current_interval, self.t)
+        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(current_interval)
+        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(current_interval, relevant_intervals, False)
+        remaining_ids = []
+        for interval in intersection_safe:
+            self.storage.store_successor(interval, f"{self.t}.split", parent_id)
+        for interval in intersection_unsafe:
+            self.storage.store_successor(interval, f"{self.t}.split", parent_id)
+        for interval in remaining:  # mark as terminal?
+            remaining_ids.append(self.storage.store_successor(interval, f"{self.t}.split", parent_id))
+        return remaining, intersection_safe, intersection_unsafe, remaining_ids
 
 
 def filter_relevant_intervals(current_interval, intervals_to_fill):
@@ -324,17 +318,6 @@ def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill
     result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
     final_list = [intervals_to_fill[i] for i in indices if interval_contains(intervals_to_fill[i], current_interval)]
     return final_list
-
-
-def filter_relevant_intervals3(current_interval: Tuple[Tuple[float, float]], rtree: index.Index) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    """Filter the intervals relevant to the current_interval"""
-    result = rtree.intersection(flatten_interval(current_interval), objects='raw')
-    return list(result)
-
-
-def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
-    return (
-        current_interval[0][0], current_interval[0][1], current_interval[1][0], current_interval[1][1], current_interval[2][0], current_interval[2][1], current_interval[3][0], current_interval[3][1])
 
 
 def search_kd_tree(tree: cKDTreeNode, range: Tuple[Tuple]):
@@ -419,11 +402,3 @@ def unshelve_variables():
     for key in my_shelf:
         globals()[key] = my_shelf[key]
     my_shelf.close()
-
-
-def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-    for i, obj in enumerate(data):
-        yield (i, (obj[0][0][0], obj[0][0][1], obj[0][1][0], obj[0][1][1], obj[0][2][0], obj[0][2][1], obj[0][3][0], obj[0][3][1]), obj)
-
-
-

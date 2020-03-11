@@ -7,8 +7,9 @@ import progressbar
 import ray
 from rtree import index
 
-from mosaic.utils import flatten_interval, partially_contained_interval, partially_contained, bulk_load_rtree_helper
+from mosaic.utils import partially_contained_interval, partially_contained
 from prism.shared_dictionary import get_shared_dictionary, SharedDict
+from prism.shared_rtree import bulk_load_rtree_helper, flatten_interval
 
 
 def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
@@ -87,37 +88,37 @@ class MergingWorker():
         p = index.Property(dimension=4)
         helper = bulk_load_rtree_helper(union_states_total)
         self.tree_global = index.Index(helper, properties=p, interleaved=False)
+        self.handled_intervals=get_shared_dictionary()
 
     def merge_worker(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        with get_shared_dictionary() as handled_intervals:
-            aggregated_list = []
-            for interval in intervals:
-                # print(f"starting process {i}")
-                result = None
-                handled = handled_intervals.get(interval, False)
-                # p = index.Property(dimension=4)
-                # tree = index.Index(path, properties=p, interleaved=False)
-                if not handled:
-                    near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree_global.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
-                    found_match = False
-                    for neighbour in near_intervals:
-                        neighbour_handled = handled_intervals.get(neighbour, False)
-                        same_action = neighbour[1] == interval[1]
-                        if not neighbour_handled and same_action:
-                            new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
-                            if new_interval[0] is not None:
-                                # aggregated_list.append(new_interval)
-                                result = new_interval
-                                handled_intervals.set(neighbour, True)  # mark the interval as handled
-                                handled_intervals.set(interval, True)  # mark the interval as handled
-                                found_match = True
-                                break
-                    if not found_match:
-                        aggregated_list.append(interval)  # result = interval
-                else:
-                    # already handled previously
-                    pass
-            return aggregated_list
+        aggregated_list = []
+        for interval in intervals:
+            # print(f"starting process {i}")
+            result = None
+            handled = self.handled_intervals.get(interval, False)
+            # p = index.Property(dimension=4)
+            # tree = index.Index(path, properties=p, interleaved=False)
+            if not handled:
+                near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree_global.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
+                found_match = False
+                for neighbour in near_intervals:
+                    neighbour_handled = self.handled_intervals.get(neighbour, False)
+                    same_action = neighbour[1] == interval[1]
+                    if not neighbour_handled and same_action:
+                        new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
+                        if new_interval[0] is not None:
+                            # aggregated_list.append(new_interval)
+                            result = new_interval
+                            self.handled_intervals.set(neighbour, True)  # mark the interval as handled
+                            self.handled_intervals.set(interval, True)  # mark the interval as handled
+                            found_match = True
+                            break
+                if not found_match:
+                    aggregated_list.append(interval)  # result = interval
+            else:
+                # already handled previously
+                pass
+        return aggregated_list
 
 
 def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:

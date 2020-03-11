@@ -1,4 +1,3 @@
-import zerorpc
 from prism.state_storage import get_storage
 import ray
 

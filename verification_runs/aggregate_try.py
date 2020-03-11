@@ -26,7 +26,7 @@ if __name__ == '__main__':
     #     x_array = np.array(x[0])
     #     previous_total_area += area_numpy(x_array)
     previous_areas = [area_numpy(np.array(x[0])) for x in union_states_total]
-    helper = bulk_load_rtree_helper(union_states_total)
+    # helper = bulk_load_rtree_helper(union_states_total)
     # print(list(helper))
     # p = index.Property(dimension=4)
     # r = index.Index('/tmp/rtree',helper, interleaved=False, properties=p)

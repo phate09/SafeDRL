@@ -36,6 +36,10 @@ class StateStorage():
             self.graph = nx.DiGraph()
             self.prism_needs_update = False
 
+    @property
+    def needs_update(self):
+        return self.prism_needs_update
+
     def store(self, item, t) -> int:
         # item = tuple([tuple(x) for x in item])
         # print(f"store {item}")
