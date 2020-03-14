@@ -8,7 +8,7 @@ from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from proto.state_request_pb2 import StringVarNames, CartPoleState
 from mpmath import iv
 
-from symbolic.unroll_methods import interval_unwrap
+from mosaic.workers.AbstractStepWorker import interval_unwrap
 from verification_runs.aggregate_abstract_domain import aggregate
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 

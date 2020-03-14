@@ -64,7 +64,7 @@ terminal_states = []
 # input("Press key")
 # %%
 # remainings = [((0.4939272701740265, 0.5060727596282959), (0.47243446111679077, 0.5275655388832092), (0.5377258062362671, 0.5754516124725342), (0.9780327081680298, 1.009901523590088))]
-for i in range(3):
+for i in range(1):
     remainings = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
     t = t + 1
     storage.save_state("/home/edoardo/Development/SafeDRL/save")
@@ -72,10 +72,10 @@ for i in range(3):
     pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
     pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 # %%
-# union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
-# terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
-# t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
-# storage.load_state("/home/edoardo/Development/SafeDRL/save")
+union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
+terminal_states = pickle.load(open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "rb"))
+t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
+storage.load_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 while True:
     if storage.needs_update:

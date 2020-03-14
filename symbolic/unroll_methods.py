@@ -8,9 +8,11 @@ from typing import Tuple, List
 import numpy as np
 import progressbar
 import ray
-from mpmath import iv
+import scipy.spatial
 
-from mosaic.utils import compute_remaining_intervals3_multi, chunks
+from mosaic.utils import chunks, filter_helper, interval_contains
+from mosaic.workers.AbstractStepWorker import AbstractStepWorker
+from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage, get_storage
@@ -18,73 +20,10 @@ from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 
-# from interval import interval,imath
-
-
-def interval_unwrap(state: np.ndarray) -> Tuple[Tuple[float, float]]:
-    """From array of intervals to tuple of floats"""
-    unwrapped_state = tuple([(float(x.a), float(x.b)) for x in state])
-    return unwrapped_state
-
-
-def step_state(state: Tuple[Tuple], action, env) -> Tuple[Tuple[Tuple], bool]:
-    # given a state and an action, calculate next state
-    env.reset()
-    env.state = tuple([iv.mpf([float(x[0]), float(x[1])]) for x in state])
-    next_state, reward, done, _ = env.step(action)
-    return interval_unwrap(next_state), done
-
-
-# def abstract_step(abstract_states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract) -> List[np.ndarray]:
-#     """
-#     Given some abstract states, compute the next abstract states taking the action passed as parameter
-#     :param env:
-#     :param abstract_states: the abstract states from which to start, list of tuples of intervals
-#     :param action: the action to take
-#     :return: the next abstract states after taking the action (array)
-#     """
-#     next_states = []
-#     bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states) + 1, redirect_stdout=True, is_terminal=True).start()
-#     for i, interval in enumerate(abstract_states):
-#         next_state, done = step_state(interval, action, env)
-#         # unwrapped_next_state = interval_unwrap(next_state)
-#         next_states.append(next_state)
-#         bar.update(i)
-#     # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
-#     bar.finish()
-#     return next_states
-#
-#
-# def abstract_step_store(abstract_states_normalised: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, storage: StateStorage, explorer: DomainExplorer) -> List[Tuple[Tuple[float, float]]]:
-#     """
-#     Given some abstract states, compute the next abstract states taking the action passed as parameter
-#     :param env:
-#     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
-#     :param action: the action to take
-#     :return: the next abstract states after taking the action (array)
-#     """
-#     next_states = []
-#     bar = progressbar.ProgressBar(prefix="Performing abstract step...", max_value=len(abstract_states_normalised) + 1, is_terminal=True).start()
-#     for i, interval in enumerate(abstract_states_normalised):
-#         parent_index = storage.dictionary.inverse[interval]
-#         denormalised_interval = explorer.denormalise(interval)
-#         next_state, done = step_state(denormalised_interval, action, env)
-#         # next_state = tuple([(float(next_state[dimension].item(0)), float(next_state[dimension].item(1))) for dimension in range(len(next_state))])
-#         normalised_next_state = explorer.normalise(next_state)
-#         storage.store_successor(normalised_next_state, parent_index)
-#         # unwrapped_next_state = interval_unwrap(next_state)
-#         next_states.append(normalised_next_state)
-#         bar.update(i)
-#     # next_states_array = np.array(next_states, dtype=np.float32)  # turns the list in an array
-#     bar.finish()
-#     return next_states
-
-
 def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
-    :param local_mode:
     :param explorer:
     :param env:
     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
@@ -107,78 +46,6 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
             terminal_states.extend(terminal_states_local)
             bar.update(bar.value + 1)
     return next_states, terminal_states
-
-
-@ray.remote
-class AbstractStepWorker:
-    def __init__(self, explorer, t):
-        self.env = CartPoleEnv_abstract()  # todo find a way to define the initialiser for the environment
-        self.explorer = explorer
-        self.t = t
-        self.storage = get_storage()
-
-    def work(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        next_states_total = []
-        terminal_states_total = []
-        for interval in intervals:
-            next_states = []
-            terminal_states = []
-            parent_index = self.storage.get_inverse(interval[0])
-            denormalised_interval = self.explorer.denormalise(interval[0])
-            action = 1 if interval[1] else 0  # 1 if safe 0 if not
-            next_state, done = step_state(denormalised_interval, action, self.env)
-            next_state_sticky, done_sticky = step_state(next_state, action, self.env)
-            normalised_next_state = self.explorer.normalise(next_state)
-            normalised_next_state_sticky = self.explorer.normalise(next_state_sticky)
-            successor_id, sticky_successor_id = self.storage.store_sticky_successors(normalised_next_state, normalised_next_state_sticky, self.t, parent_index)
-            # unwrapped_next_state = interval_unwrap(next_state)
-            if done:
-                terminal_states.append(successor_id)
-            if done_sticky:
-                terminal_states.append(sticky_successor_id)
-            next_states.append(normalised_next_state)
-            next_states.append(normalised_next_state_sticky)
-            next_states_total.extend(next_states)
-            terminal_states_total.extend(terminal_states)
-        return next_states_total, terminal_states_total
-
-
-# def explore_step(states: List[Tuple[Tuple]], action: int, env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork) -> Tuple[
-#     List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
-#     next_states_array = abstract_step(states, action, env)
-#     explorer.reset()
-#     stats = explorer.explore(verification_model, next_states_array, min_area=1e-8, debug=True)
-#     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
-#     safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
-#     unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]
-#     ignore_next = [i.cpu().numpy() for i in explorer.ignore_domains]
-#     return safe_next, unsafe_next, ignore_next
-
-
-# def iteration(t: int, t_states: List[List[List[Tuple[I.Interval]]]], env: CartPoleEnv_abstract, explorer: DomainExplorer, verification_model: VerificationNetwork):
-#     print(f"Iteration for time t={t}")
-#     safe_states, unsafe_states, ignore_states = t_states[t]
-#     safe_next_total = []
-#     unsafe_next_total = []
-#     ignore_next_total = []
-#     # safe states
-#     print(f"Safe states")
-#     safe_next, unsafe_next, ignore_next = explore_step(safe_states, 0, env, explorer, verification_model)  # takes 0 in safe states
-#     safe_next_total.extend(safe_next)
-#     unsafe_next_total.extend(unsafe_next)
-#     ignore_next_total.extend(ignore_next)
-#     # unsafe states
-#     print(f"Unsafe states")
-#     safe_next, unsafe_next, ignore_next = explore_step(unsafe_states, 1, env, explorer, verification_model)  # takes 1 in unsafe states
-#     safe_next_total.extend(safe_next)
-#     unsafe_next_total.extend(unsafe_next)
-#     ignore_next_total.extend(ignore_next)
-#     # aggregate together states
-#     safe_array = aggregate(np.stack(safe_next_total)) if len(safe_next_total) != 0 else []
-#     unsafe_array = aggregate(np.stack(unsafe_next_total)) if len(unsafe_next_total) != 0 else []
-#     t_states.append([safe_array, unsafe_array, []])  # np.stack(ignore_next + ignore_next2)
-#     print(f"Finished iteration t={t}, #safe states:{len(safe_next_total)}, #unsafe states:{len(unsafe_next_total)}, #ignored states:{len(ignore_next_total)}")
-#     return t_states
 
 
 def generate_points_in_intervals(total_states: np.ndarray, n_points=100) -> np.ndarray:
@@ -380,3 +247,46 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
     if len(terminal_states) != 0:
         storage.mark_as_fail(terminal_states)
     return next_states_array
+
+
+def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+    """
+    Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
+    :param current_intervals:
+    :return: the blank intervals and the intersection intervals
+    """
+    workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
+    proc_ids = []
+    with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
+        for i, intervals in enumerate(chunks(current_intervals, 200)):
+            proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
+            bar.update(i)
+    parallel_result = []
+    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True) as bar:
+        while len(proc_ids) != 0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            parallel_result.append(ray.get(ready_ids[0]))
+            bar.update(bar.value + 1)
+    if len(parallel_result) != 0:
+        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
+    else:
+        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = [], [], [], []
+    return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
+
+
+def filter_relevant_intervals(current_interval, intervals_to_fill):
+    """Filter the intervals relevant to the current_interval"""
+    if not ray.is_initialized():
+        ray.init(log_to_driver=False, include_webui=True)
+    # remote_func = ray.remote(filter_helper)
+    results = [filter_helper.remote(interval_to_fill, current_interval) for interval_to_fill in intervals_to_fill]
+    final_list = [ray.get(result) for result in results if ray.get(result) is not None]
+    return final_list
+
+
+def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill, kdtree: scipy.spatial.cKDTree):
+    """Filter the intervals relevant to the current_interval"""
+    k = 100
+    result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
+    final_list = [intervals_to_fill[i] for i in indices if interval_contains(intervals_to_fill[i], current_interval)]
+    return final_list

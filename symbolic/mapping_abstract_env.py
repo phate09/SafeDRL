@@ -4,7 +4,8 @@ from bidict import bidict
 
 from prism.state_storage import StateStorage
 from symbolic.unroll_methods import *
-from mosaic.utils import compute_remaining_intervals2, compute_remaining_intervals2_multi, truncate_multi, beep, compute_remaining_intervals3_multi
+from mosaic.utils import compute_remaining_intervals2, compute_remaining_intervals2_multi, truncate_multi, beep
+from symbolic.unroll_methods import compute_remaining_intervals3_multi
 
 storage = StateStorage()
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
