@@ -4,6 +4,7 @@ import pickle
 import gym
 import jsonpickle
 
+from mosaic.utils import round_tuples
 from prism.shared_rtree import get_rtree
 from verification_runs.aggregate_abstract_domain import merge_list_tuple
 
@@ -23,6 +24,8 @@ current_interval = s
 explorer, verification_model = generateCartpoleDomainExplorer(1e-1)
 # reshape with tuples
 current_interval = tuple([(float(x.a), float(x.b)) for i, x in enumerate(current_interval)])
+precision = 1e-6
+rounding = 6
 
 local_mode = False
 if not ray.is_initialized():
@@ -32,6 +35,7 @@ n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 union_states_total = []
 if os.path.exists('save/union_states_total.p'):
     union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
+    union_states_total = round_tuples(union_states_total, rounding=rounding)
     union_states_total = merge_list_tuple(union_states_total, n_workers=n_workers)
 # else:
 #     with open("./save/t_states.json", 'r') as f:
@@ -60,7 +64,7 @@ t = 0
 parent_id = storage.store(current_interval, t)
 #
 last_time_remaining_number = -1
-precision = 1e-6
+
 failed = []
 failed_area = 0
 terminal_states = []
@@ -72,7 +76,7 @@ terminal_states = []
 # %%
 # remainings = [((0.4939272701740265, 0.5060727596282959), (0.47243446111679077, 0.5275655388832092), (0.5377258062362671, 0.5754516124725342), (0.9780327081680298, 1.009901523590088))]
 for i in range(6):
-    remainings = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
+    remainings = analysis_iteration(remainings, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total, rounding)
     t = t + 1
     storage.save_state("/home/edoardo/Development/SafeDRL/save")
     pickle.dump(union_states_total, open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "wb+"))
@@ -126,7 +130,7 @@ while True:
             print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
             split_performed = True
             interval_to_split = storage.dictionary_get(t_ids[i])
-            dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split)
+            dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split, rounding)
             # storage.purge(0, [t_ids[i]])
             storage.purge_branch(t_ids[i], 0)
             storage.store_successor(dom1, f"{analysis_t}.split", 0)

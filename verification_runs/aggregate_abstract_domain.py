@@ -1,5 +1,6 @@
 from functools import partial
 from itertools import permutations, cycle
+from math import ceil
 from typing import Tuple, List
 import multiprocessing as mp
 import numpy as np
@@ -7,7 +8,7 @@ import progressbar
 import ray
 from rtree import index
 
-from mosaic.utils import partially_contained_interval, partially_contained
+from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks
 from prism.shared_dictionary import get_shared_dictionary, SharedDict
 from prism.shared_rtree import bulk_load_rtree_helper, flatten_interval
 
@@ -49,21 +50,20 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
 def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = intervals
     with get_shared_dictionary() as shared_dict:
-        shared_dict.reset()  # reset the dictionary
         while True:
+            shared_dict.reset()  # reset the dictionary
             old_size = len(aggregated_list)
             # path = 'save/rtree'
             proc_ids = []
-            print(f"About to start the merging process of {len(intervals)} elements")
+            print(f"About to start the merging process of {old_size} elements")
             workers = cycle([MergingWorker.remote(aggregated_list) for _ in range(n_workers)])
-            chunks = list(chunker_list(aggregated_list, 500))  # splits the list into 500 chunks rather than passing intervals one by one (for performance)
-            with progressbar.ProgressBar(prefix="Starting workers", max_value=len(chunks), is_terminal=True) as bar:
-                for i, x in enumerate(chunks):
-                    # for i, x in enumerate(aggregated_list):
-                    proc_ids.append(next(workers).merge_worker.remote(x))
+            chunk_size = 200
+            with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=300) as bar:
+                for i, intervals in enumerate(chunks(aggregated_list, chunk_size)):
+                    proc_ids.append(next(workers).merge_worker.remote(intervals))
                     bar.update(i)
             aggregated_list = []
-            with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True) as bar:
+            with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=300) as bar:
                 while len(proc_ids) != 0:
                     ready_ids, proc_ids = ray.wait(proc_ids)
                     result = ray.get(ready_ids[0])
@@ -78,8 +78,7 @@ def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n
     return aggregated_list
 
 
-def chunker_list(seq, size):
-    return (seq[i::size] for i in range(size))
+
 
 
 @ray.remote
@@ -88,7 +87,7 @@ class MergingWorker():
         p = index.Property(dimension=4)
         helper = bulk_load_rtree_helper(union_states_total)
         self.tree_global = index.Index(helper, properties=p, interleaved=False)
-        self.handled_intervals=get_shared_dictionary()
+        self.handled_intervals = get_shared_dictionary()
 
     def merge_worker(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
         aggregated_list = []
@@ -107,8 +106,8 @@ class MergingWorker():
                     if not neighbour_handled and same_action:
                         new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
                         if new_interval[0] is not None:
-                            # aggregated_list.append(new_interval)
-                            result = new_interval
+                            aggregated_list.append(new_interval)
+                            # result = new_interval
                             self.handled_intervals.set(neighbour, True)  # mark the interval as handled
                             self.handled_intervals.set(interval, True)  # mark the interval as handled
                             found_match = True
@@ -134,6 +133,10 @@ def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[flo
     n_same_dim = 0
     idx_different_dim = -1
     suitable = True
+    if completely_inside(first, second):
+        return second
+    if completely_inside(second, first):
+        return first
     for k in range(n_dim):
         if first[k][0] == second[k][0] and first[k][1] == second[k][1]:
             n_same_dim += 1
@@ -143,7 +146,7 @@ def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[flo
             else:
                 suitable = False
                 break
-        else:  # the dimensions are detatched
+        else:  # the dimensions are detached
             suitable = False
             break
     # suitable = partially_contained_interval(first, second)
@@ -152,6 +155,11 @@ def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[flo
         return tuple(merged_interval)
     else:
         return None
+
+
+def completely_inside(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]):
+    n_dim = len(first)
+    return all([contained(first[k], second[k]) for k in range(n_dim)])
 
 
 def merge_single(first, second, n_dims) -> np.ndarray:

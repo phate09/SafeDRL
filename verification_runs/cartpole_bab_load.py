@@ -43,7 +43,7 @@ def main():
     # explorer.explore(verification_model, aggregated_ignore, precision=1e-6, min_area=0)  # unknown behaviour
 
 
-def generateCartpoleDomainExplorer(precision=1e-2):
+def generateCartpoleDomainExplorer(precision=1e-2,rounding=6):
     use_cuda = False
     seed = 1
     torch.manual_seed(seed)
@@ -56,7 +56,7 @@ def generateCartpoleDomainExplorer(precision=1e-2):
     agent.load(os.path.expanduser("~/Development")+"/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
     verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
     domain = torch.from_numpy(domain_raw).float().to(device)
-    explorer = DomainExplorer(1, domain,device,precision=precision)
+    explorer = DomainExplorer(1, domain,device,precision=precision,rounding=rounding)
     return explorer, verification_model
 
 

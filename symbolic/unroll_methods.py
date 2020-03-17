@@ -3,6 +3,7 @@ Collection of methods to use in unroll_abstract_env
 """
 import random
 from itertools import cycle
+from math import ceil
 from typing import Tuple, List
 
 import numpy as np
@@ -20,8 +21,8 @@ from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int) -> Tuple[
-    List[Tuple[Tuple[float, float]]], List[int]]:
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> \
+        Tuple[List[Tuple[Tuple[float, float]]], List[int]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param explorer:
@@ -32,10 +33,11 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     next_states = []
     terminal_states = []
 
-    workers = cycle([AbstractStepWorker.remote(explorer, t) for _ in range(n_workers)])
+    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding) for _ in range(n_workers)])
     proc_ids = []
-    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(abstract_states_normalised), is_terminal=True) as bar:
-        for i, intervals in enumerate(chunks(abstract_states_normalised, 100)):
+    chunk_size = 100
+    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=ceil(len(abstract_states_normalised) / chunk_size), is_terminal=True) as bar:
+        for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
             proc_ids.append(next(workers).work.remote(intervals))
             bar.update(i)
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True) as bar:
@@ -196,7 +198,7 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
 
 
 def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, storage: StateStorage, failed_area: List,
-                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[float, float]]]:
+                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
     while True:
         remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, t, n_workers)  # checks areas not covered by total intervals
@@ -233,13 +235,13 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
             # rtree, _ = rebuild_tree(union_states_total, n_workers)  # rebuild the tree to cover the areas that weren't covered before
         else:  # if no more remainings exit
             break
-    terminal_states.extend(remainings_id)
+    # terminal_states.extend(remainings_id)
     area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
     failed.extend(remainings)
     failed_area[0] += area
     print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area[0]}")
-    next_states_array, remainings_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1,
-                                                            n_workers)  # performs a step in the environment with the assigned action and retrieve the result
+    next_states_array, remainings_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1, n_workers,
+                                                            rounding)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states.extend(remainings_id)
     print(f"Sucessors : {len(next_states_array)} Terminals : {len(remainings_id)}")
 
@@ -257,8 +259,9 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     """
     workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
     proc_ids = []
-    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=len(current_intervals), is_terminal=True) as bar:
-        for i, intervals in enumerate(chunks(current_intervals, 300)):
+    chunk_size = 300
+    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(current_intervals) / chunk_size), is_terminal=True) as bar:
+        for i, intervals in enumerate(chunks(current_intervals, chunk_size)):
             proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
             bar.update(i)
     parallel_result = []

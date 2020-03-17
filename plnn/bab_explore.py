@@ -11,7 +11,7 @@ import mosaic.utils
 
 
 class DomainExplorer:
-    def __init__(self, safe_property_index: int, domain: torch.Tensor, device: torch.device, precision=1e-2):
+    def __init__(self, safe_property_index: int, domain: torch.Tensor, device: torch.device, precision, rounding: int):
         """
 
         :param domain: the domain to explore for abstract interpretations
@@ -32,6 +32,7 @@ class DomainExplorer:
         # self.domain_lb = domain.select(-1, 0)
         # self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
+        self.rounding = rounding
 
     def explore(self, net, domains: List[np.ndarray], n_workers: int, debug=True):
         # eps = 1e-3
@@ -100,7 +101,7 @@ class DomainExplorer:
     def start_explore_one_domain(self, global_min_area, message_queue, net, queue, shortest_dimension):
         normed_domain = queue.pop(0)
         # Genearate new, smaller (normalized) domains using box split.
-        ndoms = self.box_split(normed_domain)
+        ndoms = self.box_split(normed_domain, self.rounding)
         for i, ndom_i in enumerate(ndoms):
             area = mosaic.utils.area_tensor(ndom_i)
             length, dim = self.max_length(ndom_i)
@@ -175,23 +176,6 @@ class DomainExplorer:
         thawed: DomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
-    # def denormalise(self, state: Tuple[Tuple[float, float]]):
-    #     elements = []
-    #     for i, x in enumerate(state):
-    #         elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),
-    #                          mosaic.utils.custom_rounding(float(x[1]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i])))
-    #     denormalized_state = tuple(elements)
-    #     # denormalized_state = tuple(
-    #     #     [(float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item())), float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item()))) for i, x in
-    #     #      enumerate(state)])
-    #     return denormalized_state
-    #
-    # def normalise(self, state: Tuple[Tuple[float, float]]):
-    #     normalized_state = tuple(
-    #         [((float(x[0]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item()), (float(x[1]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item())) for i, x in
-    #          enumerate(state)])
-    #     return normalized_state
-
     @staticmethod
     def generate_precision(domain_width: torch.Tensor, precision_constraint=1e-3):
         """Generate the dictionary of normalised precision to use to constrain the splitting of intervals"""
@@ -203,46 +187,6 @@ class DomainExplorer:
 
     def find_groups(self, net):
         pass
-
-    # def bab(self):
-    #     with torch.no_grad():
-    #         eps = 1e-3
-    #         decision_bound = 0
-    #         # This counter is used to decide when to prune domains
-    #         while len(self.domains) > 0:
-    #             selected_candidate_domain: torch.Tensor = self.domains.pop(0)
-    #             print(f'Splitting domain')
-    #             # Genearate new, smaller (normalized) domains using box split.
-    #             ndoms = self.box_split(selected_candidate_domain)
-    #             print(f"# domains : {len(self.domains)}, # abstract domains: {len(self.safe_domains)}, abstract area: {self.safe_area:.3%}")
-    #             for i, ndom_i in enumerate(ndoms):
-    #                 # Find the upper and lower bounds on the minimum in dom_i
-    #                 dom_i = self.domain_lb.unsqueeze(dim=1) + self.domain_width.unsqueeze(dim=1) * ndom_i
-    #                 dom_ub, dom_lb = self.net.get_boundaries(dom_i, self.safe_property_index, False)
-    #
-    #                 assert dom_lb <= dom_ub, "lb must be lower than ub"
-    #                 if dom_ub < decision_bound:
-    #                     # discard
-    #                     # print("discard")
-    #                     continue
-    #                 if dom_ub - dom_lb < eps:  # todo what do in this case?
-    #                     continue
-    #                 if dom_lb >= decision_bound:
-    #                     # keep
-    #                     self.safe_domains.append(ndom_i)
-    #                     self.safe_area += self.area(ndom_i).item()
-    #                     pass
-    #                 if dom_lb <= decision_bound <= dom_ub:
-    #                     # explore
-    #                     print(f'dom_ub:{dom_ub}')
-    #                     print(f'dom_lb:{dom_lb}')
-    #                     # candidate_domain_to_add = CandidateDomain(lb=dom_lb, ub=dom_ub, dm=ndom_i)
-    #                     # self.add_domain(candidate_domain_to_add, self.domains)
-    #                     self.domains.append(ndom_i)  # O(1)
-    #                     # self.domains.insert(0,candidate_domain_to_add) #O(1)
-    #                     pass
-    #         print(self.safe_domains)
-    #     return self.safe_domains
 
     @staticmethod
     def max_length(domain):
@@ -259,7 +203,7 @@ class DomainExplorer:
         return mosaic.utils.area_tensor(domain) < min_area
 
     @staticmethod
-    def box_split(domain):
+    def box_split(domain, rounding: int):
         """
         Use box-constraints to split the input domain.
         Split by dividing the domain into two from its longest edge.
@@ -280,7 +224,7 @@ class DomainExplorer:
         dim = dim.item()
 
         # Now split over dimension dim:
-        half_length = edgelength / 2
+        half_length = round(edgelength / 2, rounding)
 
         # dom1: Upper bound in the 'dim'th dimension is now at halfway point.
         dom1 = domain.clone()
@@ -295,12 +239,12 @@ class DomainExplorer:
         return sub_domains
 
     @staticmethod
-    def box_split_tuple(domain: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[float, float]]]:
+    def box_split_tuple(domain: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
         domain_array = np.array(domain)
         diff = domain_array[:, 1] - domain_array[:, 0]
         edgelength = np.max(diff, 0).item()
         dim = np.argmax(diff, 0).item()
-        half_length = edgelength / 2
+        half_length = round(edgelength / 2, rounding)
         dom1 = domain_array.copy()
         dom1[dim, 1] -= half_length
         dom2 = domain_array.copy()

@@ -1,6 +1,6 @@
 import decimal
 import shelve
-from typing import Tuple
+from typing import Tuple, List
 
 import intervals as I
 import numpy as np
@@ -121,3 +121,10 @@ def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
+def chunker_list(seq, size):
+    "splits the list is size sublists"
+    return (seq[i::size] for i in range(size))
+
+def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int = 6):
+    return [(tuple([(round(x[0], rounding), round(x[1], rounding)) for x in interval]), action) for interval, action in intervals]
