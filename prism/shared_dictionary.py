@@ -21,7 +21,7 @@ class SharedDict():
         self.dictionary[key] = value
 
 
-def get_shared_dictionary():
+def get_shared_dictionary()->SharedDict:
     # c = zerorpc.Client(timeout=99999999, heartbeat=9999999)
     # c.connect("ipc:///tmp/shared_dict")
     # # c.connect("tcp://127.0.0.1:4242")

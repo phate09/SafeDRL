@@ -29,7 +29,7 @@ class TestDomainExplorer(TestCase):
     def test_precision2(self):
         precisions = DomainExplorer.generate_precision(self.explorer.domain_width)
         normed_domain = torch.tensor([[1, 1 - precisions[0]], [1, 1 - precisions[1]], [1, 1 - precisions[2]], [1, 1 - precisions[3]]])
-        output = DomainExplorer.approximate_to_single_datapoint(normed_domain, self.explorer.domain_lb, self.explorer.domain_width, precisions)
+        output = DomainExplorer.approximate_to_single_datapoint(normed_domain, precisions)
 
     def test_precision3(self):
         normed_domain = torch.tensor([[1, 1 - self.explorer.precision_constraints[0]], [1, 1 - self.explorer.precision_constraints[1]], [1, 1 - self.explorer.precision_constraints[2]], [1, 1 - self.explorer.precision_constraints[3]]])

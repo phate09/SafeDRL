@@ -257,8 +257,8 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     """
     workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
     proc_ids = []
-    with progressbar.ProgressBar(prefix="Starting workers", max_value=len(current_intervals), is_terminal=True) as bar:
-        for i, intervals in enumerate(chunks(current_intervals, 200)):
+    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=len(current_intervals), is_terminal=True) as bar:
+        for i, intervals in enumerate(chunks(current_intervals, 300)):
             proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
             bar.update(i)
     parallel_result = []

@@ -1,3 +1,4 @@
+import multiprocessing
 import pickle
 from collections import defaultdict
 import threading
@@ -23,7 +24,7 @@ class StateStorage():
         self.mdp = self.gateway.entry_point.getMdpSimple()
         self.graph = nx.DiGraph()
         self.prism_needs_update = False
-        self.lock = threading.RLock()
+        self.lock = multiprocessing.RLock()
 
     def reset(self):
         with self.lock:
@@ -38,60 +39,66 @@ class StateStorage():
 
     @property
     def needs_update(self):
-        return self.prism_needs_update
+        with self.lock:
+            return self.prism_needs_update
 
     def store(self, item, t) -> int:
-        # item = tuple([tuple(x) for x in item])
-        # print(f"store {item}")
-        self.prism_needs_update = True
-        if self.dictionary.inverse.get(item) is None:
-            # if self.last_index != 0:  # skip the first one as it starts already with a single state
-            self.dictionary[self.last_index] = item
-            self.t_dictionary[t].append(self.last_index)
-            self.last_index = self.last_index + 1  # self.mdp.addState()  # adds a state to mdpSimple, retrieve index
-            # if self.last_index == 0:
-            #     self.last_index += 1
-            return self.last_index
-        else:
-            return self.dictionary.inverse.get(item)
+        with self.lock:
+            # item = tuple([tuple(x) for x in item])
+            # print(f"store {item}")
+            self.prism_needs_update = True
+            if self.dictionary.inverse.get(item) is None:
+                # if self.last_index != 0:  # skip the first one as it starts already with a single state
+                self.dictionary[self.last_index] = item
+                self.t_dictionary[t].append(self.last_index)
+                self.last_index = self.last_index + 1  # self.mdp.addState()  # adds a state to mdpSimple, retrieve index
+                # if self.last_index == 0:
+                #     self.last_index += 1
+                return self.last_index
+            else:
+                return self.dictionary.inverse.get(item)
 
     def store_successor(self, item: Tuple[Tuple[float, float]], t: int, parent_id: int) -> int:
-        successor_id = self.store(item, t)
-        self.graph.add_edge(parent_id, successor_id, p=1.0, a=successor_id)
-        # distribution = self.gateway.newDistribution()
-        # distribution.add(successor_id, 1.0)
-        # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
-        self.prism_needs_update = True
-        return successor_id
+        with self.lock:
+            successor_id = self.store(item, t)
+            self.graph.add_edge(parent_id, successor_id, p=1.0, a=successor_id)
+            # distribution = self.gateway.newDistribution()
+            # distribution.add(successor_id, 1.0)
+            # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+            self.prism_needs_update = True
+            return successor_id
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], t: int, parent_id: int):
-        successor_id = self.store(successor, t)
-        sticky_successor_id = self.store(sticky_successor, t)
-        self.graph.add_edge(parent_id, successor_id, p=0.8, a=successor_id)
-        self.graph.add_edge(parent_id, sticky_successor_id, p=0.2, a=successor_id)
-        # distribution = self.gateway.newDistribution()
-        # distribution.add(successor_id, 0.8)
-        # distribution.add(sticky_successor_id, 0.2)
-        # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
-        self.prism_needs_update = True
-        return successor_id, sticky_successor_id
+        with self.lock:
+            successor_id = self.store(successor, t)
+            sticky_successor_id = self.store(sticky_successor, t)
+            self.graph.add_edge(parent_id, successor_id, p=0.8, a=successor_id)
+            self.graph.add_edge(parent_id, sticky_successor_id, p=0.2, a=successor_id)
+            # distribution = self.gateway.newDistribution()
+            # distribution.add(successor_id, 0.8)
+            # distribution.add(sticky_successor_id, 0.2)
+            # self.mdp.addActionLabelledChoice(parent_id, distribution, successor_id)
+            self.prism_needs_update = True
+            return successor_id, sticky_successor_id
 
     def save_state(self, folder_path):
-        pickle.dump(self.dictionary, open(folder_path + "/dictionary.p", "wb+"))
-        pickle.dump(self.t_dictionary, open(folder_path + "/t_dictionary.p", "wb+"))
-        pickle.dump(self.last_index, open(folder_path + "/last_index.p", "wb+"))
-        self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
-        nx.write_gml(self.graph, folder_path + "/nx_graph.gml")
-        print("Mdp Saved")
+        with self.lock:
+            pickle.dump(self.dictionary, open(folder_path + "/dictionary.p", "wb+"))
+            pickle.dump(self.t_dictionary, open(folder_path + "/t_dictionary.p", "wb+"))
+            pickle.dump(self.last_index, open(folder_path + "/last_index.p", "wb+"))
+            self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
+            nx.write_gml(self.graph, folder_path + "/nx_graph.gml")
+            print("Mdp Saved")
 
     def load_state(self, folder_path):
-        self.dictionary = pickle.load(open(folder_path + "/dictionary.p", "rb"))
-        self.t_dictionary = pickle.load(open(folder_path + "/t_dictionary.p", "rb"))
-        self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
-        self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
-        self.graph = nx.read_gml(folder_path + "/nx_graph.gml")
-        self.prism_needs_update = True
-        print("Mdp Loaded")
+        with self.lock:
+            self.dictionary = pickle.load(open(folder_path + "/dictionary.p", "rb"))
+            self.t_dictionary = pickle.load(open(folder_path + "/t_dictionary.p", "rb"))
+            self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
+            self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
+            self.graph = nx.read_gml(folder_path + "/nx_graph.gml")
+            self.prism_needs_update = True
+            print("Mdp Loaded")
 
     def mark_as_fail(self, fail_states_ids: List[int]):
         if self.prism_needs_update:
@@ -100,11 +107,13 @@ class StateStorage():
         self.gateway.entry_point.update_fail_label_list(java_list)
 
     def get_inverse(self, interval):
-        interval = tuple([tuple(x) for x in interval])
-        return self.dictionary.inverse[interval]
+        with self.lock:
+            interval = tuple([tuple(x) for x in interval])
+            return self.dictionary.inverse[interval]
 
     def get_forward(self, id):
-        return self.dictionary[id]
+        with self.lock:
+            return self.dictionary[id]
 
     # def reversed_t_dictionary(self) -> dict:
     #     print("Reverse")
@@ -114,7 +123,8 @@ class StateStorage():
     #     return inv_map
 
     def get_t_layer(self, t: int) -> List[int]:
-        return self.t_dictionary[t]
+        with self.lock:
+            return self.t_dictionary[t]
 
     # def purge(self, parent_id: int, target_states_id: List[int]):
     #     java_list = ListConverter().convert(target_states_id, self.gateway._gateway_client)
@@ -125,15 +135,17 @@ class StateStorage():
     #         print(f"Purged id {id}")
 
     def dictionary_get(self, id) -> Tuple[Tuple[float, float]]:
-        return self.dictionary[id]
+        with self.lock:
+            return self.dictionary[id]
 
     def purge_branch(self, index_to_remove, initial_state=0):
         """Removes the given index and all the unconnected successors from the initial state after it"""
-        self.graph.remove_node(index_to_remove)
-        for component in nx.connected_components(self.graph.to_undirected()):
-            if initial_state not in component:
-                self.graph.remove_nodes_from(component)
-        self.prism_needs_update = True
+        with self.lock:
+            self.graph.remove_node(index_to_remove)
+            for component in nx.connected_components(self.graph.to_undirected()):
+                if initial_state not in component:
+                    self.graph.remove_nodes_from(component)
+            self.prism_needs_update = True
 
     def recreate_prism(self):
         with self.lock:

@@ -1,20 +1,16 @@
-from copy import deepcopy
-from typing import List, Tuple
-
-import ray
 import bisect
 import time
+from typing import List, Tuple
+
 import jsonpickle
 import numpy as np
+import ray
 import torch
-from jsonpickle import json
-from itertools import cycle
 
 import mosaic.utils
-from plnn.branch_and_bound import CandidateDomain
 
 
-class DomainExplorer():
+class DomainExplorer:
     def __init__(self, safe_property_index: int, domain: torch.Tensor, device: torch.device, precision=1e-2):
         """
 
@@ -23,7 +19,7 @@ class DomainExplorer():
         The algorithm will check for lumps in the state space where the given property is always true
         """
         self.device = device
-        self.initial_domain = domain
+        # self.initial_domain = domain
         self.safe_property_index = safe_property_index
         # self.domains = []
         self.safe_domains = []
@@ -32,10 +28,10 @@ class DomainExplorer():
         self.unsafe_area = 0
         self.ignore_domains = []
         self.ignore_area = 0
-        self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
-        self.domain_lb = domain.select(-1, 0)
-        self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
-        self.precision_constraints = DomainExplorer.generate_precision(self.domain_width, precision)
+        # self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
+        # self.domain_lb = domain.select(-1, 0)
+        # self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
+        self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
 
     def explore(self, net, domains: List[np.ndarray], n_workers: int, debug=True):
         # eps = 1e-3
@@ -45,13 +41,13 @@ class DomainExplorer():
         shortest_dimension = float("inf")
         message_queue = []
         queue = []  # queue of domains to explore
-        if domains is None:
-            normed_domain = torch.stack((torch.zeros(self.nb_input_var), torch.ones(self.nb_input_var)), 1)
-            queue.append(normed_domain)
-        else:  # if given a list of normed domains then prefills the queue
-            for domain in domains:
-                normed_domain = np.copy(domain)
-                queue.append(torch.tensor(normed_domain, dtype=torch.float32))
+        total_area = 0
+        self.reset()  # reset statistics
+        for domain in domains:
+            # normed_domain = np.copy(domain)
+            tensor = torch.tensor(domain, dtype=torch.float32)
+            queue.append(tensor)
+            total_area += mosaic.utils.area_tensor(tensor)
         last_save = time.time()
         while len(queue) > 0:
             while len(queue) > 0:
@@ -60,9 +56,9 @@ class DomainExplorer():
                 while len(message_queue) > n_workers:
                     message_queue = self.process_one_queue_element(message_queue, queue)
                 if debug:
-                    print(
-                        f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:{1 - (self.safe_area + self.unsafe_area + self.ignore_area):.3%} --> safe:{self.safe_area:.3%}, unsafe:{self.unsafe_area:.3%}, ignore:{self.ignore_area:.3%}], shortest_dim:{shortest_dimension}, min_area:{global_min_area:.8f}",
-                        end="")
+                    print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
+                          f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}], "
+                          f"shortest_dim:{shortest_dimension}, min_area:{global_min_area:.8f}", end="")
                 if time.time() - last_save > 60 * 10:  # every 5 minutes
                     # save the queue and the safe/unsafe domains
                     with open("./save/safe_domains.json", 'w+') as f:
@@ -86,10 +82,10 @@ class DomainExplorer():
             f.write(jsonpickle.encode(queue))
         print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
         # prepare stats
-        stats = {}
-        total_area = (self.safe_area + self.unsafe_area + self.ignore_area)
-        if total_area == 0:
-            total_area = 1
+        stats = dict()
+        # total_area = (self.safe_area + self.unsafe_area + self.ignore_area)
+        # if total_area == 0:
+        #     total_area = 1
         stats["safe_relative_percentage"] = self.safe_area / total_area
         stats["unsafe_relative_percentage"] = self.unsafe_area / total_area
         stats["ignore_relative_percentage"] = self.ignore_area / total_area
@@ -122,11 +118,11 @@ class DomainExplorer():
                     self.unsafe_domains.append(ndom_i)
                     self.unsafe_area += area
                 if not self.hasIgnored:
-                    print("The value has been ignored succesfully")
+                    # print("The value has been ignored succesfully")
                     self.hasIgnored = True
             else:
                 # queue up the next split at the beginning of the list
-                message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, self.domain_lb, self.domain_width, net))
+                message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
         return global_min_area, shortest_dimension
 
     def process_one_queue_element(self, message_queue, queue):
@@ -144,15 +140,15 @@ class DomainExplorer():
 
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:
         """Used for assigning an action value to an interval that is so small it gets approximated to the closest single datapoint according to #precision field"""
-        approximate_domain = DomainExplorer.approximate_to_single_datapoint(normed_domain, self.domain_lb, self.domain_width, self.precision_constraints)
+        approximate_domain = DomainExplorer.approximate_to_single_datapoint(normed_domain, self.precision_constraints)
         approximate_domain = approximate_domain.to(self.device)
         outcome = net(approximate_domain)
         return outcome
 
     @staticmethod
-    def approximate_to_single_datapoint(normed_domain: torch.Tensor, domain_lb: torch.Tensor, domain_width: torch.Tensor, precisions: List[float]) -> torch.Tensor:
-        dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
-        mean_dom = torch.mean(dom_i, dim=1)
+    def approximate_to_single_datapoint(normed_domain: torch.Tensor, precisions: List[float]) -> torch.Tensor:
+        # dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
+        mean_dom = torch.mean(normed_domain, dim=1)
         results = []
         for i, value in enumerate(mean_dom):
             result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
@@ -179,22 +175,22 @@ class DomainExplorer():
         thawed: DomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
-    def denormalise(self, state: Tuple[Tuple[float, float]]):
-        elements = []
-        for i, x in enumerate(state):
-            elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),
-                             mosaic.utils.custom_rounding(float(x[1]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i])))
-        denormalized_state = tuple(elements)
-        # denormalized_state = tuple(
-        #     [(float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item())), float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item()))) for i, x in
-        #      enumerate(state)])
-        return denormalized_state
-
-    def normalise(self, state: Tuple[Tuple[float, float]]):
-        normalized_state = tuple(
-            [((float(x[0]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item()), (float(x[1]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item())) for i, x in
-             enumerate(state)])
-        return normalized_state
+    # def denormalise(self, state: Tuple[Tuple[float, float]]):
+    #     elements = []
+    #     for i, x in enumerate(state):
+    #         elements.append((mosaic.utils.custom_rounding(float(x[0]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i]),
+    #                          mosaic.utils.custom_rounding(float(x[1]) * float(self.domain_width[i].item()) + float(self.domain_lb[i].item()), 3, self.precision_constraints[i])))
+    #     denormalized_state = tuple(elements)
+    #     # denormalized_state = tuple(
+    #     #     [(float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item())), float(x[0]) * float(self.domain_width[i].item() + float(self.domain_lb[i].item()))) for i, x in
+    #     #      enumerate(state)])
+    #     return denormalized_state
+    #
+    # def normalise(self, state: Tuple[Tuple[float, float]]):
+    #     normalized_state = tuple(
+    #         [((float(x[0]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item()), (float(x[1]) - float(self.domain_lb[i].item())) / float(self.domain_width[i].item())) for i, x in
+    #          enumerate(state)])
+    #     return normalized_state
 
     @staticmethod
     def generate_precision(domain_width: torch.Tensor, precision_constraint=1e-3):
@@ -322,10 +318,9 @@ class DomainExplorer():
 
 
 @ray.remote
-def bab_remote(normed_domain, safe_property_index, domain_lb, domain_width, net):
+def bab_remote(normed_domain, safe_property_index, net):
     eps = 1e-6
-    dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
-    dom_ub, dom_lb = net.get_boundaries(dom_i, safe_property_index, False)
+    dom_ub, dom_lb = net.get_boundaries(normed_domain, safe_property_index, False)
     assert dom_lb <= dom_ub, "lb must be lower than ub"
     if dom_ub < 0:
         # discard

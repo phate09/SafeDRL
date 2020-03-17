@@ -120,4 +120,11 @@ class TestCheck_contains(TestCase):
         assert (I.closed(0,3) & I.open(3,4)).is_empty()
         assert I.closed(0,3) in I.closed(-1,4)
         assert I.closed(0,3) in I.closed(0,3)
+    def test_terminal(self):
+        interval = iv.mpf([-0.005, 0.005])
+        print(interval<0)
+        print(interval<1)
+        print(interval>-1)
+        print(True or None)
+        print(False or None)
 

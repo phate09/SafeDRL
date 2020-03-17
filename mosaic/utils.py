@@ -30,13 +30,14 @@ def custom_rounding(x, prec=3, base=.05):
     """Rounding with custom base"""
     return round(base * round(float(x) / base), prec)
 
+
 def area_tensor(domain: torch.Tensor) -> float:
     '''
     Compute the area of the domain
     '''
     dom_sides = domain.select(1, 1) - domain.select(1, 0)
     dom_area = dom_sides.prod()
-    return float(dom_area.item())
+    return abs(float(dom_area.item()))
 
 
 def area_numpy(domain: np.ndarray) -> float:
@@ -46,7 +47,8 @@ def area_numpy(domain: np.ndarray) -> float:
     dom = np.array(domain)
     dom_sides = dom[:, 1] - dom[:, 0]
     dom_area = dom_sides.prod()
-    return float(dom_area.item())
+    return abs(float(dom_area.item()))
+
 
 @ray.remote
 def filter_helper(interval_to_fill, current_interval):

@@ -1,4 +1,6 @@
 import sys
+from typing import Tuple
+
 import mpmath
 import sympy
 from mpmath import iv, pi
@@ -6,7 +8,7 @@ import gym
 from gym import spaces, logger
 from gym.utils import seeding
 import numpy as np
-
+import intervals as I
 
 class CartPoleEnv_abstract(gym.Env):
     """
@@ -60,8 +62,8 @@ class CartPoleEnv_abstract(gym.Env):
         self.kinematics_integrator = 'euler'
 
         # Angle at which to fail the episode
-        self.theta_threshold_radians = 10 * 2 * mpmath.pi / 360 #12
-        self.x_threshold = 2.4
+        self.theta_threshold_radians = 10 * 2 * mpmath.pi / 360  # 12
+        self.x_threshold = 2  # 2.4
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation is still within bounds
         high = np.array([self.x_threshold * 2, np.finfo(np.float32).max, self.theta_threshold_radians * 2, np.finfo(np.float32).max])
@@ -100,7 +102,9 @@ class CartPoleEnv_abstract(gym.Env):
             theta_dot = theta_dot + self.tau * thetaacc
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
-        done = x < -self.x_threshold or x > self.x_threshold or theta < -self.theta_threshold_radians or theta > self.theta_threshold_radians
+        state_closed = to_close_interval(self.state)
+        done = state_closed[0] < -self.x_threshold or state_closed[0] > self.x_threshold or -self.x_threshold in state_closed[0] or self.x_threshold in state_closed[0] \
+               or state_closed[2] < -self.theta_threshold_radians or state_closed[2] > self.theta_threshold_radians or -self.theta_threshold_radians in state_closed[2] or self.theta_threshold_radians in state_closed[2]
         # done = done or not -0.015 < x_dot < 0.015 or not -0.015 < theta_dot < 0.015
         done = bool(done)
 
@@ -204,3 +208,7 @@ class CartPoleEnv_abstract(gym.Env):
         if self.viewer:
             self.viewer.close()
             self.viewer = None
+
+
+def to_close_interval(interval: Tuple[iv.mpf, iv.mpf, iv.mpf, iv.mpf]):
+    return tuple([I.closed(float(x.a), float(x.b)) for x in interval])
