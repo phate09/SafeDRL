@@ -11,7 +11,7 @@ import progressbar
 import ray
 import scipy.spatial
 
-from mosaic.utils import chunks, filter_helper, interval_contains
+from mosaic.utils import chunks, filter_helper, interval_contains, round_tuple
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
@@ -36,11 +36,11 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     workers = cycle([AbstractStepWorker.remote(explorer, t, rounding) for _ in range(n_workers)])
     proc_ids = []
     chunk_size = 100
-    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=ceil(len(abstract_states_normalised) / chunk_size), is_terminal=True) as bar:
+    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=ceil(len(abstract_states_normalised) / chunk_size), is_terminal=True, term_width=200) as bar:
         for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
             proc_ids.append(next(workers).work.remote(intervals))
             bar.update(i)
-    with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True) as bar:
+    with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             next_states_local, terminal_states_local = ray.get(ready_ids[0])
@@ -201,7 +201,7 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
                        union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
     while True:
-        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, t, n_workers)  # checks areas not covered by total intervals
+        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, t, n_workers, rounding)  # checks areas not covered by total intervals
         assigned_action_intervals.extend([(x, True) for x in safe_intervals_union])
         assigned_action_intervals.extend([(x, False) for x in unsafe_intervals_union])
         # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
@@ -220,6 +220,7 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
                 minimum = float(min(x[0] for x in dimension_slice))
                 boundaries.append((minimum, maximum))
             boundaries = tuple(boundaries)
+            boundaries = round_tuple(boundaries)
             # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
             safe_intervals_union2, unsafe_intervals_union2, ignore_intervals = assign_action_to_blank_intervals([boundaries], n_workers)
             union_states_total.extend([(x, True) for x in safe_intervals_union2])
@@ -251,21 +252,22 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
     return next_states_array
 
 
-def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int) -> Tuple[List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
+def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int, rounding: int) -> Tuple[
+    List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    workers = cycle([RemainingWorker.remote(t) for _ in range(n_workers)])
+    workers = cycle([RemainingWorker.remote(t, rounding) for _ in range(n_workers)])
     proc_ids = []
     chunk_size = 300
-    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(current_intervals) / chunk_size), is_terminal=True) as bar:
+    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(current_intervals) / chunk_size), is_terminal=True, term_width=200) as bar:
         for i, intervals in enumerate(chunks(current_intervals, chunk_size)):
             proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
             bar.update(i)
     parallel_result = []
-    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True) as bar:
+    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             parallel_result.append(ray.get(ready_ids[0]))

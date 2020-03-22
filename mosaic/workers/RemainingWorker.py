@@ -4,17 +4,18 @@ from typing import List, Tuple
 import progressbar
 import ray
 
-from mosaic.utils import shrink, interval_contains
+from mosaic.utils import shrink, interval_contains, round_tuple
 from prism.shared_rtree import get_rtree
 from prism.state_storage import get_storage
 
 
 @ray.remote
 class RemainingWorker():
-    def __init__(self, t):
+    def __init__(self, t: int, rounding: int):
         self.tree = get_rtree()
         self.t = t
         self.storage = get_storage()
+        self.rounding = rounding
 
     def compute_remaining_worker(self, current_intervals: List[Tuple[Tuple[float, float]]]):
         remaining_total = []
@@ -22,6 +23,7 @@ class RemainingWorker():
         intersection_unsafe_total = []
         remaining_ids_total = []
         for interval in current_intervals:
+            interval = round_tuple(interval)
             parent_id = self.storage.store(interval, self.t)
             relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval)
             remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)

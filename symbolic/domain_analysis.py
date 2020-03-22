@@ -36,7 +36,7 @@ union_states_total = []
 if os.path.exists('save/union_states_total.p'):
     union_states_total = pickle.load(open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "rb"))
     union_states_total = round_tuples(union_states_total, rounding=rounding)
-    union_states_total = merge_list_tuple(union_states_total, n_workers=n_workers)
+    # union_states_total = merge_list_tuple(union_states_total, n_workers=n_workers, max_iter=10)
 # else:
 #     with open("./save/t_states.json", 'r') as f:
 #         t_states = jsonpickle.decode(f.read())
@@ -82,7 +82,7 @@ for i in range(6):
     pickle.dump(union_states_total, open("/home/edoardo/Development/SafeDRL/save/union_states_total.p", "wb+"))
     pickle.dump(terminal_states, open("/home/edoardo/Development/SafeDRL/save/terminal_states.p", "wb+"))
     pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
-    pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
+    pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
     print("Checkpoint Saved...")
     boundaries = [[999, 0], [999, 0], [999, 0], [999, 0]]
     for interval in remainings:
@@ -141,7 +141,7 @@ while True:
     print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
     if len(to_analyse) != 0:
         for i in range(4):
-            to_analyse, rtree = analysis_iteration(to_analyse, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total)
+            to_analyse, rtree = analysis_iteration(to_analyse, t, terminal_states, failed, n_workers, rtree, env, explorer, storage, [failed_area], union_states_total, rounding)
             t = t + 1
     if not split_performed:
         break  # %%

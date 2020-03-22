@@ -4,6 +4,7 @@ import numpy as np
 import ray
 from mpmath import iv
 
+from mosaic.utils import round_tuple
 from prism.state_storage import get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 
@@ -43,10 +44,11 @@ class AbstractStepWorker:
         return next_states_total, terminal_states_total
 
 
-def step_state(state: Tuple[Tuple], action, env, rounding: int) -> Tuple[Tuple[Tuple], bool]:
+def step_state(state: Tuple[Tuple[float, float]], action, env, rounding: int) -> Tuple[Tuple[Tuple], bool]:
     # given a state and an action, calculate next state
     env.reset()
-    env.state = tuple([iv.mpf([round(float(x[0]), rounding), round(float(x[1]), rounding)]) for x in state])
+    state = round_tuple(state)  # round the state
+    env.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
     next_state, reward, done, _ = env.step(action)
     return interval_unwrap(next_state, rounding), done
 

@@ -47,8 +47,9 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
 #     tree_global = index.Index(helper, properties=p, interleaved=False)
 
 
-def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = intervals
+    completed_iterations = 0
     with get_shared_dictionary() as shared_dict:
         while True:
             shared_dict.reset()  # reset the dictionary
@@ -58,12 +59,12 @@ def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n
             print(f"About to start the merging process of {old_size} elements")
             workers = cycle([MergingWorker.remote(aggregated_list) for _ in range(n_workers)])
             chunk_size = 200
-            with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=300) as bar:
+            with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
                 for i, intervals in enumerate(chunks(aggregated_list, chunk_size)):
                     proc_ids.append(next(workers).merge_worker.remote(intervals))
                     bar.update(i)
             aggregated_list = []
-            with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=300) as bar:
+            with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
                 while len(proc_ids) != 0:
                     ready_ids, proc_ids = ray.wait(proc_ids)
                     result = ray.get(ready_ids[0])
@@ -75,10 +76,10 @@ def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n
             print(f"Reduced size from {old_size} to {new_size}")
             if old_size == new_size:
                 break
+            completed_iterations += 1
+            if completed_iterations >= max_iter != -1:
+                break
     return aggregated_list
-
-
-
 
 
 @ray.remote
