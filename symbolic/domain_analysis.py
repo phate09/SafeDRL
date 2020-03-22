@@ -21,11 +21,11 @@ storage.reset()
 env = CartPoleEnv_abstract()
 s = env.reset()
 current_interval = s
-explorer, verification_model = generateCartpoleDomainExplorer(1e-1)
+rounding = 6
+explorer, verification_model = generateCartpoleDomainExplorer(1e-1,rounding)
 # reshape with tuples
 current_interval = tuple([(float(x.a), float(x.b)) for i, x in enumerate(current_interval)])
 precision = 1e-6
-rounding = 6
 
 local_mode = False
 if not ray.is_initialized():
