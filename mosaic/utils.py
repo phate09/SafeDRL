@@ -14,23 +14,6 @@ def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
     return tuple_of_tuples
 
 
-def truncate(number: float, decimal_points: int):
-    decimal.getcontext().rounding = decimal.ROUND_DOWN
-    c = decimal.Decimal(number)
-    return float(round(c, decimal_points))
-
-
-def truncate_multi(interval: Tuple[float], decimal_points: int):
-    """Truncate the number of digits to a given number of decimal points
-    not working at the moment"""
-    return tuple([(interval[dimension][0], interval[dimension][1]) for dimension in range(len(interval))])
-
-
-def custom_rounding(x, prec=3, base=.05):
-    """Rounding with custom base"""
-    return round(base * round(float(x) / base), prec)
-
-
 def area_tensor(domain: torch.Tensor) -> float:
     '''
     Compute the area of the domain
@@ -133,7 +116,12 @@ def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
 
 
 def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
-    return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+    return interval  # tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+
+
+def open_close_tuple(interval: Tuple[Tuple[float, float]]):
+    eps = 1e-9
+    return tuple([(x[0], x[1] - eps) for x in interval])
 
 
 def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:

@@ -152,7 +152,8 @@ class DomainExplorer:
         mean_dom = torch.mean(normed_domain, dim=1)
         results = []
         for i, value in enumerate(mean_dom):
-            result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
+            # result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
+            result = float(value.item())
             results.append(result)
         return torch.tensor(results)
 
@@ -224,7 +225,7 @@ class DomainExplorer:
         dim = dim.item()
 
         # Now split over dimension dim:
-        half_length = round(edgelength / 2, rounding)
+        half_length = edgelength / 2
 
         # dom1: Upper bound in the 'dim'th dimension is now at halfway point.
         dom1 = domain.clone()
@@ -244,7 +245,7 @@ class DomainExplorer:
         diff = domain_array[:, 1] - domain_array[:, 0]
         edgelength = np.max(diff, 0).item()
         dim = np.argmax(diff, 0).item()
-        half_length = round(edgelength / 2, rounding)
+        half_length = edgelength / 2
         dom1 = domain_array.copy()
         dom1[dim, 1] -= half_length
         dom2 = domain_array.copy()

@@ -5,7 +5,7 @@ import Pyro5.api
 import progressbar
 from rtree import index
 
-from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate
+from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate, open_close_tuple
 
 
 @Pyro5.api.expose
@@ -24,7 +24,10 @@ class SharedRtree:
 
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
-        interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
+        # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
+        interval = (open_close_tuple(interval[0]),interval[1])
+        assert len(self.filter_relevant_intervals3(interval[0], rounding)) == 0, \
+            f"There is an intersection with the intervals already present in the tree! {self.filter_relevant_intervals3(interval[0], rounding)} against {interval}"
         self.union_states_total.append(interval)
         coordinates = flatten_interval(interval[0])
         action = interval[1]
@@ -67,7 +70,7 @@ class SharedRtree:
 
     def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
         """Filter the intervals relevant to the current_interval"""
-        current_interval = inflate(current_interval,rounding)
+        # current_interval = inflate(current_interval, rounding)
         result = self.tree.intersection(flatten_interval(current_interval), objects='raw')
         return list(result)
 
