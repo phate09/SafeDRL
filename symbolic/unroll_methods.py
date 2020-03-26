@@ -9,20 +9,19 @@ from typing import Tuple, List
 import numpy as np
 import progressbar
 import ray
-import scipy.spatial
 
-from mosaic.utils import chunks, filter_helper, interval_contains, round_tuple
+from mosaic.utils import chunks, round_tuple, round_tuples
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
-from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
+from mosaic.workers.RemainingWorker import compute_remaining_intervals3_multi
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 
 def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> \
-        Tuple[List[Tuple[Tuple[float, float]]], List[int]]:
+        Tuple[List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param explorer:
@@ -148,8 +147,8 @@ def generate_middle_points(t_states, t):
     return random_points, areas, assigned_actions
 
 
-def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], n_workers: int) -> Tuple[
-    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
+def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], n_workers: int, rounding: int) -> Tuple[
+    List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[float, float]]]]:
     """
     Given a list of intervals, calculate the intervals where the agent will take a given action
     :param n_workers: number of worker processes
@@ -157,8 +156,8 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
     """
     # convert list of tuples to list of arrays
-    s_array = [np.array(x) for x in s_array]
-    explorer, verification_model = generateCartpoleDomainExplorer()
+    s_array = [np.array(round_tuple(x, rounding)) for x in s_array]
+    explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
     # given the initial states calculate which intervals go left or right
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
@@ -168,24 +167,21 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
     unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-    t_states = ([tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in safe_next], [tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in unsafe_next],
+    t_states = ([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next],
                 [tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in ignore_next])
     return t_states
 
 
-def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]], intervals_id: List[int] = None) -> Tuple[List[Tuple[Tuple[float, float]]], List[int]]:
+def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tuple[Tuple[float, float]]]:
     """discards the intervals with area 0"""
     result = []
-    result_ids = []
     for i, interval in enumerate(intervals):
         sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
         if all([x > 1e-6 for x in sizes]):
             # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
             # if area > 1e-10:
             result.append(interval)
-            if intervals_id is not None:
-                result_ids.append(intervals_id[i])
-    return result, result_ids
+    return result
 
 
 def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
@@ -197,19 +193,13 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
         return result
 
 
-def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, storage: StateStorage, failed_area: List,
-                       union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
+def analysis_iteration(intervals, t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
+    print(f"t:{t} Started")
     while True:
-        remainings, safe_intervals_union, unsafe_intervals_union, remainings_id = compute_remaining_intervals3_multi(remainings, t, n_workers, rounding)  # checks areas not covered by total intervals
-        assigned_action_intervals.extend([(x, True) for x in safe_intervals_union])
-        assigned_action_intervals.extend([(x, False) for x in unsafe_intervals_union])
-        # assigned_action_intervals = merge_list_tuple(assigned_action_intervals)  # aggregate intervals
-
-        print(f"Remainings before negligibles: {len(remainings)}")
-        remainings, remainings_id = discard_negligibles(remainings, remainings_id)  # discard intervals with area 0
-        # todo assign an action to remainings (it might be that our tree does not include the given interval)
-
+        remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals, t, n_workers, rounding)  # checks areas not covered by total intervals
+        assigned_action_intervals.extend(intersected_intervals)
+        remainings = discard_negligibles(remainings)  # discard intervals with area 0
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
             # get max of every dimension
@@ -220,78 +210,16 @@ def analysis_iteration(remainings, t, terminal_states: List[int], failed: List[T
                 minimum = float(min(x[0] for x in dimension_slice))
                 boundaries.append((minimum, maximum))
             boundaries = tuple(boundaries)
-            boundaries = round_tuple(boundaries)
             # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
-            safe_intervals_union2, unsafe_intervals_union2, ignore_intervals = assign_action_to_blank_intervals([boundaries], n_workers)
-            union_states_total.extend([(x, True) for x in safe_intervals_union2])
-            union_states_total.extend([(x, False) for x in unsafe_intervals_union2])
-            for x in [(x, True) for x in safe_intervals_union2]:
-                rtree.add_single(storage.store(x, t), x)
-                assert len(rtree.filter_relevant_intervals3(x[0])) != 0
-            for x in [(x, False) for x in unsafe_intervals_union2]:
-                rtree.add_single(storage.store(x, t), x)
-                assert len(rtree.filter_relevant_intervals3(x[0])) != 0
+            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals([boundaries], n_workers, rounding)
+            print(f"Adding {len(assigned_intervals)} states to the tree")
+            rtree.add_many(assigned_intervals, rounding)
             rtree.flush()
-
-            # rtree, _ = rebuild_tree(union_states_total, n_workers)  # rebuild the tree to cover the areas that weren't covered before
         else:  # if no more remainings exit
             break
-    # terminal_states.extend(remainings_id)
-    area = sum([calculate_area(np.array(remaining)) for remaining in remainings])
-    failed.extend(remainings)
-    failed_area[0] += area
-    print(f"Remainings : {len(remainings)} Area:{area} Total Area:{failed_area[0]}")
-    next_states_array, remainings_id = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1, n_workers,
-                                                            rounding)  # performs a step in the environment with the assigned action and retrieve the result
-    terminal_states.extend(remainings_id)
-    print(f"Sucessors : {len(next_states_array)} Terminals : {len(remainings_id)}")
+    next_states, terminal_states = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1, n_workers,
+                                                        rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
 
     print(f"t:{t} Finished")
-    if len(terminal_states) != 0:
-        storage.mark_as_fail(terminal_states)
-    return next_states_array
-
-
-def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int, rounding: int) -> Tuple[
-    List[Tuple[Tuple]], List[Tuple[Tuple]], List[Tuple[Tuple]], List[int]]:
-    """
-    Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
-    :param current_intervals:
-    :return: the blank intervals and the intersection intervals
-    """
-    workers = cycle([RemainingWorker.remote(t, rounding) for _ in range(n_workers)])
-    proc_ids = []
-    chunk_size = 300
-    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(current_intervals) / chunk_size), is_terminal=True, term_width=200) as bar:
-        for i, intervals in enumerate(chunks(current_intervals, chunk_size)):
-            proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
-            bar.update(i)
-    parallel_result = []
-    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
-        while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids)
-            parallel_result.append(ray.get(ready_ids[0]))
-            bar.update(bar.value + 1)
-    if len(parallel_result) != 0:
-        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = zip(*parallel_result)
-    else:
-        archived_results, intersection_intervals_safe, intersection_intervals_unsafe, terminal_ids = [], [], [], []
-    return [i for x in archived_results for i in x], [i for x in intersection_intervals_safe for i in x], [i for x in intersection_intervals_unsafe for i in x], [i for x in terminal_ids for i in x]
-
-
-def filter_relevant_intervals(current_interval, intervals_to_fill):
-    """Filter the intervals relevant to the current_interval"""
-    if not ray.is_initialized():
-        ray.init(log_to_driver=False, include_webui=True)
-    # remote_func = ray.remote(filter_helper)
-    results = [filter_helper.remote(interval_to_fill, current_interval) for interval_to_fill in intervals_to_fill]
-    final_list = [ray.get(result) for result in results if ray.get(result) is not None]
-    return final_list
-
-
-def filter_relevant_intervals2(current_interval: Tuple[Tuple], intervals_to_fill, kdtree: scipy.spatial.cKDTree):
-    """Filter the intervals relevant to the current_interval"""
-    k = 100
-    result, indices = kdtree.query(np.array(current_interval).mean(axis=1), k=k, p=2, n_jobs=-1)
-    final_list = [intervals_to_fill[i] for i in indices if interval_contains(intervals_to_fill[i], current_interval)]
-    return final_list
+    return next_states

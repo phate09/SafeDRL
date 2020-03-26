@@ -58,8 +58,8 @@ class DomainExplorer:
                     message_queue = self.process_one_queue_element(message_queue, queue)
                 if debug:
                     print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
-                          f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}], "
-                          f"shortest_dim:{shortest_dimension}, min_area:{global_min_area:.8f}", end="")
+                          f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
+                          end="")
                 if time.time() - last_save > 60 * 10:  # every 5 minutes
                     # save the queue and the safe/unsafe domains
                     with open("./save/safe_domains.json", 'w+') as f:
@@ -68,7 +68,7 @@ class DomainExplorer:
                         f.write(jsonpickle.encode(self.unsafe_domains))
                     with open("./save/queue.json", 'w+') as f:
                         f.write(jsonpickle.encode(queue))
-                    print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+                    # print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
                     last_save = time.time()
             while len(message_queue) > 0:
                 message_queue = self.process_one_queue_element(message_queue, queue)

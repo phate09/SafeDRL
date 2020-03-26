@@ -1,46 +1,79 @@
-import os
+import pickle
 from typing import List, Tuple
 
 import Pyro5.api
+import progressbar
 from rtree import index
-from threading import Lock
-lock = Lock()
+
+from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate
+
 
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="single")
 class SharedRtree:
     def __init__(self):
-        with lock:
-            os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-            self.p = index.Property(dimension=4)
-            self.tree = index.Index('save/rtree', interleaved=False, properties=self.p, overwrite=True)
+        self.p = index.Property(dimension=4)
+        self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
+        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
-    def add_single(self, id: int, interval: Tuple[Tuple[Tuple[float, float]], bool]):
-        with lock:
-            coordinates = flatten_interval(interval[0])
-            self.tree.insert(id, coordinates, interval)
+    def reset(self):
+        print("Resetting the tree")
+        self.p = index.Property(dimension=4)
+        self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
+        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
-    def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        pass
+    def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
+        id = len(self.union_states_total)
+        interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
+        self.union_states_total.append(interval)
+        coordinates = flatten_interval(interval[0])
+        action = interval[1]
+        self.tree.insert(id, coordinates, (interval[0], action))
+
+    def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
+        """
+        Store all the intervals in the tree with the same action
+        :param intervals:
+        :param action: the action to be assigned to all the intervals
+        :return:
+        """
+        with progressbar.ProgressBar(prefix="Add many:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
+            for i, interval in enumerate(intervals):
+                self.add_single(interval, rounding)
+                bar.update(i)
 
     def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        with lock:
-            print("Building the tree")
-            helper = bulk_load_rtree_helper(intervals)
-            self.tree.close()
-            self.tree = index.Index('save/rtree', helper, interleaved=False, properties=self.p, overwrite=True)
-            self.tree.flush()
-            print("Finished building the tree")
+        # with self.lock:
+        print("Building the tree")
+        helper = bulk_load_rtree_helper(intervals)
+        self.tree.close()
+        self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
+        self.tree.flush()
+        print("Finished building the tree")
 
-    def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    def load_from_file(self, filename, rounding):
+        # with self.lock:
+        print("Loading from file")
+        union_states_total = pickle.load(open(filename, "rb"))
+        print("Loaded from file")
+        self.union_states_total = round_tuples(union_states_total, rounding=rounding)
+        print("Rounded intervals")
+        self.load(self.union_states_total)
+
+    def save_to_file(self, file_name):
+        # with self.lock:
+        pickle.dump(self.union_states_total, open(file_name, "wb+"))
+        print("Saved RTree")
+
+    def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
         """Filter the intervals relevant to the current_interval"""
-        with lock:
-            result = self.tree.intersection(flatten_interval(current_interval), objects='raw')
-            return list(result)
+        current_interval = inflate(current_interval,rounding)
+        result = self.tree.intersection(flatten_interval(current_interval), objects='raw')
+        return list(result)
 
     def flush(self):
-        with lock:
-            self.tree.flush()
+        # with self.lock:
+        self.tree.flush()
 
 
 def get_rtree() -> SharedRtree:
@@ -60,22 +93,13 @@ def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool
     # union_states_total = merge_list_tuple(union_states_total, n_workers)  # aggregate intervals
     print("Building the tree")
     helper = bulk_load_rtree_helper(union_states_total)
-    rtree = index.Index('save/rtree', helper, interleaved=False, properties=p, overwrite=True)
+    rtree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
     rtree.flush()
     print("Finished building the tree")
     return rtree, union_states_total
 
 
-def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
-    return (
-        current_interval[0][0], current_interval[0][1], current_interval[1][0], current_interval[1][1], current_interval[2][0], current_interval[2][1], current_interval[3][0], current_interval[3][1])
-
-
 if __name__ == '__main__':
-    # s = zerorpc.Server(StateStorage())
-    # s.bind("ipc:///tmp/state_storage")
-    # # s.bind("tcp://0.0.0.0:4242")
-    # print("Storage server started")
-    # s.run()
     Pyro5.api.config.SERIALIZER = "marshal"
+    Pyro5.api.config.SERVERTYPE = "multiplex"
     Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)

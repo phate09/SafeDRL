@@ -132,5 +132,15 @@ def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
     return [(round_tuple(interval, rounding), action) for interval, action in intervals]
 
 
-def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int = 6) -> Tuple[Tuple[float, float]]:
+def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
     return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+
+
+def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
+    current_interval = round_tuple(tuple([(x[0] - eps, x[1] + eps) for x in current_interval]), rounding)  # rounding
+    return current_interval
+
+
+def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
+    return (
+        current_interval[0][0], current_interval[0][1], current_interval[1][0], current_interval[1][1], current_interval[2][0], current_interval[2][1], current_interval[3][0], current_interval[3][1])
