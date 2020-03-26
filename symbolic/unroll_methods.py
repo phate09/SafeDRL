@@ -167,8 +167,9 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
     unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-    t_states = ([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next],
-                [tuple([(float(x.item(0)), float(x.item(1))) for x in k]) for k in ignore_next])
+    t_states = (
+    round_tuples([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next]),
+    [round_tuple(tuple([(float(x.item(0)), float(x.item(1))) for x in k])) for k in ignore_next])
     return t_states
 
 

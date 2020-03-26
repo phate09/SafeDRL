@@ -116,11 +116,11 @@ def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
 
 
 def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
-    return interval  # tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+    return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
 
 
 def open_close_tuple(interval: Tuple[Tuple[float, float]]):
-    eps = 1e-9
+    eps = 0  # 1e-9
     return tuple([(x[0], x[1] - eps) for x in interval])
 
 

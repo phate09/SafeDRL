@@ -2,13 +2,14 @@ import os
 import gym
 from py4j.java_gateway import JavaGateway
 from prism.shared_rtree import get_rtree
+from prism.shared_rtree_temp import get_rtree_temp
 from symbolic.unroll_methods import *
 
 
 def try_load():
     gym.logger.set_level(40)
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-    local_mode = False
+    local_mode = True
     if not ray.is_initialized():
         ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -48,5 +49,15 @@ def try_load():
     assert remainings_new3 == remainings_after_first3
 
 
+def try_temp_tree():
+    temp1 = get_rtree_temp()
+    temp2 = get_rtree_temp()
+    temp2.add_single((((-0.005, 0.005), (-0.005, 0.005), (-0.005, 0.005), (-0.005, 0.005)), True), 6)
+    results1 = temp1.filter_relevant_intervals3(((0, 0.005), (0, 0.005), (0, 0.005), (0, 0.005)), 6)
+    results2 = temp2.filter_relevant_intervals3(((0, 0.005), (0, 0.005), (0, 0.005), (0, 0.005)), 6)
+    assert results1!=results2
+
+
 if __name__ == '__main__':
-    try_load()
+    try_temp_tree()
+    # try_load()

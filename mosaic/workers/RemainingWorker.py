@@ -30,10 +30,9 @@ class RemainingWorker:
             print("compute remaining")
             relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval, self.rounding)
             remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
-            # todo merge here
             print("merging")
             if len(intersection_safe) != 0:
-                intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding)
+                intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding) #todo check merge
             if len(intersection_unsafe) != 0:
                 intersection_unsafe = merge_simple([(x, False) for x in intersection_unsafe], self.rounding)
             print("storing successors")

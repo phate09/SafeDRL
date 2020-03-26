@@ -9,8 +9,8 @@ from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate, o
 
 
 @Pyro5.api.expose
-@Pyro5.api.behavior(instance_mode="single")
-class SharedRtree:
+@Pyro5.api.behavior(instance_mode="session")
+class SharedRtree_temp:
     def __init__(self):
         self.p = index.Property(dimension=4)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
@@ -85,16 +85,10 @@ class SharedRtree:
         # with self.lock:
         self.tree.flush()
 
-    def get_rtree_temp(self):
-        Pyro5.api.config.SERIALIZER = "marshal"
-        thing = SharedRtree()
-        self._pyroDaemon.register(thing)
-        return thing  # just return it, no need to return a proxy
 
-
-def get_rtree() -> SharedRtree:
+def get_rtree_temp() -> SharedRtree_temp:
     Pyro5.api.config.SERIALIZER = "marshal"
-    storage = Pyro5.api.Proxy("PYRONAME:prism.rtree")
+    storage = Pyro5.api.Proxy("PYRONAME:prism.rtreetemp")
     return storage
 
 
@@ -118,11 +112,4 @@ def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool
 if __name__ == '__main__':
     Pyro5.api.config.SERIALIZER = "marshal"
     Pyro5.api.config.SERVERTYPE = "multiplex"
-    # daemon = Pyro5.api.Daemon()
-    # ns = Pyro5.api.locate_ns()  # find the name server
-    # uri = daemon.register(SharedRtree)  # register the greeting maker as a Pyro object
-    # ns.register("prism.rtree", uri)  # register the object with a name in the name server
-    # uri1 = daemon.register(SharedRtree_Temp)  # register the greeting maker as a Pyro object
-    # ns.register("prism.rtreetemp", uri1)  # register the object with a name in the name server
-    # daemon.requestLoop()  # Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)  # Pyro5.api.Daemon.serveSimple({SharedRtree_Temp: "prism.rtreetemp"}, ns=True)
-    Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)
+    Pyro5.api.Daemon.serveSimple({SharedRtree_temp: "prism.rtreetemp"}, ns=True)
