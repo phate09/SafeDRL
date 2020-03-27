@@ -6,6 +6,7 @@ import progressbar
 from rtree import index
 
 from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate, open_close_tuple
+from mosaic.workers.RemainingWorker import compute_remaining_intervals3
 
 
 @Pyro5.api.expose
@@ -16,24 +17,20 @@ class SharedRtree_temp:
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
-    def reset(self):
-        print("Resetting the tree")
-        self.p = index.Property(dimension=4)
-        self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
-
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
-        # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
         interval = (open_close_tuple(interval[0]), interval[1])
-        if len(self.filter_relevant_intervals3(interval[0], rounding)) != 0:
-            print(len(self.filter_relevant_intervals3(interval[0], rounding)))
-            assert len(self.filter_relevant_intervals3(interval[0],
-                                                       rounding)) == 0, f"There is an intersection with the intervals already present in the tree! {self.filter_relevant_intervals3(interval[0], rounding)} against {interval}"
-        self.union_states_total.append(interval)
-        coordinates = flatten_interval(interval[0])
-        action = interval[1]
-        self.tree.insert(id, coordinates, (interval[0], action))
+        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.filter_relevant_intervals3(interval[0], rounding)
+        relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself
+        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
+        for remaining_interval in [(x, interval[1]) for x in remaining]:
+            self.union_states_total.append(remaining_interval)
+            coordinates = flatten_interval(remaining_interval[0])
+            action = remaining_interval[1]
+            self.tree.insert(id, coordinates, (remaining_interval[0], action))
+
+    def tree_intervals(self):
+        return self.union_states_total
 
     def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
         """
@@ -47,29 +44,6 @@ class SharedRtree_temp:
                 self.add_single(interval, rounding)
                 bar.update(i)
 
-    def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        # with self.lock:
-        print("Building the tree")
-        helper = bulk_load_rtree_helper(intervals)
-        self.tree.close()
-        self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
-        self.tree.flush()
-        print("Finished building the tree")
-
-    def load_from_file(self, filename, rounding):
-        # with self.lock:
-        print("Loading from file")
-        union_states_total = pickle.load(open(filename, "rb"))
-        print("Loaded from file")
-        self.union_states_total = round_tuples(union_states_total, rounding=rounding)
-        print("Rounded intervals")
-        self.load(self.union_states_total)
-
-    def save_to_file(self, file_name):
-        # with self.lock:
-        pickle.dump(self.union_states_total, open(file_name, "wb+"))
-        print("Saved RTree")
-
     def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
         """Filter the intervals relevant to the current_interval"""
         # current_interval = inflate(current_interval, rounding)
@@ -80,10 +54,6 @@ class SharedRtree_temp:
             if suitable:
                 total.append(result)
         return total
-
-    def flush(self):
-        # with self.lock:
-        self.tree.flush()
 
 
 def get_rtree_temp() -> SharedRtree_temp:

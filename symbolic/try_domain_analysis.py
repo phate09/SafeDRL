@@ -9,7 +9,7 @@ from symbolic.unroll_methods import *
 def try_load():
     gym.logger.set_level(40)
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-    local_mode = True
+    local_mode = False
     if not ray.is_initialized():
         ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -44,6 +44,8 @@ def try_load():
     remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
     remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
 
+    for x, y in zip(remainings_new1, remainings_after_first1):
+        assert x == y
     assert remainings_new1 == remainings_after_first1
     assert remainings_new2 == remainings_after_first2
     assert remainings_new3 == remainings_after_first3
@@ -55,9 +57,9 @@ def try_temp_tree():
     temp2.add_single((((-0.005, 0.005), (-0.005, 0.005), (-0.005, 0.005), (-0.005, 0.005)), True), 6)
     results1 = temp1.filter_relevant_intervals3(((0, 0.005), (0, 0.005), (0, 0.005), (0, 0.005)), 6)
     results2 = temp2.filter_relevant_intervals3(((0, 0.005), (0, 0.005), (0, 0.005), (0, 0.005)), 6)
-    assert results1!=results2
+    assert results1 != results2
 
 
 if __name__ == '__main__':
-    try_temp_tree()
-    # try_load()
+    # try_temp_tree()
+    try_load()

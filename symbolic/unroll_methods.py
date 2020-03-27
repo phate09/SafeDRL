@@ -12,9 +12,10 @@ import ray
 
 from mosaic.utils import chunks, round_tuple, round_tuples
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
+from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
-from prism.shared_rtree import SharedRtree
-from mosaic.workers.RemainingWorker import compute_remaining_intervals3_multi
+from prism.shared_rtree import SharedRtree, get_rtree
+from prism.shared_rtree_temp import get_rtree_temp
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
@@ -168,8 +169,8 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
     t_states = (
-    round_tuples([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next]),
-    [round_tuple(tuple([(float(x.item(0)), float(x.item(1))) for x in k])) for k in ignore_next])
+        round_tuples([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next]),
+        [round_tuple(tuple([(float(x.item(0)), float(x.item(1))) for x in k])) for k in ignore_next])
     return t_states
 
 
@@ -204,17 +205,18 @@ def analysis_iteration(intervals, t, n_workers: int, rtree: SharedRtree, env, ex
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
             # get max of every dimension
-            boundaries = []
-            for d in range(len(remainings[0])):
-                dimension_slice = [(x[d][0], x[d][1]) for x in remainings]
-                maximum = float(max(x[1] for x in dimension_slice))
-                minimum = float(min(x[0] for x in dimension_slice))
-                boundaries.append((minimum, maximum))
-            boundaries = tuple(boundaries)
+            # boundaries = []
+            # for d in range(len(remainings[0])):
+            #     dimension_slice = [(x[d][0], x[d][1]) for x in remainings]
+            #     maximum = float(max(x[1] for x in dimension_slice))
+            #     minimum = float(min(x[0] for x in dimension_slice))
+            #     boundaries.append((minimum, maximum))
+            # boundaries = tuple(boundaries)
             # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
-            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals([boundaries], n_workers, rounding)
-            print(f"Adding {len(assigned_intervals)} states to the tree")
-            rtree.add_many(assigned_intervals, rounding)
+            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, n_workers, rounding)
+            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)
+            print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
+            rtree.add_many(assigned_intervals_no_overlaps, rounding)
             rtree.flush()
         else:  # if no more remainings exit
             break
@@ -224,3 +226,51 @@ def analysis_iteration(intervals, t, n_workers: int, rtree: SharedRtree, env, ex
 
     print(f"t:{t} Finished")
     return next_states
+
+
+def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int, rounding: int) -> Tuple[
+    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+    """
+    Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
+    :param current_intervals:
+    :return: the blank intervals and the intersection intervals
+    """
+    no_overlaps = remove_overlaps([(x, True) for x in current_intervals], rounding)  # assign a dummy action
+    no_overlaps = [x[0] for x in no_overlaps]  # removes the action
+    workers = cycle([RemainingWorker.remote(t, rounding, get_rtree()) for _ in range(n_workers)])
+    proc_ids = []
+    chunk_size = 300
+    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(no_overlaps) / chunk_size), is_terminal=True, term_width=200) as bar:
+        for i, intervals in enumerate(chunks(no_overlaps, chunk_size)):
+            proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
+            bar.update(i)
+    parallel_result = []
+    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+        while len(proc_ids) != 0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            parallel_result.append(ray.get(ready_ids[0]))
+            bar.update(bar.value + 1)
+    if len(parallel_result) != 0:
+        remainings, intersection_states = zip(*parallel_result)
+    else:
+        remainings, intersection_states = [], []
+    return [i for x in remainings for i in x], [i for x in intersection_states for i in x]
+
+
+def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    """
+    Ensures there are no overlaps between the current intervals
+    :param current_intervals:
+    :param rounding:
+    :return:
+    """
+    print("Removing overlaps")
+    no_overlaps_tree = get_rtree_temp()
+    no_overlaps_tree.add_many(current_intervals, rounding)
+    no_overlaps = no_overlaps_tree.tree_intervals()
+    for no_overlap_interval in no_overlaps:  # test there are no overlaps
+        if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
+            assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
+    print("Removed overlaps")
+
+    return no_overlaps

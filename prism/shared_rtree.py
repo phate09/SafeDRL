@@ -25,11 +25,11 @@ class SharedRtree:
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
         # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
-        interval = (open_close_tuple(interval[0]), interval[1])
-        if len(self.filter_relevant_intervals3(interval[0], rounding)) != 0:
-            print(len(self.filter_relevant_intervals3(interval[0], rounding)))
-            assert len(self.filter_relevant_intervals3(interval[0],
-                                                       rounding)) == 0, f"There is an intersection with the intervals already present in the tree! {self.filter_relevant_intervals3(interval[0], rounding)} against {interval}"
+        # interval = (open_close_tuple(interval[0]), interval[1])
+        # relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
+        # if len(relevant_intervals) != 0:
+        #     print(len(relevant_intervals))
+        #     assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
         self.union_states_total.append(interval)
         coordinates = flatten_interval(interval[0])
         action = interval[1]
@@ -37,8 +37,8 @@ class SharedRtree:
 
     def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
         """
-        Store all the intervals in the tree with the same action
-        :param intervals:
+        Store all the intervals in the tree with the same action, assumes no overlap between input intervals
+        :param intervals: the intervals to add, assumes no overlap
         :param action: the action to be assigned to all the intervals
         :return:
         """
@@ -118,11 +118,4 @@ def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool
 if __name__ == '__main__':
     Pyro5.api.config.SERIALIZER = "marshal"
     Pyro5.api.config.SERVERTYPE = "multiplex"
-    # daemon = Pyro5.api.Daemon()
-    # ns = Pyro5.api.locate_ns()  # find the name server
-    # uri = daemon.register(SharedRtree)  # register the greeting maker as a Pyro object
-    # ns.register("prism.rtree", uri)  # register the object with a name in the name server
-    # uri1 = daemon.register(SharedRtree_Temp)  # register the greeting maker as a Pyro object
-    # ns.register("prism.rtreetemp", uri1)  # register the object with a name in the name server
-    # daemon.requestLoop()  # Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)  # Pyro5.api.Daemon.serveSimple({SharedRtree_Temp: "prism.rtreetemp"}, ns=True)
     Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)
