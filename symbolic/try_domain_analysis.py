@@ -32,23 +32,43 @@ def try_load():
     t = 0
 
     remainings_new1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    remainings_new1_2 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    assert_lists_equal(remainings_new1, remainings_new1_2)
     remainings_new2 = analysis_iteration(remainings_new1, t + 1, n_workers, rtree, env, explorer, rounding)
-    remainings_new3 = analysis_iteration(remainings_new2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_new2_2 = analysis_iteration(remainings_new1, t + 1, n_workers, rtree, env, explorer, rounding)
+    assert_lists_equal(remainings_new2, remainings_new2_2)
+    # remainings_new3 = analysis_iteration(remainings_new2, t + 2, n_workers, rtree, env, explorer, rounding)
     rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+    previous_union = [x[0] for x in rtree.tree_intervals()]
+    previous_length = len(rtree.tree_intervals())
     print("Saved")
     print("-------------------------AFTER LOADING-------------------------")
     rtree.reset()
     storage.reset()
     rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+    assert_lists_equal(previous_union, [x[0] for x in rtree.tree_intervals()])
+    after_length = len(rtree.tree_intervals())
+    assert after_length == previous_length, f"The size of the tree before and after load do not match: {previous_length} vs {after_length}"
     remainings_after_first1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
-    remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
-    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first1_2 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    assert_lists_equal(remainings_after_first1, remainings_after_first1_2)
+    # remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
+    # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
+    # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)
+    # remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
 
-    for x, y in zip(remainings_new1, remainings_after_first1):
-        assert x == y
-    assert remainings_new1 == remainings_after_first1
-    assert remainings_new2 == remainings_after_first2
-    assert remainings_new3 == remainings_after_first3
+    assert_lists_equal(remainings_new1, remainings_after_first1)
+    # assert_lists_equal(remainings_new2, remainings_after_first2)
+
+
+def assert_lists_equal(list1, list2):
+    len1 = len(list1)
+    len2 = len(list2)
+    assert len1 == len2, f"The two lists do not have the same length: {len1} vs {len2}"
+    for x, y in zip(list1, list2):
+        for i, j in zip(x, y):
+            if i != j:
+                assert i == j, f"Two elements are not the same: {x} vs {y}"
 
 
 def try_temp_tree():

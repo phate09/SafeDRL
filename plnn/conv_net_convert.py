@@ -118,8 +118,8 @@ def convert(input_layers):
             continue
         out_features, in_features = eq_weights[i][0].shape
         layer = nn.Linear(in_features, out_features)
-        layer.weight.data = torch.from_numpy(eq_weights[i][0].astype(np.float32))
-        layer.bias.data = torch.from_numpy(eq_weights[i][1].astype(np.float32))
+        layer.weight.data = torch.from_numpy(eq_weights[i][0].astype(np.float64))
+        layer.bias.data = torch.from_numpy(eq_weights[i][1].astype(np.float64))
         layers.append(layer)
         if i != len(eq_weights) - 1:
             layers.append(nn.ReLU())

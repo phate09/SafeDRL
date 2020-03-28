@@ -1,11 +1,10 @@
-import pickle
 from typing import List, Tuple
 
 import Pyro5.api
 import progressbar
 from rtree import index
 
-from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate, open_close_tuple
+from mosaic.utils import flatten_interval
 from mosaic.workers.RemainingWorker import compute_remaining_intervals3
 
 
@@ -19,9 +18,9 @@ class SharedRtree_temp:
 
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
-        interval = (open_close_tuple(interval[0]), interval[1])
+        # interval = (open_close_tuple(interval[0]), interval[1])
         relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.filter_relevant_intervals3(interval[0], rounding)
-        relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself
+        relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself todo needed?
         remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
         for remaining_interval in [(x, interval[1]) for x in remaining]:
             self.union_states_total.append(remaining_interval)
@@ -29,7 +28,7 @@ class SharedRtree_temp:
             action = remaining_interval[1]
             self.tree.insert(id, coordinates, (remaining_interval[0], action))
 
-    def tree_intervals(self):
+    def tree_intervals(self) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
         return self.union_states_total
 
     def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
@@ -39,7 +38,7 @@ class SharedRtree_temp:
         :param action: the action to be assigned to all the intervals
         :return:
         """
-        with progressbar.ProgressBar(prefix="Add many:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
+        with progressbar.ProgressBar(prefix="Add many temp:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
             for i, interval in enumerate(intervals):
                 self.add_single(interval, rounding)
                 bar.update(i)
@@ -49,7 +48,7 @@ class SharedRtree_temp:
         # current_interval = inflate(current_interval, rounding)
         results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
         total = []
-        for result in results:
+        for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
             suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
             if suitable:
                 total.append(result)

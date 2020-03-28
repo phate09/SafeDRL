@@ -6,6 +6,8 @@ from prism.shared_rtree_temp import SharedRtree_temp
 from prism.state_storage import StateStorage
 
 if __name__ == '__main__':
+    Pyro5.api.config.SERIALIZER = "marshal"
+    Pyro5.api.config.SERVERTYPE = "multiplex"
     Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree",
                                   SharedRtree_temp: "prism.rtreetemp",
                                   SharedDict: "prism.shareddict",

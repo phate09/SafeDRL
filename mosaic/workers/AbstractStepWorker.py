@@ -49,10 +49,10 @@ class AbstractStepWorker:
 def step_state(state: Tuple[Tuple[float, float]], action, env, rounding: int) -> Tuple[Tuple[Tuple], bool]:
     # given a state and an action, calculate next state
     env.reset()
-    # state = round_tuple(state, rounding)  # round the state
+    state = round_tuple(state, rounding)  # round the state
     env.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
     next_state, reward, done, _ = env.step(action)
-    return interval_unwrap(next_state, rounding), done
+    return round_tuple(interval_unwrap(next_state, rounding), rounding), done
 
 
 def interval_unwrap(state: np.ndarray, rounding: int) -> Tuple[Tuple[float, float]]:

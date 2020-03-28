@@ -1,6 +1,7 @@
 """
 Collection of methods to use in unroll_abstract_env
 """
+import math
 import random
 from itertools import cycle
 from math import ceil
@@ -10,7 +11,7 @@ import numpy as np
 import progressbar
 import ray
 
-from mosaic.utils import chunks, round_tuple, round_tuples
+from mosaic.utils import chunks, round_tuple, round_tuples, area_tuple
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
@@ -156,8 +157,10 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     :param s_array: the list of intervals
     :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
     """
+    total_area_before = sum([area_tuple(remaining) for remaining in s_array])
     # convert list of tuples to list of arrays
-    s_array = [np.array(round_tuple(x, rounding)) for x in s_array]
+    s_array = [np.array(x) for x in s_array]  # round_tuple(x, rounding)
+    # todo check area
     explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
     # given the initial states calculate which intervals go left or right
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
@@ -165,12 +168,12 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
     unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]
     ignore_next = [i.cpu().numpy() for i in explorer.ignore_domains]
-    safe_next = np.stack(safe_next) if len(safe_next) != 0 else []
-    unsafe_next = np.stack(unsafe_next) if len(unsafe_next) != 0 else []
-    ignore_next = np.stack(ignore_next) if len(ignore_next) != 0 else []
-    t_states = (
-        round_tuples([(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), True) for k in safe_next] + [(tuple([(float(x.item(0)), float(x.item(1))) for x in k]), False) for k in unsafe_next]),
-        [round_tuple(tuple([(float(x.item(0)), float(x.item(1))) for x in k])) for k in ignore_next])
+    safe_next = np.stack(safe_next).tolist() if len(safe_next) != 0 else []
+    unsafe_next = np.stack(unsafe_next).tolist() if len(unsafe_next) != 0 else []
+    ignore_next = np.stack(ignore_next).tolist() if len(ignore_next) != 0 else []
+    t_states = ([(tuple([tuple(x) for x in k]), True) for k in safe_next] + [(tuple([tuple(x) for x in k]), False) for k in unsafe_next], ignore_next)  # round_tuples
+    total_area_after = sum([area_tuple(remaining) for remaining, action in t_states[0]])
+    assert math.isclose(total_area_before, total_area_after, abs_tol=1e-8), f"The areas do not match: {total_area_before} vs {total_area_after}"
     return t_states
 
 
@@ -178,12 +181,16 @@ def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tup
     """discards the intervals with area 0"""
     result = []
     for i, interval in enumerate(intervals):
-        sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
-        if all([x > 1e-6 for x in sizes]):
+        if is_not_negligible(interval):
             # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
             # if area > 1e-10:
             result.append(interval)
     return result
+
+
+def is_not_negligible(interval: Tuple[Tuple[float, float]]):
+    sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
+    return all([x > 1e-6 for x in sizes])
 
 
 def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
@@ -195,7 +202,7 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
         return result
 
 
-def analysis_iteration(intervals, t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
+def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
     print(f"t:{t} Started")
     while True:
@@ -212,9 +219,17 @@ def analysis_iteration(intervals, t, n_workers: int, rtree: SharedRtree, env, ex
             #     minimum = float(min(x[0] for x in dimension_slice))
             #     boundaries.append((minimum, maximum))
             # boundaries = tuple(boundaries)
+            # todo maybe compute_remaining on the boundary before
             # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
+            remainings = [round_tuple(remaining, rounding) for remaining in remainings]
+            total_area_before = sum([area_tuple(remaining) for remaining in remainings])
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, n_workers, rounding)
+            assigned_intervals = round_tuples(assigned_intervals)
+            total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
+            assert math.isclose(total_area_before, total_area_after, abs_tol=1e-8), f"The areas do not match: {total_area_before} vs {total_area_after}"
             assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)
+            total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
+            assert math.isclose(total_area_after, total_area_after_no_overlaps, abs_tol=1e-8), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             rtree.add_many(assigned_intervals_no_overlaps, rounding)
             rtree.flush()
@@ -271,6 +286,7 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     for no_overlap_interval in no_overlaps:  # test there are no overlaps
         if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
             assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
+    no_overlaps = [interval for interval in no_overlaps if is_not_negligible(interval[0])]  # remove negligibles
     print("Removed overlaps")
 
     return no_overlaps

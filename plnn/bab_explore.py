@@ -46,7 +46,7 @@ class DomainExplorer:
         self.reset()  # reset statistics
         for domain in domains:
             # normed_domain = np.copy(domain)
-            tensor = torch.tensor(domain, dtype=torch.float32)
+            tensor = torch.tensor(domain, dtype=torch.float64)
             queue.append(tensor)
             total_area += mosaic.utils.area_tensor(tensor)
         last_save = time.time()

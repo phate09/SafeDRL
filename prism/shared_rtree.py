@@ -5,7 +5,7 @@ import Pyro5.api
 import progressbar
 from rtree import index
 
-from mosaic.utils import round_tuples, round_tuple, flatten_interval, inflate, open_close_tuple
+from mosaic.utils import round_tuples, flatten_interval
 
 
 @Pyro5.api.expose
@@ -25,15 +25,17 @@ class SharedRtree:
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
         # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
-        # interval = (open_close_tuple(interval[0]), interval[1])
-        # relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
-        # if len(relevant_intervals) != 0:
-        #     print(len(relevant_intervals))
-        #     assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
+        relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
+        if len(relevant_intervals) != 0:
+            print(len(relevant_intervals))
+            assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
         self.union_states_total.append(interval)
         coordinates = flatten_interval(interval[0])
         action = interval[1]
         self.tree.insert(id, coordinates, (interval[0], action))
+
+    def tree_intervals(self) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+        return self.union_states_total
 
     def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
         """
@@ -76,7 +78,7 @@ class SharedRtree:
         results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
         total = []
         for result in results:
-            suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
+            suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
             if suitable:
                 total.append(result)
         return total

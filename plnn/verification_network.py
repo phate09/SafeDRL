@@ -1443,7 +1443,7 @@ class VerificationNetwork(nn.Module):
         padedinput = np.lib.pad(input.cpu(), ((0, 0), (plefttop, prightbot), (plefttop, prightbot), (0, 0)), 'constant',
                                 constant_values=((0, 0), (0, 0), (0, 0), (0, 0)))
         # M = torch.tensor(np.ndarray(shape=(batch_size * h_out * w_out, k_h * k_w * channels_in)))
-        stretchinput = np.zeros(shape=(batch_size * h_out * w_out, k_h * k_w * channels_in), dtype=np.float32)
+        stretchinput = np.zeros(shape=(batch_size * h_out * w_out, k_h * k_w * channels_in), dtype=np.float64)
         # L = torch.tensor(np.ndarray(shape=(k_h * k_w * channels_in, channels_out)))
         for j in range(stretchinput.shape[0]):
             batch_index = int(j / (h_out * w_out))
@@ -1521,7 +1521,7 @@ class VerificationNetwork(nn.Module):
         :return: kernel of the shape (kh*kw*ch,filter_num)
         '''
         filter_num, ch, kh, kw = kernel.shape
-        stretchkernel = np.zeros((kh * kw * ch, filter_num), dtype=np.float32)
+        stretchkernel = np.zeros((kh * kw * ch, filter_num), dtype=np.float64)
         for i in range(filter_num):
             stretchkernel[:, i] = kernel[i, :, :, :].cpu().detach().numpy().flatten()
         return torch.tensor(stretchkernel)

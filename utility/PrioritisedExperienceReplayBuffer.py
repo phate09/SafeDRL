@@ -281,7 +281,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             done_mask[i] = 1 if executing act_batch[i] resulted in
             the end of an episode and 0 otherwise.
         weights: np.array
-            Array of shape (batch_size,) and dtype np.float32
+            Array of shape (batch_size,) and dtype np.float64
             denoting importance weight of each sampled transition
         idxes: np.array
             Array of shape (batch_size,) and dtype np.int32

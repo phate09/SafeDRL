@@ -1,5 +1,8 @@
 import decimal
+import math
+import operator
 import shelve
+from functools import reduce
 from typing import Tuple, List
 
 import intervals as I
@@ -31,6 +34,12 @@ def area_numpy(domain: np.ndarray) -> float:
     dom_sides = dom[:, 1] - dom[:, 0]
     dom_area = dom_sides.prod()
     return abs(float(dom_area.item()))
+
+
+def area_tuple(domain: Tuple[Tuple[float, float]]):
+    dimensions = [abs(x[1] - x[0]) for x in domain]
+    area = reduce(operator.mul, dimensions, 1)
+    return area
 
 
 @ray.remote
@@ -115,13 +124,13 @@ def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
     return [(round_tuple(interval, rounding), action) for interval, action in intervals]
 
 
+def truncate(n, decimals=0):
+    multiplier = 10 ** decimals
+    return int(n * multiplier) / multiplier
+
+
 def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
     return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
-
-
-def open_close_tuple(interval: Tuple[Tuple[float, float]]):
-    eps = 0  # 1e-9
-    return tuple([(x[0], x[1] - eps) for x in interval])
 
 
 def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
