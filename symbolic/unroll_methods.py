@@ -159,7 +159,7 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     """
     total_area_before = sum([area_tuple(remaining) for remaining in s_array])
     # convert list of tuples to list of arrays
-    s_array = [np.array(x) for x in s_array]  # round_tuple(x, rounding)
+    s_array = [np.array(x, dtype=np.float64) for x in s_array]  # round_tuple(x, rounding)
     # todo check area
     explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
     # given the initial states calculate which intervals go left or right
@@ -204,9 +204,10 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
     assigned_action_intervals = []
+    intervals_sorted = sorted(intervals)
     print(f"t:{t} Started")
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals, t, n_workers, rounding)  # checks areas not covered by total intervals
+        remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
         assigned_action_intervals.extend(intersected_intervals)
         remainings = discard_negligibles(remainings)  # discard intervals with area 0
         if len(remainings) != 0:

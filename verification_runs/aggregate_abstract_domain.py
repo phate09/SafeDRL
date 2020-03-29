@@ -8,7 +8,7 @@ import progressbar
 import ray
 from rtree import index
 
-from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks, flatten_interval, inflate
+from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks, flatten_interval
 from prism.shared_dictionary import get_shared_dictionary, SharedDict
 from prism.shared_rtree import bulk_load_rtree_helper
 
@@ -204,7 +204,7 @@ def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]],roundi
         # print(f"starting process {i}")
         handled = handled_intervals.get(interval, False)
         if not handled:
-            near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree_global.intersection(flatten_interval(inflate(interval[0],rounding)), objects='raw')
+            near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree_global.intersection(flatten_interval(interval[0]), objects='raw')
             found_match = False
             for neighbour in near_intervals:
                 neighbour_handled = handled_intervals.get(neighbour, False)

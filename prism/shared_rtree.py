@@ -54,7 +54,7 @@ class SharedRtree:
         print("Building the tree")
         helper = bulk_load_rtree_helper(intervals)
         self.tree.close()
-        self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
+        self.tree = index.Index(helper, interleaved=False, properties=self.p)
         self.tree.flush()
         print("Finished building the tree")
 
@@ -62,8 +62,8 @@ class SharedRtree:
         # with self.lock:
         print("Loading from file")
         union_states_total = pickle.load(open(filename, "rb"))
-        print("Loaded from file")
-        self.union_states_total = round_tuples(union_states_total, rounding=rounding)
+        # print("Loaded from file")
+        self.union_states_total = union_states_total  # round_tuples(union_states_total, rounding=rounding)
         print("Rounded intervals")
         self.load(self.union_states_total)
 

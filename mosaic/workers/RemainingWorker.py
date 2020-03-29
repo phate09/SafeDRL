@@ -31,11 +31,13 @@ class RemainingWorker:
                 relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself
             remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
             # print("merging")
-            if len(intersection_safe) != 0:
-                intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding)  # todo check merge
-            if len(intersection_unsafe) != 0:
-                intersection_unsafe = merge_simple([(x, False) for x in intersection_unsafe], self.rounding)
+            # if len(intersection_safe) != 0:
+            #     intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding)  # todo check merge
+            # if len(intersection_unsafe) != 0:
+            #     intersection_unsafe = merge_simple([(x, False) for x in intersection_unsafe], self.rounding)
             # print("storing successors")
+            intersection_safe = [(x, True) for x in intersection_safe]
+            intersection_unsafe = [(x, False) for x in intersection_unsafe]
             successors_id = self.storage.store_successor_multi([x[0] for x in intersection_safe], parent_id)
             self.storage.assign_t_multi(successors_id, f"{self.t}.split")
             successors_id = self.storage.store_successor_multi([x[0] for x in intersection_unsafe], parent_id)

@@ -133,9 +133,9 @@ def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tu
     return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
 
 
-def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
-    current_interval = round_tuple(tuple([(x[0] - eps, x[1] + eps) for x in current_interval]), rounding)  # rounding
-    return current_interval
+# def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
+#     current_interval = round_tuple(tuple([(x[0] - eps, x[1] + eps) for x in current_interval]), rounding)  # rounding
+#     return current_interval
 
 
 def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
