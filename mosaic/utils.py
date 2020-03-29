@@ -130,7 +130,7 @@ def truncate(n, decimals=0):
 
 
 def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
-    return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+    return interval  # tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
 
 
 # def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:

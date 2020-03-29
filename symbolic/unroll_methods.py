@@ -158,9 +158,6 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
     """
     total_area_before = sum([area_tuple(remaining) for remaining in s_array])
-    # convert list of tuples to list of arrays
-    s_array = [np.array(x, dtype=np.float64) for x in s_array]  # round_tuple(x, rounding)
-    # todo check area
     explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
     # given the initial states calculate which intervals go left or right
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
@@ -173,24 +170,18 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     ignore_next = np.stack(ignore_next).tolist() if len(ignore_next) != 0 else []
     t_states = ([(tuple([tuple(x) for x in k]), True) for k in safe_next] + [(tuple([tuple(x) for x in k]), False) for k in unsafe_next], ignore_next)  # round_tuples
     total_area_after = sum([area_tuple(remaining) for remaining, action in t_states[0]])
-    assert math.isclose(total_area_before, total_area_after, abs_tol=1e-8), f"The areas do not match: {total_area_before} vs {total_area_after}"
+    assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
     return t_states
 
 
 def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tuple[Tuple[float, float]]]:
     """discards the intervals with area 0"""
-    result = []
-    for i, interval in enumerate(intervals):
-        if is_not_negligible(interval):
-            # area = functools.reduce(operator.mul, sizes)  # multiplication of each side of the rectangle
-            # if area > 1e-10:
-            result.append(interval)
-    return result
+    return [x for x in intervals if not is_negligible(x)]
 
 
-def is_not_negligible(interval: Tuple[Tuple[float, float]]):
+def is_negligible(interval: Tuple[Tuple[float, float]]):
     sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
-    return all([x > 1e-6 for x in sizes])
+    return any([math.isclose(x, 0) for x in sizes])
 
 
 def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
@@ -207,7 +198,6 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     print(f"t:{t} Started")
     while True:
         remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
-        remainings = discard_negligibles(remainings)  # discard intervals with area 0
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
@@ -226,10 +216,10 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, n_workers, rounding)
             assigned_intervals = round_tuples(assigned_intervals)
             total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
-            assert math.isclose(total_area_before, total_area_after, abs_tol=1e-8), f"The areas do not match: {total_area_before} vs {total_area_after}"
-            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)
+            assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)  # todo check if neeeded, i think this operation is being done twice
             total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
-            assert math.isclose(total_area_after, total_area_after_no_overlaps, abs_tol=1e-8), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
+            assert math.isclose(total_area_after, total_area_after_no_overlaps), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             rtree.add_many(assigned_intervals_no_overlaps, rounding)
             rtree.flush()
@@ -269,7 +259,8 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
         remainings, intersection_states = zip(*parallel_result)
     else:
         remainings, intersection_states = [], []
-    return [i for x in remainings for i in x], [i for x in intersection_states for i in x]
+    remainings_left = discard_negligibles([i for x in remainings for i in x])
+    return remainings_left, [i for x in intersection_states for i in x]
 
 
 def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
@@ -286,7 +277,6 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     for no_overlap_interval in no_overlaps:  # test there are no overlaps
         if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
             assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
-    no_overlaps = [interval for interval in no_overlaps if is_not_negligible(interval[0])]  # remove negligibles todo check needed
     print("Removed overlaps")
 
     return no_overlaps

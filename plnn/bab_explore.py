@@ -34,7 +34,7 @@ class DomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains: List[np.ndarray], n_workers: int, debug=True):
+    def explore(self, net, domains: List[Tuple[Tuple[float, float]]], n_workers: int, debug=True):
         # eps = 1e-3
         # precision = 1e-3  # does not allow precision of any dimension to go under this amount
         # min_area = 1e-5  # minimum area of the domain for it to be considered
@@ -226,14 +226,14 @@ class DomainExplorer:
 
         # Now split over dimension dim:
         half_length = edgelength / 2
-
+        new_value = domain[dim, 1] - half_length
         # dom1: Upper bound in the 'dim'th dimension is now at halfway point.
         dom1 = domain.clone()
-        dom1[dim, 1] -= half_length
+        dom1[dim, 1] = new_value
 
         # dom2: Lower bound in 'dim'th dimension is now at haflway point.
         dom2 = domain.clone()
-        dom2[dim, 0] += half_length
+        dom2[dim, 0] = new_value
 
         sub_domains = [dom1, dom2]
 
