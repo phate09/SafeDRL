@@ -6,8 +6,6 @@ import ray
 
 from mosaic.utils import round_tuple, shrink, interval_contains
 from prism.state_storage import get_storage, StateStorage
-from verification_runs.aggregate_abstract_domain import merge_simple
-
 
 @ray.remote
 class RemainingWorker:

@@ -203,13 +203,12 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
 
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
-    assigned_action_intervals = []
     intervals_sorted = sorted(intervals)
     print(f"t:{t} Started")
     while True:
         remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
-        assigned_action_intervals.extend(intersected_intervals)
         remainings = discard_negligibles(remainings)  # discard intervals with area 0
+        remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
             # get max of every dimension
@@ -236,7 +235,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             rtree.flush()
         else:  # if no more remainings exit
             break
-    next_states, terminal_states = abstract_step_store2(assigned_action_intervals, env, explorer, t + 1, n_workers,
+    next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
                                                         rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
 
@@ -287,7 +286,7 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     for no_overlap_interval in no_overlaps:  # test there are no overlaps
         if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
             assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
-    no_overlaps = [interval for interval in no_overlaps if is_not_negligible(interval[0])]  # remove negligibles
+    no_overlaps = [interval for interval in no_overlaps if is_not_negligible(interval[0])]  # remove negligibles todo check needed
     print("Removed overlaps")
 
     return no_overlaps

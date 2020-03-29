@@ -62,6 +62,10 @@ def try_load():
 
 
 def assert_lists_equal(list1, list2):
+    total_area1 = sum([area_tuple(remaining) for remaining in list1])
+    total_area2 = sum([area_tuple(remaining) for remaining in list2])
+    if not math.isclose(total_area1,total_area2):
+        assert math.isclose(total_area1,total_area2)
     len1 = len(list1)
     len2 = len(list2)
     if len1 !=len2:

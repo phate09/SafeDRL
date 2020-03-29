@@ -20,7 +20,7 @@ class SharedRtree_temp:
         id = len(self.union_states_total)
         # interval = (open_close_tuple(interval[0]), interval[1])
         relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.filter_relevant_intervals3(interval[0], rounding)
-        relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself todo needed?
+        # relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself todo needed?
         remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
         for remaining_interval in [(x, interval[1]) for x in remaining]:
             self.union_states_total.append(remaining_interval)
@@ -61,21 +61,21 @@ def get_rtree_temp() -> SharedRtree_temp:
     return storage
 
 
-def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-    for i, obj in enumerate(data):
-        interval = obj[0]
-        yield (i, flatten_interval(interval), obj)
-
-
-def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> Tuple[index.Index, List[Tuple[Tuple[Tuple[float, float]], bool]]]:
-    p = index.Property(dimension=4)
-    # union_states_total = merge_list_tuple(union_states_total, n_workers)  # aggregate intervals
-    print("Building the tree")
-    helper = bulk_load_rtree_helper(union_states_total)
-    rtree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
-    rtree.flush()
-    print("Finished building the tree")
-    return rtree, union_states_total
+# def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+#     for i, obj in enumerate(data):
+#         interval = obj[0]
+#         yield (i, flatten_interval(interval), obj)
+#
+#
+# def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> Tuple[index.Index, List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+#     p = index.Property(dimension=4)
+#     # union_states_total = merge_list_tuple(union_states_total, n_workers)  # aggregate intervals
+#     print("Building the tree")
+#     helper = bulk_load_rtree_helper(union_states_total)
+#     rtree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
+#     rtree.flush()
+#     print("Finished building the tree")
+#     return rtree, union_states_total
 
 
 if __name__ == '__main__':
