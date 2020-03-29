@@ -217,7 +217,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             assigned_intervals = round_tuples(assigned_intervals)
             total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
             assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
-            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)  # todo check if neeeded, i think this operation is being done twice
+            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)
             total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
             assert math.isclose(total_area_after, total_area_after_no_overlaps), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
