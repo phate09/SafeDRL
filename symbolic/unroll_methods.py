@@ -34,20 +34,22 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     next_states = []
     terminal_states = []
 
-    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding) for _ in range(n_workers)])
+    chunk_size = 1000
+    n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
+    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
-    chunk_size = 100
-    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=ceil(len(abstract_states_normalised) / chunk_size), is_terminal=True, term_width=200) as bar:
+    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
         for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
             proc_ids.append(next(workers).work.remote(intervals))
             bar.update(i)
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids)
-            next_states_local, terminal_states_local = ray.get(ready_ids[0])
-            next_states.extend(next_states_local)
-            terminal_states.extend(terminal_states_local)
-            bar.update(bar.value + 1)
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=1)
+            results = ray.get(ready_ids)
+            bar.update(bar.value + len(results))
+            for next_states_local, terminal_states_local in results:
+                next_states.extend(next_states_local)
+                terminal_states.extend(terminal_states_local)
     return next_states, terminal_states
 
 
@@ -217,7 +219,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             assigned_intervals = round_tuples(assigned_intervals)
             total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
             assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
-            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding)
+            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers)
             total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
             assert math.isclose(total_area_after, total_area_after_no_overlaps), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
@@ -240,30 +242,31 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     :param current_intervals:
     :return: the blank intervals and the intersection intervals
     """
-    no_overlaps = remove_overlaps([(x, True) for x in current_intervals], rounding)  # assign a dummy action
-    no_overlaps = [x[0] for x in no_overlaps]  # removes the action
-    workers = cycle([RemainingWorker.remote(t, rounding, get_rtree()) for _ in range(n_workers)])
+    # no_overlaps = remove_overlaps([(x, True) for x in current_intervals], rounding, n_workers)  # assign a dummy action
+    # no_overlaps = [x[0] for x in no_overlaps]  # removes the action
+    chunk_size = 100
+    n_chunks = ceil(len(current_intervals) / chunk_size)
+    workers = cycle([RemainingWorker.remote(t, rounding, get_rtree()) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
-    chunk_size = 300
-    with progressbar.ProgressBar(prefix="Starting computer remaining workers", max_value=ceil(len(no_overlaps) / chunk_size), is_terminal=True, term_width=200) as bar:
-        for i, intervals in enumerate(chunks(no_overlaps, chunk_size)):
+    with progressbar.ProgressBar(prefix="Starting computer remaining workers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
+        for i, intervals in enumerate(chunks(current_intervals, chunk_size)):
             proc_ids.append(next(workers).compute_remaining_worker.remote(intervals))
             bar.update(i)
-    parallel_result = []
-    with progressbar.ProgressBar(prefix="Compute remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+    remainings = []
+    intersection_states = []
+    with progressbar.ProgressBar(prefix="Compute remaining intervals ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids)
-            parallel_result.append(ray.get(ready_ids[0]))
-            bar.update(bar.value + 1)
-    if len(parallel_result) != 0:
-        remainings, intersection_states = zip(*parallel_result)
-    else:
-        remainings, intersection_states = [], []
-    remainings_left = discard_negligibles([i for x in remainings for i in x])
-    return remainings_left, [i for x in intersection_states for i in x]
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=1)
+            results = ray.get(ready_ids)
+            bar.update(bar.value + len(results))
+            for remaining, intersection_state in results:
+                remainings.extend(remaining)
+                intersection_states.extend(intersection_state)
+    remainings_left = discard_negligibles(remainings)
+    return remainings_left, intersection_states
 
 
-def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """
     Ensures there are no overlaps between the current intervals
     :param current_intervals:
@@ -272,8 +275,9 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     """
     print("Removing overlaps")
     no_overlaps_tree = get_rtree_temp()
-    no_overlaps_tree.add_many(current_intervals, rounding)
-    no_overlaps = no_overlaps_tree.tree_intervals()
+    # no_overlaps_tree.add_many(current_intervals, rounding)
+    no_overlaps = no_overlaps_tree.compute_no_overlaps(current_intervals, rounding, n_workers)
+    # no_overlaps = no_overlaps_tree.tree_intervals()
     for no_overlap_interval in no_overlaps:  # test there are no overlaps
         if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
             assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0

@@ -1,20 +1,33 @@
+from itertools import cycle
+from math import ceil
 from typing import List, Tuple
 
 import Pyro5.api
 import progressbar
+import ray
 from rtree import index
 
-from mosaic.utils import flatten_interval
+from mosaic.utils import flatten_interval, chunks
 from mosaic.workers.RemainingWorker import compute_remaining_intervals3
+from prism.shared_dictionary import get_shared_dictionary
 
 
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="session")
-class SharedRtree_temp:
+class NoOverlapRtree:
     def __init__(self):
         self.p = index.Property(dimension=4)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
+
+    def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+        # with self.lock:
+        print("Building the tree")
+        helper = bulk_load_rtree_helper(intervals)
+        self.tree.close()
+        self.tree = index.Index(helper, interleaved=False, properties=self.p)
+        self.tree.flush()
+        print("Finished building the tree")
 
     def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
         id = len(self.union_states_total)
@@ -30,6 +43,44 @@ class SharedRtree_temp:
 
     def tree_intervals(self) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
         return self.union_states_total
+
+    def compute_no_overlaps(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+        aggregated_list = intervals
+        completed_iterations = 0
+        # self_proxy = self
+        # self._pyroDaemon.register(self_proxy)
+        workers = cycle([NoOverlapWorker.remote(self, rounding) for _ in range(n_workers)])
+        with get_shared_dictionary() as shared_dict:
+            while True:
+                shared_dict.reset()  # reset the dictionary
+                self.load(aggregated_list)
+                old_size = len(aggregated_list)
+                proc_ids = []
+                chunk_size = 200
+                with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
+                    for i, chunk in enumerate(chunks(aggregated_list, chunk_size)):
+                        proc_ids.append(next(workers).no_overlap_worker.remote(chunk))
+                        bar.update(i)
+                aggregated_list = []
+                found_list = []
+                with progressbar.ProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+                    while len(proc_ids) != 0:
+                        ready_ids, proc_ids = ray.wait(proc_ids)
+                        result = ray.get(ready_ids[0])
+                        if result is not None:
+                            aggregated_list.extend(result[0])
+                            found_list.extend(result[1])
+                        bar.update(bar.value + 1)
+                print("Finished!")
+                n_founds = sum(x is True for x in found_list)
+                new_size = len(aggregated_list)
+                print(f"Reduced overlaps to {n_founds / new_size:.2%}")
+                if n_founds == 0:
+                    break
+                completed_iterations += 1
+                if completed_iterations >= max_iter != -1:
+                    break
+        return aggregated_list
 
     def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
         """
@@ -55,16 +106,43 @@ class SharedRtree_temp:
         return total
 
 
-def get_rtree_temp() -> SharedRtree_temp:
+@ray.remote
+class NoOverlapWorker:
+    def __init__(self, tree: NoOverlapRtree, rounding):
+        self.rounding = rounding
+        self.tree: NoOverlapRtree = tree
+        self.handled_intervals = get_shared_dictionary()
+
+    def no_overlap_worker(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> Tuple[List[Tuple[Tuple[Tuple[float, float]], bool]], List[bool]]:
+        aggregated_list = []
+        found_list = [False] * len(intervals)
+        for i, interval in enumerate(intervals):
+            handled = self.handled_intervals.get(interval, False)
+            if not handled:
+                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval[0], self.rounding)
+                found_list[i] = len(relevant_intervals) != 0
+                relevant_intervals = [x for x in relevant_intervals if not self.handled_intervals.get(x, False)]
+                self.handled_intervals.set_multiple([interval] + relevant_intervals, True)  # mark the interval as handled
+                remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
+                aggregated_list.extend([(x, interval[1]) for x in remaining])
+            else:
+                # already handled previously
+                pass
+        return aggregated_list, found_list
+
+
+def get_rtree_temp() -> NoOverlapRtree:
     Pyro5.api.config.SERIALIZER = "marshal"
     storage = Pyro5.api.Proxy("PYRONAME:prism.rtreetemp")
     return storage
 
 
-# def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-#     for i, obj in enumerate(data):
-#         interval = obj[0]
-#         yield (i, flatten_interval(interval), obj)
+def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    for i, obj in enumerate(data):
+        interval = obj[0]
+        yield (i, flatten_interval(interval), obj)
+
+
 #
 #
 # def rebuild_tree(union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8) -> Tuple[index.Index, List[Tuple[Tuple[Tuple[float, float]], bool]]]:
@@ -81,4 +159,4 @@ def get_rtree_temp() -> SharedRtree_temp:
 if __name__ == '__main__':
     Pyro5.api.config.SERIALIZER = "marshal"
     Pyro5.api.config.SERVERTYPE = "multiplex"
-    Pyro5.api.Daemon.serveSimple({SharedRtree_temp: "prism.rtreetemp"}, ns=True)
+    Pyro5.api.Daemon.serveSimple({NoOverlapRtree: "prism.rtreetemp"}, ns=True)

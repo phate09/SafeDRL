@@ -1,5 +1,6 @@
 import Pyro5.api
 
+
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="single")
 class SharedDict():
@@ -20,8 +21,12 @@ class SharedDict():
         # key = tuple([tuple(x) for x in key])
         self.dictionary[key] = value
 
+    def set_multiple(self, keys, value):
+        for key in keys:
+            self.set(key, value)
 
-def get_shared_dictionary()->SharedDict:
+
+def get_shared_dictionary() -> SharedDict:
     Pyro5.api.config.SERIALIZER = "marshal"
     dictionary = Pyro5.api.Proxy("PYRONAME:prism.shareddict")
     return dictionary

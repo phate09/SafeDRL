@@ -1,15 +1,14 @@
 import os
+
 import gym
-from py4j.java_gateway import JavaGateway
-from prism.shared_rtree import get_rtree
-from prism.shared_rtree_temp import get_rtree_temp
+
 from symbolic.unroll_methods import *
 
 
 def try_load():
     gym.logger.set_level(40)
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-    local_mode = True
+    local_mode = False
     if not ray.is_initialized():
         ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -54,28 +53,25 @@ def try_load():
     # assert_lists_equal(remainings_after_first1, remainings_after_first1_2)
     assert_lists_equal(remainings_new1, remainings_after_first1)
     remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
-    assert_lists_equal(remainings_new2, remainings_after_first2)
-    # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
-    # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)
-    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
-    assert_lists_equal(remainings_new3, remainings_after_first3)
+    assert_lists_equal(remainings_new2,
+                       remainings_after_first2)  # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)  # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)  # remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)  # assert_lists_equal(remainings_new3, remainings_after_first3)
 
 
 def assert_lists_equal(list1, list2):
-    total_area1 = sum([area_tuple(remaining) for remaining in list1])
-    total_area2 = sum([area_tuple(remaining) for remaining in list2])
-    if not math.isclose(total_area1,total_area2):
-        assert math.isclose(total_area1,total_area2)
+    # total_area1 = sum([area_tuple(remaining) for remaining in list1])
+    # total_area2 = sum([area_tuple(remaining) for remaining in list2])
+    # if not math.isclose(total_area1,total_area2):
+    #     assert math.isclose(total_area1,total_area2)
     len1 = len(list1)
     len2 = len(list2)
-    if len1 !=len2:
+    if len1 != len2:
         assert len1 == len2, f"The two lists do not have the same length: {len1} vs {len2}"
     list1_sorted = sorted(list1)
     list2_sorted = sorted(list2)
-    for x, y in zip(list1_sorted, list2_sorted):
+    for index, (x, y) in enumerate(zip(list1_sorted, list2_sorted)):
         for i, j in zip(x, y):
             if i != j:
-                assert i == j, f"Two elements are not the same: {x} vs {y}"
+                assert i == j, f"Two elements are not the same at index {index}: {i} vs {j}"
 
 
 def try_temp_tree():
