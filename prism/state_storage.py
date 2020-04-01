@@ -14,7 +14,7 @@ import Pyro5.api
 
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="single")
-class StateStorage():
+class StateStorage:
     def __init__(self):
         self.dictionary = bidict()
         self.t_dictionary = defaultdict(list)

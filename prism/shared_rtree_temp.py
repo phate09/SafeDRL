@@ -71,10 +71,12 @@ class NoOverlapRtree:
                             aggregated_list.extend(result[0])
                             found_list.extend(result[1])
                         bar.update(bar.value + 1)
-                print("Finished!")
                 n_founds = sum(x is True for x in found_list)
                 new_size = len(aggregated_list)
-                print(f"Reduced overlaps to {n_founds / new_size:.2%}")
+                if n_founds == 0:
+                    print(f"Reduced overlaps to {n_founds / new_size:.2%}")
+                else:
+                    print("Finished!")
                 if n_founds == 0:
                     break
                 completed_iterations += 1
@@ -103,7 +105,7 @@ class NoOverlapRtree:
             suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
             if suitable:
                 total.append(result)
-        return total
+        return sorted(total)
 
 
 @ray.remote

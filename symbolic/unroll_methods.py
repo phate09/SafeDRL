@@ -44,13 +44,13 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
             bar.update(i)
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=1)
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
             results = ray.get(ready_ids)
             bar.update(bar.value + len(results))
             for next_states_local, terminal_states_local in results:
                 next_states.extend(next_states_local)
                 terminal_states.extend(terminal_states_local)
-    return next_states, terminal_states
+    return sorted(next_states), terminal_states
 
 
 def generate_points_in_intervals(total_states: np.ndarray, n_points=100) -> np.ndarray:
@@ -256,7 +256,7 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     intersection_states = []
     with progressbar.ProgressBar(prefix="Compute remaining intervals ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=1)
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
             results = ray.get(ready_ids)
             bar.update(bar.value + len(results))
             for remaining, intersection_state in results:

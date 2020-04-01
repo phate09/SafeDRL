@@ -53,8 +53,12 @@ def try_load():
     # assert_lists_equal(remainings_after_first1, remainings_after_first1_2)
     assert_lists_equal(remainings_new1, remainings_after_first1)
     remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
-    assert_lists_equal(remainings_new2,
-                       remainings_after_first2)  # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)  # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)  # remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)  # assert_lists_equal(remainings_new3, remainings_after_first3)
+    assert_lists_equal(remainings_new2, remainings_after_first2)
+    # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer,
+    #                                                rounding)
+    # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)
+    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
+    assert_lists_equal(remainings_new3, remainings_after_first3)
 
 
 def assert_lists_equal(list1, list2):

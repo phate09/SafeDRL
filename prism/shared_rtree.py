@@ -97,7 +97,7 @@ class SharedRtree:
             suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
             if suitable:
                 total.append(result)
-        return total
+        return sorted(total)
 
     def flush(self):
         # with self.lock:
