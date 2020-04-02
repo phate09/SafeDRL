@@ -9,9 +9,9 @@ from symbolic.unroll_methods import *
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
-    ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+    ray.init(address="localhost:8265",local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 gateway = JavaGateway()
 storage: StateStorage = get_storage()
@@ -20,27 +20,27 @@ env = CartPoleEnv_abstract()
 s = env.reset()
 current_interval = s
 rounding = 6
-explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
+explorer, verification_model = generateCartpoleDomainExplorer(1e-2, rounding)
 # reshape with tuples
 current_interval = tuple([(float(x.a), float(x.b)) for i, x in enumerate(current_interval)])
 precision = 1e-6
 print(f"Building the tree")
 rtree = get_rtree()
 rtree.reset()
-# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
 print(f"Finished building the tree")
 # rtree = get_rtree()
 remainings = [current_interval]
 t = 0
-# %%
-for i in range(6):
+for i in range(4):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
     t = t + 1
-    boundaries = [[999, 0], [999, 0], [999, 0], [999, 0]]
+    boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]
     for interval in remainings:
         for d in range(len(interval)):
             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
     print(boundaries)
+    rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 # %%
 storage.save_state("/home/edoardo/Development/SafeDRL/save")
 rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")

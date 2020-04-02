@@ -1,11 +1,12 @@
 import itertools
 from typing import List, Tuple
-
+from contexttimer import Timer
 import progressbar
 import ray
 
 from mosaic.utils import round_tuple, shrink, interval_contains
 from prism.state_storage import get_storage, StateStorage
+
 
 @ray.remote
 class RemainingWorker:
@@ -19,31 +20,38 @@ class RemainingWorker:
         List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
         remaining_total: List[Tuple[Tuple[float, float]], bool] = []
         intersection_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
-        for interval in current_intervals:
-            interval = round_tuple(interval, self.rounding)
-            parent_id = self.storage.store(interval)
-            self.storage.assign_t(parent_id, self.t)
-            # print("compute remaining")
-            relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval, self.rounding)
-            if remove_same:
-                relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself
-            remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
-            # print("merging")
-            # if len(intersection_safe) != 0:
-            #     intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding)  # todo check merge
-            # if len(intersection_unsafe) != 0:
-            #     intersection_unsafe = merge_simple([(x, False) for x in intersection_unsafe], self.rounding)
-            # print("storing successors")
-            intersection_safe = [(x, True) for x in intersection_safe]
-            intersection_unsafe = [(x, False) for x in intersection_unsafe]
-            successors_id = self.storage.store_successor_multi([x[0] for x in intersection_safe], parent_id)
-            self.storage.assign_t_multi(successors_id, f"{self.t}.split")
-            successors_id = self.storage.store_successor_multi([x[0] for x in intersection_unsafe], parent_id)
-            self.storage.assign_t_multi(successors_id, f"{self.t}.split")
-            # print("return results")
-            remaining_total.extend(remaining)
-            intersection_total.extend(intersection_safe)
-            intersection_total.extend(intersection_unsafe)  # remaining_ids_total.extend(remaining_ids)
+        parent_ids = self.storage.store_multi(current_intervals)
+        for i, interval in enumerate(current_intervals):
+            with Timer(factor=1) as t:
+                # interval = round_tuple(interval, self.rounding)
+                parent_id = parent_ids[i]
+                self.storage.assign_t(parent_id, self.t)
+                # print("compute remaining")
+                print(f"Timer1:{t.elapsed}")
+                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval, self.rounding)
+                if remove_same:
+                    relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself
+                print(f"Timer2:{t.elapsed}")
+                remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
+                # print("merging")
+                # if len(intersection_safe) != 0:
+                #     intersection_safe = merge_simple([(x, True) for x in intersection_safe], self.rounding)  # todo check merge
+                # if len(intersection_unsafe) != 0:
+                #     intersection_unsafe = merge_simple([(x, False) for x in intersection_unsafe], self.rounding)
+                # print("storing successors")
+                print(f"Timer3:{t.elapsed}")
+                intersection_safe = [(x, True) for x in intersection_safe]
+                intersection_unsafe = [(x, False) for x in intersection_unsafe]
+                successors_id = self.storage.store_successor_multi([x[0] for x in intersection_safe], parent_id)
+                self.storage.assign_t_multi(successors_id, f"{self.t}.split")
+                successors_id = self.storage.store_successor_multi([x[0] for x in intersection_unsafe], parent_id)
+                self.storage.assign_t_multi(successors_id, f"{self.t}.split")
+                print(f"Timer4:{t.elapsed}")
+                # print("return results")
+                remaining_total.extend(remaining)
+                intersection_total.extend(intersection_safe)
+                intersection_total.extend(intersection_unsafe)  # remaining_ids_total.extend(remaining_ids)
+                print(f"Timer5:{t.elapsed}")
         return remaining_total, intersection_total  # , remaining_ids_total
 
 
@@ -105,5 +113,3 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     if debug:
         bar.finish()
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
-
-

@@ -50,6 +50,9 @@ class StateStorage:
         else:
             return self.dictionary.inverse.get(item)
 
+    def store_multi(self, items: List[Tuple[Tuple[float, float]]]) -> List[int]:
+        return [self.store(item) for item in items]
+
     def assign_t(self, item_id: int, t):
         if item_id not in self.t_dictionary[t]:
             self.t_dictionary[t].append(item_id)

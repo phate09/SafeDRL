@@ -16,7 +16,7 @@ from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from mosaic.workers.RemainingWorker import RemainingWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree, get_rtree
-from prism.shared_rtree_temp import get_rtree_temp
+from prism.no_overlap_rtree import get_rtree_temp
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
@@ -213,15 +213,15 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             # boundaries = tuple(boundaries)
             # todo maybe compute_remaining on the boundary before
             # once you get the boundaries of the area to lookup we execute the algorithm to assign an action to this area(s)
-            remainings = [round_tuple(remaining, rounding) for remaining in remainings]
-            total_area_before = sum([area_tuple(remaining) for remaining in remainings])
+            # remainings = [round_tuple(remaining, rounding) for remaining in remainings]
+            # total_area_before = sum([area_tuple(remaining) for remaining in remainings])
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, n_workers, rounding)
-            assigned_intervals = round_tuples(assigned_intervals)
-            total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
-            assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+            # assigned_intervals = round_tuples(assigned_intervals)
+            # total_area_after = sum([area_tuple(remaining) for remaining, action in assigned_intervals])
+            # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
             assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers)
-            total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
-            assert math.isclose(total_area_after, total_area_after_no_overlaps), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
+            # total_area_after_no_overlaps = sum([area_tuple(remaining) for remaining, action in assigned_intervals_no_overlaps])
+            # assert math.isclose(total_area_after, total_area_after_no_overlaps), f"The areas of no overlap do not match: {total_area_after} vs {total_area_after_no_overlaps}"
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             rtree.add_many(assigned_intervals_no_overlaps, rounding)
             rtree.flush()
@@ -278,9 +278,9 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     # no_overlaps_tree.add_many(current_intervals, rounding)
     no_overlaps = no_overlaps_tree.compute_no_overlaps(current_intervals, rounding, n_workers)
     # no_overlaps = no_overlaps_tree.tree_intervals()
-    for no_overlap_interval in no_overlaps:  # test there are no overlaps
-        if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
-            assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
+    # for no_overlap_interval in no_overlaps:  # test there are no overlaps
+    #     if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
+    #         assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
     print("Removed overlaps")
 
     return no_overlaps

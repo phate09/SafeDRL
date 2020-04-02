@@ -51,19 +51,19 @@ class SharedRtree:
         self.add_many_rebuild(intervals, rounding)
 
     def add_many_rebuild(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
-        with progressbar.ProgressBar(prefix="Add many:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
-            for i, interval in enumerate(intervals):
-                relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
-                if len(relevant_intervals) != 0:
-                    print(len(relevant_intervals))
-                    assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
-                bar.update(i)
+        # with progressbar.ProgressBar(prefix="Add many:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
+        #     for i, interval in enumerate(intervals):
+        #         relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
+        #         if len(relevant_intervals) != 0:
+        #             print(len(relevant_intervals))
+        #             assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
+        #         bar.update(i)
         self.union_states_total.extend(intervals)
         self.load(self.union_states_total)
-        for i, interval in enumerate(intervals):
-            relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
-            if len(relevant_intervals) == 0:
-                assert len(relevant_intervals) != 0, f"The tree did not recognise the newly added interval"
+        # for i, interval in enumerate(intervals):
+        #     relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
+        #     if len(relevant_intervals) == 0:
+        #         assert len(relevant_intervals) != 0, f"The tree did not recognise the newly added interval"
 
     def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
         # with self.lock:
