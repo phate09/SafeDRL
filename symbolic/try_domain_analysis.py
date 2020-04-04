@@ -3,6 +3,8 @@ import os
 import gym
 
 from symbolic.unroll_methods import *
+from symbolic.unroll_methods import get_rtree_temp
+from verification_runs.aggregate_abstract_domain import merge_simple
 
 
 def try_load():
@@ -10,7 +12,7 @@ def try_load():
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
     local_mode = False
     if not ray.is_initialized():
-        ray.init(address="localhost:8265",local_mode=local_mode, include_webui=True, log_to_driver=False)
+        ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
     storage: StateStorage = get_storage()
     storage.reset()
@@ -61,6 +63,74 @@ def try_load():
     assert_lists_equal(remainings_new3, remainings_after_first3)
 
 
+def try_merge():
+    gym.logger.set_level(40)
+    os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
+    local_mode = True
+    if not ray.is_initialized():
+        ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+    n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
+    storage: StateStorage = get_storage()
+    storage.reset()
+    env = CartPoleEnv_abstract()
+    s = env.reset()
+    current_interval = s
+    rounding = 6
+    explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
+    # reshape with tuples
+    current_interval = tuple([(float(x.a), float(x.b)) for i, x in enumerate(current_interval)])
+    precision = 1e-6
+    print(f"Building the tree")
+    rtree = get_rtree()
+    rtree.reset()
+    # rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+    remainings = [current_interval]
+    t = 0
+    # remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+    remainings_new1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    no_overlaps1 = remove_overlaps([(x, True) for x in remainings_new1], rounding, n_workers)
+    no_overlaps1 = [x[0] for x in no_overlaps1]
+    remainings_new2 = analysis_iteration(no_overlaps1, t + 1, n_workers, rtree, env, explorer, rounding)
+    no_overlaps2 = remove_overlaps([(x, True) for x in remainings_new2], rounding, n_workers)
+    no_overlaps2 = [x[0] for x in no_overlaps2]
+    remainings_new3 = analysis_iteration(remainings_new2, t + 2, n_workers, rtree, env, explorer, rounding)
+    no_overlaps3 = remove_overlaps([(x, True) for x in remainings_new3], rounding, n_workers)
+    no_overlaps3 = [x[0] for x in no_overlaps3]
+    print("-------------------------AFTER MERGING-------------------------")
+    union_states_total = rtree.tree_intervals()
+    union_states_total_no_overlaps = remove_overlaps(union_states_total, rounding, n_workers)
+    total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total_no_overlaps])
+    union_states_total_merged = merge_simple(union_states_total, rounding)  # merge_list_tuple(union_states_total, n_workers, max_iter=1)
+    total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
+    assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+    rtree.load(union_states_total_merged)
+    remainings_after_first1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    no_overlaps_after1 = remove_overlaps([(x, True) for x in remainings_after_first1], rounding, n_workers)
+    no_overlaps_after1 = [x[0] for x in no_overlaps_after1]
+    assert_area_equal(no_overlaps1, no_overlaps_after1)
+    remainings_after_first2 = analysis_iteration(no_overlaps_after1, t + 1, n_workers, rtree, env, explorer, rounding)
+    no_overlaps_after2 = remove_overlaps([(x, True) for x in remainings_after_first2], rounding, n_workers)
+    no_overlaps_after2 = [x[0] for x in no_overlaps_after2]
+    assert_area_equal(no_overlaps2, no_overlaps_after2)
+
+    # remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
+    # assert_area_equal(remainings_new2, remainings_after_first2)
+    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
+    no_overlaps_after3 = remove_overlaps([(x, True) for x in remainings_after_first3], rounding, n_workers)
+    no_overlaps_after3 = [x[0] for x in no_overlaps_after3]
+    assert_area_equal(no_overlaps3, no_overlaps_after3)
+    # assert_area_equal(remainings_new3, remainings_after_first3)  # total_area_before = sum([area_tuple(remaining) for remaining in remainings_new1])
+    # total_area_after = sum([area_tuple(remaining) for remaining in remainings_after_first1])
+    # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+
+
+def assert_area_equal(list1, list2):
+    total_area1 = sum([area_tuple(remaining) for remaining in list1])
+    total_area2 = sum([area_tuple(remaining) for remaining in list2])
+    if not math.isclose(total_area1, total_area2):
+        assert math.isclose(total_area1, total_area2), f"The areas do not match: {total_area1} vs {total_area2}"
+
+
 def assert_lists_equal(list1, list2):
     # total_area1 = sum([area_tuple(remaining) for remaining in list1])
     # total_area2 = sum([area_tuple(remaining) for remaining in list2])
@@ -89,4 +159,5 @@ def try_temp_tree():
 
 if __name__ == '__main__':
     # try_temp_tree()
-    try_load()
+    # try_load()
+    try_merge()

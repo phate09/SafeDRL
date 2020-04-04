@@ -59,11 +59,8 @@ class SharedRtree:
         #             assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
         #         bar.update(i)
         self.union_states_total.extend(intervals)
-        self.load(self.union_states_total)
-        # for i, interval in enumerate(intervals):
-        #     relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
-        #     if len(relevant_intervals) == 0:
-        #         assert len(relevant_intervals) != 0, f"The tree did not recognise the newly added interval"
+        self.load(
+            self.union_states_total)  # for i, interval in enumerate(intervals):  #     relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)  #     if len(relevant_intervals) == 0:  #         assert len(relevant_intervals) != 0, f"The tree did not recognise the newly added interval"
 
     def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
         # with self.lock:
@@ -88,16 +85,19 @@ class SharedRtree:
         pickle.dump(self.union_states_total, open(file_name, "wb+"))
         print("Saved RTree")
 
-    def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    def filter_relevant_intervals_multi(self, current_intervals: List[Tuple[Tuple[float, float]]], rounding: int) -> List[List[Tuple[Tuple[Tuple[float, float]], bool]]]:
         """Filter the intervals relevant to the current_interval"""
         # current_interval = inflate(current_interval, rounding)
-        results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
-        total = []
-        for result in results:
-            suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
-            if suitable:
-                total.append(result)
-        return sorted(total)
+        result_return: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = []
+        for current_interval in current_intervals:
+            results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
+            total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+            for result in results:
+                suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
+                if suitable:
+                    total.append(result)
+            result_return.append(sorted(total))
+        return result_return
 
     def flush(self):
         # with self.lock:

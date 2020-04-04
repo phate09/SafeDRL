@@ -1,3 +1,4 @@
+import math
 from functools import partial
 from itertools import permutations, cycle
 from math import ceil
@@ -8,7 +9,7 @@ import progressbar
 import ray
 from rtree import index
 
-from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks, flatten_interval
+from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks, flatten_interval, area_tuple
 from prism.shared_dictionary import get_shared_dictionary, SharedDict
 from prism.shared_rtree import bulk_load_rtree_helper
 
@@ -194,8 +195,14 @@ def aggregate(aggregate_list: np.ndarray):
     return new_list
 
 
-def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]],rounding:int):
-    aggregated_list = []
+def merge_simple_interval_only(intervals: List[Tuple[Tuple[float, float]]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
+    result = merge_simple([(x, True) for x in intervals], rounding)
+    result = [x[0] for x in result]
+    return result
+
+
+def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
     handled_intervals = dict()
     p = index.Property(dimension=4)
     helper = bulk_load_rtree_helper(intervals)
@@ -208,10 +215,15 @@ def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]],roundi
             found_match = False
             for neighbour in near_intervals:
                 neighbour_handled = handled_intervals.get(neighbour, False)
+                same_area = interval == neighbour
                 same_action = neighbour[1] == interval[1]
-                if not neighbour_handled and same_action:
+                if not neighbour_handled and not same_area and same_action:
+                    # area_before = area_tuple(interval[0]) + area_tuple(neighbour[0])
                     new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
                     if new_interval[0] is not None:
+                        # area_after = area_tuple(new_interval[0])
+                        # if not math.isclose(area_before, area_after):
+                        #     assert math.isclose(area_before, area_after), f"The areas do not match: {area_before} vs {area_after}" # it's ok they do not match
                         aggregated_list.append(new_interval)
                         handled_intervals[neighbour] = True  # mark the interval as handled
                         handled_intervals[interval] = True  # mark the interval as handled

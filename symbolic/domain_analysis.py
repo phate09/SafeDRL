@@ -6,12 +6,13 @@ from prism.shared_rtree import get_rtree
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 from symbolic.unroll_methods import *
+from verification_runs.aggregate_abstract_domain import merge_list_tuple, merge_simple
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = False
 if not ray.is_initialized():
-    ray.init(address="localhost:8265",local_mode=local_mode, include_webui=True, log_to_driver=False)
+    ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 gateway = JavaGateway()
 storage: StateStorage = get_storage()
@@ -28,10 +29,17 @@ print(f"Building the tree")
 rtree = get_rtree()
 rtree.reset()
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+union_states_total = rtree.tree_intervals()
+total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total])
+union_states_total_merged = merge_simple(union_states_total, rounding)  # merge_list_tuple(union_states_total, n_workers, max_iter=1)
+total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
+# assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+rtree.load(union_states_total_merged)
 print(f"Finished building the tree")
 # rtree = get_rtree()
 remainings = [current_interval]
 t = 0
+# %%
 for i in range(4):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
     t = t + 1
@@ -39,8 +47,7 @@ for i in range(4):
     for interval in remainings:
         for d in range(len(interval)):
             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
-    print(boundaries)
-    rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+    print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 # %%
 storage.save_state("/home/edoardo/Development/SafeDRL/save")
 rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
@@ -49,9 +56,9 @@ pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.
 print("Checkpoint Saved...")
 
 # %%
-remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
-storage.load_state("/home/edoardo/Development/SafeDRL/save")
+# remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+# t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
+# storage.load_state("/home/edoardo/Development/SafeDRL/save")
 # %%
 # boundaries = [[999, 0], [999, 0], [999, 0], [999, 0]]
 # for interval, action in union_states_total:
