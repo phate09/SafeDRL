@@ -36,91 +36,6 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
     return np.stack(shrank)
 
 
-# def init(bar, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-#     global lock_bar_global, lock_handled_global, progress_val, tree_global, progress_bar_global
-#     lock_bar_global = mp.Lock()
-#     lock_handled_global = mp.Lock()
-#     progress_val = mp.Value('i', 0)
-#     progress_bar_global = bar
-#     # print("Creating a new shared tree")
-#     p = index.Property(dimension=4)
-#     helper = bulk_load_rtree_helper(union_states_total)
-#     tree_global = index.Index(helper, properties=p, interleaved=False)
-
-
-def merge_list_tuple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int = 8, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    aggregated_list = intervals
-    completed_iterations = 0
-    with get_shared_dictionary() as shared_dict:
-        while True:
-            shared_dict.reset()  # reset the dictionary
-            old_size = len(aggregated_list)
-            # path = 'save/rtree'
-            proc_ids = []
-            print(f"About to start the merging process of {old_size} elements")
-            workers = cycle([MergingWorker.remote(aggregated_list) for _ in range(n_workers)])
-            chunk_size = 200
-            with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
-                for i, intervals in enumerate(chunks(aggregated_list, chunk_size)):
-                    proc_ids.append(next(workers).merge_worker.remote(intervals))
-                    bar.update(i)
-            aggregated_list = []
-            with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
-                while len(proc_ids) != 0:
-                    ready_ids, proc_ids = ray.wait(proc_ids)
-                    result = ray.get(ready_ids[0])
-                    if result is not None:
-                        aggregated_list.extend(result)
-                    bar.update(bar.value + 1)
-            print("Finished!")
-            new_size = len(aggregated_list)
-            print(f"Reduced size from {old_size} to {new_size}")
-            if old_size == new_size:
-                break
-            completed_iterations += 1
-            if completed_iterations >= max_iter != -1:
-                break
-    return aggregated_list
-
-
-@ray.remote
-class MergingWorker():
-    def __init__(self, union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        p = index.Property(dimension=4)
-        helper = bulk_load_rtree_helper(union_states_total)
-        self.tree_global = index.Index(helper, properties=p, interleaved=False)
-        self.handled_intervals = get_shared_dictionary()
-
-    def merge_worker(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        aggregated_list = []
-        for interval in intervals:
-            # print(f"starting process {i}")
-            result = None
-            handled = self.handled_intervals.get(interval, False)
-            # p = index.Property(dimension=4)
-            # tree = index.Index(path, properties=p, interleaved=False)
-            if not handled:
-                near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree_global.nearest(flatten_interval(interval[0]), num_results=4, objects='raw')
-                found_match = False
-                for neighbour in near_intervals:
-                    neighbour_handled = self.handled_intervals.get(neighbour, False)
-                    same_action = neighbour[1] == interval[1]
-                    if not neighbour_handled and same_action:
-                        new_interval = (merge_if_adjacent(neighbour[0], interval[0]), interval[1])
-                        if new_interval[0] is not None:
-                            aggregated_list.append(new_interval)
-                            # result = new_interval
-                            self.handled_intervals.set(neighbour, True)  # mark the interval as handled
-                            self.handled_intervals.set(interval, True)  # mark the interval as handled
-                            found_match = True
-                            break
-                if not found_match:
-                    aggregated_list.append(interval)  # result = interval
-            else:
-                # already handled previously
-                pass
-        return aggregated_list
-
 
 def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:
     """
@@ -235,3 +150,21 @@ def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
             # already handled previously
             pass
     return aggregated_list
+
+
+def merge_with_condition(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, max_iter=-1, n_remaining_cutoff=-1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    old_result = intervals.copy()
+    iterations = 0
+    while (True):
+        len_before = len(old_result)
+        new_result = merge_simple(intervals, rounding)
+        len_after = len(new_result)
+        iterations += 1
+        if max_iter != -1 and iterations >= max_iter:
+            break
+        if n_remaining_cutoff != -1 and len_after <= n_remaining_cutoff:
+            break
+        if len_before == len_after:
+            break
+
+    return new_result

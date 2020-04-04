@@ -100,7 +100,7 @@ def try_merge():
     union_states_total = rtree.tree_intervals()
     union_states_total_no_overlaps = remove_overlaps(union_states_total, rounding, n_workers)
     total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total_no_overlaps])
-    union_states_total_merged = merge_simple(union_states_total, rounding)  # merge_list_tuple(union_states_total, n_workers, max_iter=1)
+    union_states_total_merged = merge_simple(union_states_total, rounding)
     total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
     assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
     rtree.load(union_states_total_merged)

@@ -22,7 +22,7 @@ from prism.shared_dictionary import get_shared_dictionary
 from prism.shared_rtree import SharedRtree, get_rtree
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
-from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_list_tuple
+from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition
 from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 
@@ -214,10 +214,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals_no_overlaps)
-            union_states_total_merged = merge_list_tuple(union_states_total,n_workers,max_iter=10)
-            rtree.load(union_states_total_merged)
-            # rtree.add_many(assigned_intervals_no_overlaps, rounding)
-            # rtree.flush()
+            union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+            rtree.load(union_states_total_merged)  # rtree.add_many(assigned_intervals_no_overlaps, rounding)  # rtree.flush()
         else:  # if no more remainings exit
             break
     next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
@@ -256,7 +254,7 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
                 if len(relevant_intervals_single) < 500:
                     relevant_intervals_merged.append(relevant_intervals_single)
                 else:  # merge relevant_intervals with a high number of matches
-                    list_tuple = merge_list_tuple(relevant_intervals_single, n_workers, max_iter=10)
+                    list_tuple = merge_with_condition(relevant_intervals_single, rounding, max_iter=100, n_remaining_cutoff=400)
                     relevant_intervals_merged.append(list_tuple)
             proc_ids.append(compute_remaining_worker.remote(intervals, relevant_intervals, rounding))
             bar.update(i)
@@ -303,12 +301,13 @@ def compute_remaining_worker(current_intervals: List[Tuple[Tuple[float, float]]]
         for i, interval in enumerate(current_intervals):
             with Timer(factor=1000) as t:
                 relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = relevant_intervals_multi[i]
+                print(f"Relevant_intervals:{len(relevant_intervals)}")
                 remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
                 intersection_safe = [(x, True) for x in intersection_safe]
                 intersection_unsafe = [(x, False) for x in intersection_unsafe]
                 remaining_total.append(remaining)
                 intersection_total.append(intersection_safe + intersection_unsafe)
-                print(f"Timer1:{t.elapsed} Relevant_intervals:{len(relevant_intervals)}")
+                print(f"Timer1:{t.elapsed} ")
         print(f"Timer chunk:{t1.elapsed}")
         intersection_total = [merge_simple(x, rounding) if len(x) > 1 else x for x in intersection_total]  # merging
         remaining_total = [merge_simple_interval_only(x, rounding) if len(x) > 1 else x for x in remaining_total]

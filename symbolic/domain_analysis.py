@@ -6,7 +6,7 @@ from prism.shared_rtree import get_rtree
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 from symbolic.unroll_methods import *
-from verification_runs.aggregate_abstract_domain import merge_list_tuple, merge_simple
+from verification_runs.aggregate_abstract_domain import merge_simple
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
@@ -31,7 +31,7 @@ rtree.reset()
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
 union_states_total = rtree.tree_intervals()
 total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total])
-union_states_total_merged = merge_simple(union_states_total, rounding)  # merge_list_tuple(union_states_total, n_workers, max_iter=1)
+union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
 total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
 # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
 rtree.load(union_states_total_merged)
@@ -39,7 +39,6 @@ print(f"Finished building the tree")
 # rtree = get_rtree()
 remainings = [current_interval]
 t = 0
-# %%
 for i in range(4):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
     t = t + 1

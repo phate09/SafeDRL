@@ -9,9 +9,6 @@ import numpy as np
 import intervals as I
 from rtree import index
 
-from verification_runs.aggregate_abstract_domain import merge_list_tuple
-
-
 class TestR_trees(TestCase):
     def test_simple(self):
         os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
