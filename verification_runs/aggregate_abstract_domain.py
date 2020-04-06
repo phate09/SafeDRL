@@ -36,7 +36,6 @@ def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
     return np.stack(shrank)
 
 
-
 def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:
     """
     Check every dimension, if d-1 dimensions are the same and the last one is adjacent returns the merged interval
@@ -168,3 +167,15 @@ def merge_with_condition(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]
             break
 
     return new_result
+
+
+def merge_sync(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    handled_intervals = dict()
+    p = index.Property(dimension=4)
+    helper = bulk_load_rtree_helper(intervals)
+    tree_global = index.Index(helper, properties=p, interleaved=False)
+    for interval in intervals:
+        # print(f"starting process {i}")
+        handled = handled_intervals.get(interval, False)
+        if not handled:
+            near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree_global.intersection(flatten_interval(interval[0]), objects='raw')
