@@ -11,10 +11,9 @@ import mosaic.utils
 
 
 class DomainExplorer:
-    def __init__(self, safe_property_index: int, domain: torch.Tensor, device: torch.device, precision, rounding: int):
+    def __init__(self, safe_property_index: int, device: torch.device, precision, rounding: int):
         """
 
-        :param domain: the domain to explore for abstract interpretations
         :param safe_property_index: the index of the property. This property corresponds to "always on"
         The algorithm will check for lumps in the state space where the given property is always true
         """
