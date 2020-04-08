@@ -2,7 +2,7 @@ from unittest import TestCase
 from mpmath import iv
 from mosaic.utils import *
 import numpy as np
-import intervals as I
+import portion as I
 
 
 class TestCheck_contains(TestCase):
