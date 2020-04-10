@@ -7,46 +7,46 @@ from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 from symbolic.unroll_methods import *
 from verification_runs.aggregate_abstract_domain import merge_simple
+from verification_runs.domain_explorers_load import generateCartpoleDomainExplorer, generatePendulumDomainExplorer
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = False
+local_mode = True
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 gateway = JavaGateway()
 storage: StateStorage = get_storage()
 storage.reset()
-env = CartPoleEnv_abstract()
-s = env.reset()
-current_interval = s
 rounding = 6
-explorer, verification_model = generateCartpoleDomainExplorer(1e-2, rounding)
-# reshape with tuples
-current_interval = tuple([(float(x.a), float(x.b)) for i, x in enumerate(current_interval)])
+explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
 precision = 1e-6
 print(f"Building the tree")
 rtree = get_rtree()
-rtree.reset()
+rtree.reset(state_size)
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
-union_states_total = rtree.tree_intervals()
-total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total])
-union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
+# union_states_total = rtree.tree_intervals()
+# total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total])
+# union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+# total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
 # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
-rtree.load(union_states_total_merged)
+# rtree.load(union_states_total_merged)
 print(f"Finished building the tree")
 # rtree = get_rtree()
-remainings = [current_interval]
+# remainings = [current_interval]
+remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+# remainings = remainings[0:1]
 t = 0
-for i in range(4):
-    remainings = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+# %%
+for i in range(2):
+    remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding)
     t = t + 1
     boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]
     for interval in remainings:
         for d in range(len(interval)):
             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
-    print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+    print(boundaries)
+    # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 # %%
 storage.save_state("/home/edoardo/Development/SafeDRL/save")
 rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")

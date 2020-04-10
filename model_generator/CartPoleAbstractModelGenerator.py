@@ -102,7 +102,7 @@ class CartPoleAbstractModelGenerator:
         self.socket.send_string("OK")
 
     def assign_intervals(self, state, verification_model, explorer):
-        s_array = np.stack([interval_unwrap(state)])  # unwrap the intervals in an array representation
+        s_array = np.stack([state])  # unwrap the intervals in an array representation
         stats = explorer.explore(verification_model, s_array, debug=False)
         safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
         unsafe_next = [i.cpu().numpy() for i in explorer.unsafe_domains]

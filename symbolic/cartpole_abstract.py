@@ -10,6 +10,7 @@ from gym.utils import seeding
 import numpy as np
 import intervals as I
 
+
 class CartPoleEnv_abstract(gym.Env):
     """
     Description:
@@ -77,6 +78,9 @@ class CartPoleEnv_abstract(gym.Env):
 
         self.steps_beyond_done = None
 
+    def set_state(self, state: Tuple[Tuple[float, float]]):
+        self.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
+
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -103,8 +107,8 @@ class CartPoleEnv_abstract(gym.Env):
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
         state_closed = to_close_interval(self.state)
-        done = state_closed[0] < -self.x_threshold or state_closed[0] > self.x_threshold or -self.x_threshold in state_closed[0] or self.x_threshold in state_closed[0] \
-               or state_closed[2] < -self.theta_threshold_radians or state_closed[2] > self.theta_threshold_radians or -self.theta_threshold_radians in state_closed[2] or self.theta_threshold_radians in state_closed[2]
+        done = state_closed[0] < -self.x_threshold or state_closed[0] > self.x_threshold or -self.x_threshold in state_closed[0] or self.x_threshold in state_closed[0] or state_closed[
+            2] < -self.theta_threshold_radians or state_closed[2] > self.theta_threshold_radians or -self.theta_threshold_radians in state_closed[2] or self.theta_threshold_radians in state_closed[2]
         # done = done or not -0.015 < x_dot < 0.015 or not -0.015 < theta_dot < 0.015
         done = bool(done)
 
@@ -121,7 +125,7 @@ class CartPoleEnv_abstract(gym.Env):
             self.steps_beyond_done += 1
             reward = 0.0
 
-        return np.array(self.state), reward, done, {thetaacc, xacc}
+        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))]), reward, done, {thetaacc, xacc}
 
     def inverse_step(self, action):
 
@@ -149,7 +153,7 @@ class CartPoleEnv_abstract(gym.Env):
     def reset(self):
         self.state = tuple([iv.mpf([-0.005, 0.005]) for x in range(4)])
         self.steps_beyond_done = None
-        return np.array(self.state)
+        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))])
 
     def render(self, mode='human'):
         screen_width = 600

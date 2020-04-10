@@ -15,7 +15,7 @@ import ray
 from contexttimer import Timer
 from rtree import index
 
-from mosaic.utils import chunks, round_tuple, round_tuples, area_tuple, shrink, interval_contains, flatten_interval
+from mosaic.utils import chunks, round_tuple, round_tuples, area_tuple, shrink, interval_contains, flatten_interval, show_plot
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_dictionary import get_shared_dictionary
@@ -23,11 +23,10 @@ from prism.shared_rtree import SharedRtree, get_rtree
 from prism.state_storage import StateStorage, get_storage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition
-from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env: CartPoleEnv_abstract, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> \
-        Tuple[List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> Tuple[
+    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param explorer:
@@ -40,7 +39,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
 
     chunk_size = 1000
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
-    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding) for _ in range(min(n_workers, n_chunks))])
+    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding, env_class) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
         for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
@@ -157,7 +156,7 @@ def generate_middle_points(t_states, t):
     return random_points, areas, assigned_actions
 
 
-def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], n_workers: int, rounding: int) -> Tuple[
+def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
     List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[float, float]]]]:
     """
     Given a list of intervals, calculate the intervals where the agent will take a given action
@@ -166,7 +165,6 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
     """
     total_area_before = sum([area_tuple(remaining) for remaining in s_array])
-    explorer, verification_model = generateCartpoleDomainExplorer(1e-1, rounding)
     # given the initial states calculate which intervals go left or right
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
@@ -201,21 +199,24 @@ def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[f
         return result
 
 
-def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, rounding: int) -> List[Tuple[Tuple[float, float]]]:
+def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int) -> List[
+    Tuple[Tuple[float, float]]]:
     intervals_sorted = sorted(intervals)
+    remainings = intervals_sorted
     print(f"t:{t} Started")
     while True:
         remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
+        show_plot(intersected_intervals, intervals_sorted)
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, n_workers, rounding)
-            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers)
+            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, explorer, verification_model, n_workers, rounding)
+            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers, state_size)
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals_no_overlaps)
-            union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-            rtree.load(union_states_total_merged)  # rtree.add_many(assigned_intervals_no_overlaps, rounding)  # rtree.flush()
+            # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+            rtree.load(union_states_total)  # rtree.add_many(assigned_intervals_no_overlaps, rounding)  # rtree.flush()
         else:  # if no more remainings exit
             break
     next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
@@ -243,7 +244,7 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     with Timer(factor=1000) as t:  # sort according to the number of relevant intervals so that the slowest operations are executed early
         relevant_intervals_multi: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = tree.filter_relevant_intervals_multi(current_intervals, rounding)
         intervals_and_relevant_intervals = list(zip(current_intervals, relevant_intervals_multi))
-        intervals_and_relevant_intervals = sorted(intervals_and_relevant_intervals, key=lambda x: len(x[1]), reverse=True)
+        # intervals_and_relevant_intervals = sorted(intervals_and_relevant_intervals, key=lambda x: len(x[1]), reverse=True)
         chunks_intervals_and_relevant_intervals = list(chunks(intervals_and_relevant_intervals, chunk_size))
         print(f"Prefilter: {round(t.elapsed)}")
     with progressbar.ProgressBar(prefix="Starting computer remaining workers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
@@ -251,12 +252,10 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
             intervals, relevant_intervals = map(list, zip(*interval_and_relevant_intervals))
             relevant_intervals_merged = []
             for relevant_intervals_single in relevant_intervals:
-                if len(relevant_intervals_single) < 500:
-                    relevant_intervals_merged.append(relevant_intervals_single)
-                else:  # merge relevant_intervals with a high number of matches
-                    list_tuple = merge_with_condition(relevant_intervals_single, rounding, max_iter=100, n_remaining_cutoff=400)
-                    relevant_intervals_merged.append(list_tuple)
-            proc_ids.append(compute_remaining_worker.remote(intervals, relevant_intervals, rounding))
+                # if len(relevant_intervals_single) < 500:
+                relevant_intervals_merged.append(
+                    relevant_intervals_single)  # else:  # merge relevant_intervals with a high number of matches  #     list_tuple = merge_with_condition(relevant_intervals_single, rounding, max_iter=100, n_remaining_cutoff=400)  #     relevant_intervals_merged.append(list_tuple)
+            proc_ids.append(compute_remaining_worker.remote(intervals, relevant_intervals_merged, rounding))
             bar.update(i)
     remainings = []
     intersection_states = []
@@ -274,7 +273,7 @@ def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float
     return remainings_left, intersection_states
 
 
-def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers: int, state_size: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """
     Ensures there are no overlaps between the current intervals
     :param current_intervals:
@@ -282,7 +281,7 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     :return:
     """
     print("Removing overlaps")
-    no_overlaps = compute_no_overlaps(current_intervals, rounding, n_workers)
+    no_overlaps = compute_no_overlaps(current_intervals, rounding, n_workers, state_size)
     # no_overlaps = no_overlaps_tree.tree_intervals()
     # for no_overlap_interval in no_overlaps:  # test there are no overlaps
     #     if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
@@ -379,12 +378,13 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
 
 
-def compute_no_overlaps(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def compute_no_overlaps(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     aggregated_list = intervals
     completed_iterations = 0
     # self_proxy = self
     # self._pyroDaemon.register(self_proxy)
     no_overlap_tree = get_rtree_temp()
+    no_overlap_tree.reset(state_size)
     workers = cycle([NoOverlapWorker.remote(no_overlap_tree, rounding) for _ in range(n_workers)])
     with get_shared_dictionary() as shared_dict:
         while True:
@@ -425,7 +425,12 @@ def compute_no_overlaps(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]
 @Pyro5.api.behavior(instance_mode="single")
 class NoOverlapRtree:
     def __init__(self):
-        self.p = index.Property(dimension=4)
+        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
+
+    def reset(self, dimension):
+        print("Resetting the tree")
+        self.dimension = dimension
+        self.p = index.Property(dimension=self.dimension)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
@@ -434,7 +439,10 @@ class NoOverlapRtree:
         print("Building the tree")
         helper = bulk_load_rtree_helper(intervals)
         self.tree.close()
-        self.tree = index.Index(helper, interleaved=False, properties=self.p)
+        if len(intervals) != 0:
+            self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
+        else:
+            self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.tree.flush()
         print("Finished building the tree")
 

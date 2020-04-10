@@ -4,11 +4,13 @@ import operator
 import shelve
 from functools import reduce
 from typing import Tuple, List
-
+import plotly.graph_objects as go
 import intervals as I
 import numpy as np
 import ray
 import torch
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -139,5 +141,29 @@ def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tu
 
 
 def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
-    return (
-        current_interval[0][0], current_interval[0][1], current_interval[1][0], current_interval[1][1], current_interval[2][0], current_interval[2][1], current_interval[3][0], current_interval[3][1])
+    result = []
+    for d in range(len(current_interval)):
+        result.extend([current_interval[d][0], current_interval[d][1]])
+    return tuple(result)
+
+
+def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None):
+    fig = go.Figure()
+    if intervals_action is None:
+        intervals_action = []
+    if intervals is None:
+        intervals = []
+    intervals_with_action = [(x, None) for x in intervals]
+    for interval in intervals_with_action + intervals_action:
+        if interval[1] is True:
+            color = 'Red'
+        elif interval[1] is False:
+            color = 'Blue'
+        else:
+            color = 'Green'
+        x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]
+        y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]
+        fig.add_scatter(x=x, y=y, fill="toself",
+                        fillcolor=color)  # fig.add_shape(  # filled Rectangle  #     type="rect", x0=interval[0][0][0], y0=interval[0][1][0], x1=interval[0][0][1], y1=interval[0][1][1], line=dict(color=color, width=2, ), fillcolor=color, )
+    fig.update_shapes(dict(xref='x', yref='y'))
+    fig.show()

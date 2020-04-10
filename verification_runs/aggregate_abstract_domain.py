@@ -116,9 +116,12 @@ def merge_simple_interval_only(intervals: List[Tuple[Tuple[float, float]]], roun
 
 
 def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    if len(intervals) == 0:
+        return intervals
+    dimension = len(intervals[0][0])
     aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
     handled_intervals = dict()
-    p = index.Property(dimension=4)
+    p = index.Property(dimension=dimension)
     helper = bulk_load_rtree_helper(intervals)
     tree_global = index.Index(helper, properties=p, interleaved=False)
     for interval in intervals:
@@ -154,6 +157,8 @@ def merge_simple(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], round
 def merge_with_condition(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, max_iter=-1, n_remaining_cutoff=-1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     old_result = intervals.copy()
     iterations = 0
+    if len(intervals) == 0:
+        return intervals
     while (True):
         len_before = len(old_result)
         new_result = merge_simple(intervals, rounding)

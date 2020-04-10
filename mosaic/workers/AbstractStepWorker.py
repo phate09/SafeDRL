@@ -11,8 +11,8 @@ from symbolic.cartpole_abstract import CartPoleEnv_abstract
 
 @ray.remote
 class AbstractStepWorker:
-    def __init__(self, explorer, t, rounding: int):
-        self.env = CartPoleEnv_abstract()  # todo find a way to define the initialiser for the environment
+    def __init__(self, explorer, t, rounding: int,env_init):
+        self.env = env_init()  # todo find a way to define the initialiser for the environment
         self.explorer = explorer
         self.t = t
         # self.storage: StateStorage = get_storage()
@@ -50,13 +50,14 @@ def step_state(state: Tuple[Tuple[float, float]], action, env, rounding: int) ->
     # given a state and an action, calculate next state
     env.reset()
     state = round_tuple(state, rounding)  # round the state
-    env.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
+    env.set_state(state)
+    # env.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
     next_state, reward, done, _ = env.step(action)
-    return round_tuple(interval_unwrap(next_state, rounding), rounding), done
+    return round_tuple(next_state, rounding), done
 
 
-def interval_unwrap(state: np.ndarray, rounding: int) -> Tuple[Tuple[float, float]]:
-    """From array of intervals to tuple of floats"""
-    # unwrapped_state = tuple([(round(float(x.a), rounding), round(float(x.b), rounding)) for x in state])
-    unwrapped_state = tuple([(float(x.a), float(x.b)) for x in state])
-    return unwrapped_state
+# def interval_unwrap(state: np.ndarray, rounding: int) -> Tuple[Tuple[float, float]]:
+#     """From array of intervals to tuple of floats"""
+#     # unwrapped_state = tuple([(round(float(x.a), rounding), round(float(x.b), rounding)) for x in state])
+#     unwrapped_state = tuple([(float(x.a), float(x.b)) for x in state])
+#     return unwrapped_state

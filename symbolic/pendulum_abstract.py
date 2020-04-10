@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import gym
 from gym import spaces
 from gym.utils import seeding
@@ -26,6 +28,9 @@ class PendulumEnv_abstract(gym.Env):
 
         self.seed()
 
+    def set_state(self, state: Tuple[Tuple[float, float]]):
+        self.state = tuple([interval([x[0], x[1]]) for x in state])
+
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -47,15 +52,15 @@ class PendulumEnv_abstract(gym.Env):
         newthdot = clip_interval(newthdot, -self.max_speed, self.max_speed)  # pylint: disable=E1111
 
         self.state = (newth, newthdot)
-        done = not -self.max_angle < newth[0] or newth[1] > self.max_angle
-        return self.state, -costs, done, {}
+        done = not (-self.max_angle < newth[0][0] or newth[0][1] > self.max_angle)
+        return tuple([make_tuple(x) for x in self.state]), -costs, done, {}
 
     def reset(self):
         # high = np.array([np.pi, 1])
         # self.state = self.np_random.uniform(low=-high, high=high)
         self.state = (interval([-self.max_angle, self.max_angle]), interval([-1, 1]))
         self.last_u = None
-        return self.state
+        return tuple([make_tuple(x) for x in self.state])
 
     def render(self, mode='human'):
 

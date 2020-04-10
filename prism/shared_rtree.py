@@ -12,13 +12,13 @@ from mosaic.utils import round_tuples, flatten_interval
 @Pyro5.api.behavior(instance_mode="single")
 class SharedRtree:
     def __init__(self):
-        self.p = index.Property(dimension=4)
-        self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
+        self.tree: index.Index = None
         self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
-    def reset(self):
+    def reset(self, dimension):
         print("Resetting the tree")
-        self.p = index.Property(dimension=4)
+        self.dimension = dimension
+        self.p = index.Property(dimension=self.dimension)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
 
@@ -63,11 +63,16 @@ class SharedRtree:
             self.union_states_total)  # for i, interval in enumerate(intervals):  #     relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)  #     if len(relevant_intervals) == 0:  #         assert len(relevant_intervals) != 0, f"The tree did not recognise the newly added interval"
 
     def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+
         # with self.lock:
         print("Building the tree")
         helper = bulk_load_rtree_helper(intervals)
         self.tree.close()
-        self.tree = index.Index(helper, interleaved=False, properties=self.p)
+        self.union_states_total = intervals
+        if len(intervals) != 0:
+            self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
+        else:
+            self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
         self.tree.flush()
         print("Finished building the tree")
 
