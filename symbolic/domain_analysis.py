@@ -33,20 +33,24 @@ rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.
 # rtree.load(union_states_total_merged)
 print(f"Finished building the tree")
 # rtree = get_rtree()
-# remainings = [current_interval]
-remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-# remainings = remainings[0:1]
+remainings = [current_interval]
+
+
+# remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+# remainings = remainings
+# remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
+# merged_intervals = merge_with_condition(remainings_overlaps,rounding,10)
+# show_plot([(x,None) for x in remainings]+[(x[0],"Brown") for x in merged_intervals])
 t = 0
 # %%
-for i in range(2):
+for i in range(1):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding)
     t = t + 1
     boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]
     for interval in remainings:
         for d in range(len(interval)):
             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
-    print(boundaries)
-    # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+    print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 # %%
 storage.save_state("/home/edoardo/Development/SafeDRL/save")
 rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")

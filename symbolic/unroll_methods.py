@@ -206,7 +206,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     print(f"t:{t} Started")
     while True:
         remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
-        show_plot(intersected_intervals, intervals_sorted)
+
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
@@ -215,10 +215,11 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals_no_overlaps)
-            # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-            rtree.load(union_states_total)  # rtree.add_many(assigned_intervals_no_overlaps, rounding)  # rtree.flush()
+            union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+            rtree.load(union_states_total_merged)
         else:  # if no more remainings exit
             break
+    show_plot(intersected_intervals, intervals_sorted)
     next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
                                                         rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
@@ -508,7 +509,7 @@ class NoOverlapWorker:
                 aggregated_list.extend([(x, interval[1]) for x in remaining])  # todo merge here?
             else:
                 # already handled previously
-                pass
+                aggregated_list.append(interval)
         return aggregated_list, found_list
 
 

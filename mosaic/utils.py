@@ -2,6 +2,7 @@ import decimal
 import math
 import operator
 import shelve
+from collections import defaultdict
 from functools import reduce
 from typing import Tuple, List
 import plotly.graph_objects as go
@@ -147,8 +148,9 @@ def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
     return tuple(result)
 
 
-def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None):
+def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None, aggregate=True):
     fig = go.Figure()
+    x_y_dict = defaultdict(list)
     if intervals_action is None:
         intervals_action = []
     if intervals is None:
@@ -159,11 +161,26 @@ def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = 
             color = 'Red'
         elif interval[1] is False:
             color = 'Blue'
-        else:
+        elif interval[1] is None:
             color = 'Green'
+        else:
+            color = interval[1]
         x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]
         y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]
-        fig.add_scatter(x=x, y=y, fill="toself",
-                        fillcolor=color)  # fig.add_shape(  # filled Rectangle  #     type="rect", x0=interval[0][0][0], y0=interval[0][1][0], x1=interval[0][0][1], y1=interval[0][1][1], line=dict(color=color, width=2, ), fillcolor=color, )
+        x_y_dict[color].append((x, y))
+    if not aggregate:
+        for color in x_y_dict.keys():
+            for x, y in x_y_dict[color]:
+                fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color)
+    else:
+        for color in x_y_dict.keys():
+            x_list = []
+            y_list = []
+            for x, y in x_y_dict[color]:
+                x_list.extend(x)
+                x_list.append(None)
+                y_list.extend(y)
+                y_list.append(None)
+            fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)
     fig.update_shapes(dict(xref='x', yref='y'))
     fig.show()
