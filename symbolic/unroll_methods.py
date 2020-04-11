@@ -4,6 +4,7 @@ Collection of methods to use in unroll_abstract_env
 import itertools
 import math
 import random
+from collections import defaultdict
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
@@ -282,7 +283,7 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     :return:
     """
     print("Removing overlaps")
-    no_overlaps = compute_no_overlaps(current_intervals, rounding, n_workers, state_size)
+    no_overlaps = compute_no_overlaps2(current_intervals, rounding, n_workers, state_size)
     # no_overlaps = no_overlaps_tree.tree_intervals()
     # for no_overlap_interval in no_overlaps:  # test there are no overlaps
     #     if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
@@ -377,6 +378,68 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     if debug:
         bar.finish()
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
+
+
+@ray.remote
+def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]], debug=True):
+    return [(compute_remaining_intervals3(current_interval[0], intervals_to_fill, debug),current_interval[1]) for current_interval, intervals_to_fill in intervals_with_relevants]
+
+
+def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[
+    Tuple[Tuple[Tuple[float, float]], bool]]:
+    intervals = starting_intervals
+    while True:
+        handled_intervals = defaultdict(bool)
+        p = index.Property(dimension=state_size)
+        helper = bulk_load_rtree_helper(intervals)
+        if len(intervals) != 0:
+            tree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
+        else:
+            tree = index.Index(interleaved=False, properties=p, overwrite=True)
+        intervals_with_relevants = []
+        found_list = [False] * len(intervals)
+        for i, interval in enumerate(intervals):
+            if not handled_intervals.get(interval):
+                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0], rounding)
+                relevant_intervals = [x for x in relevant_intervals if x != interval]
+                found = len(relevant_intervals) != 0
+                found_list[i] = found
+                relevant_intervals = [x for x in relevant_intervals if not handled_intervals.get(x, False)]
+                for relevant in relevant_intervals:
+                    handled_intervals[relevant] = True
+                handled_intervals[interval] = True
+                intervals_with_relevants.append((interval, relevant_intervals))
+            else:
+                intervals_with_relevants.append((interval,[]))
+        old_size = len(intervals)
+        aggregated_list = []
+        proc_ids = []
+        chunk_size = 200
+        with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
+            for i, chunk in enumerate(chunks([x for i, x in enumerate(intervals_with_relevants) if found_list[i]], chunk_size)):
+                proc_ids.append(compute_remaining_intervals_remote.remote(chunk,False))
+                bar.update(i)
+        aggregated_list.extend([interval for i, interval in enumerate(intervals) if not found_list[i]])
+        with progressbar.ProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+            while len(proc_ids) != 0:
+                ready_ids, proc_ids = ray.wait(proc_ids)
+                results = ray.get(ready_ids[0])
+                for result in results:
+                    if result is not None:
+                        (remain, _, _),action = result
+                        aggregated_list.extend([(x,action) for x in remain])
+                bar.update(bar.value + 1)
+        n_founds = sum(x is True for x in found_list)
+        new_size = len(aggregated_list)
+        if n_founds != 0:
+            print(f"Reduced overlaps to {n_founds / new_size:.2%}")
+        else:
+            print("Finished!")
+        if not any(found_list):
+            break
+        else:
+            intervals = aggregated_list
+    return aggregated_list
 
 
 def compute_no_overlaps(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
@@ -484,6 +547,18 @@ class NoOverlapRtree:
             if suitable:
                 total.append(result)
         return sorted(total)
+
+
+def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    """Filter the intervals relevant to the current_interval"""
+    # current_interval = inflate(current_interval, rounding)
+    results = list(tree.intersection(flatten_interval(current_interval), objects='raw'))
+    total = []
+    for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
+        suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
+        if suitable:
+            total.append(result)
+    return sorted(total)
 
 
 @ray.remote
