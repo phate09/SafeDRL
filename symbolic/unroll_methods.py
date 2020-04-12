@@ -210,16 +210,24 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings, explorer, verification_model, n_workers, rounding)
-            assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers, state_size)
-            print(f"Adding {len(assigned_intervals_no_overlaps)} states to the tree")
+            remainings_merged = merge_supremum([(x, True) for x in remainings], rounding)
+            #show_plot(remainings,remainings_merged)
+            remainings_merged_noaction = [x[0] for x in remainings_merged]
+            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged_noaction, explorer, verification_model, n_workers, rounding)
+            #show_plot(remainings_merged,assigned_intervals)
+            # assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers, state_size)
+            print(f"Adding {len(assigned_intervals)} states to the tree")
             union_states_total = rtree.tree_intervals()
-            union_states_total.extend(assigned_intervals_no_overlaps)
-            union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+            union_states_total.extend(assigned_intervals)
+            # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
+            merged1 = [(x[0], True) for x in merge_supremum([x for x in union_states_total if x[1] == True], rounding)]
+            merged2 = [(x[0], False) for x in merge_supremum([x for x in union_states_total if x[1] == False], rounding)]
+            union_states_total_merged = merged1 + merged2
+            # show_plot([x for x in assigned_intervals] + [(x[0], "Brown") for x in merged1] + [(x[0], "Purple") for x in merged2])
             rtree.load(union_states_total_merged)
         else:  # if no more remainings exit
             break
-    show_plot(intersected_intervals, intervals_sorted)
+    # show_plot(intersected_intervals, intervals_sorted)
     next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
                                                         rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
@@ -382,7 +390,6 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple
     intervals_with_relevants = []
     for i, interval in enumerate(current_intervals):
         relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0])
-        relevant_intervals = [x for x in relevant_intervals if x != interval]
         intervals_with_relevants.append((interval, relevant_intervals))
     aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
     old_size = len(current_intervals)
@@ -640,20 +647,20 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
         right_boundary: float = tree.bounds[1]
         bottom_boundary: float = tree.bounds[2]
         top_boundary: float = tree.bounds[3]
-        items_left_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, left_boundary), (bottom_boundary, top_boundary)])))
-        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_left_boundary]))
-        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_left_boundary]))
-        items_top_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (top_boundary, top_boundary)])))
-        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_top_boundary]))
-        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_top_boundary]))
-        items_bottom_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (bottom_boundary, bottom_boundary)])))
-        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_bottom_boundary]))
-        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_bottom_boundary]))
-        items_right_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(right_boundary, right_boundary), (bottom_boundary, top_boundary)])))
-        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_right_boundary]))
-        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_right_boundary]))
+        items_left_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, left_boundary), (bottom_boundary, top_boundary)])))  # start from the left boundary
+        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_left_boundary]) if len(items_left_boundary) != 0 else float("inf"))
+        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_left_boundary]) if len(items_left_boundary) != 0 else float("-inf"))
+        items_top_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (top_boundary, top_boundary)])), (left_boundary, top_boundary))
+        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_top_boundary]) if len(items_top_boundary) != 0 else float("-inf"))
+        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_top_boundary]) if len(items_top_boundary) != 0 else float("inf"))
+        items_bottom_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (bottom_boundary, bottom_boundary)])), (left_boundary, bottom_boundary))
+        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_bottom_boundary]) if len(items_bottom_boundary) != 0 else float("-inf"))
+        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_bottom_boundary]) if len(items_bottom_boundary) != 0 else float("inf"))
+        items_right_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(right_boundary, right_boundary), (bottom_boundary, top_boundary)])), (right_boundary, bottom_boundary))
+        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_right_boundary]) if len(items_right_boundary) != 0 else float("inf"))
+        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_right_boundary]) if len(items_right_boundary) != 0 else float("-inf"))
         new_group = (tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)
-        # show_plot(intervals + [(x[0], "Brown") for x in [new_group]])
+        # show_plot(intervals,[(tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)])
         new_group_tree = create_tree([new_group])
         remainings = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding)
         merged_list.append(new_group)

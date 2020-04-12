@@ -14,7 +14,7 @@ from verification_runs.domain_explorers_load import generateCartpoleDomainExplor
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -28,26 +28,19 @@ print(f"Building the tree")
 rtree = get_rtree()
 rtree.reset(state_size)
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
-# union_states_total = rtree.tree_intervals()
-# total_area_before = sum([area_tuple(remaining[0]) for remaining in union_states_total])
-# union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-# total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
-# assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
-# rtree.load(union_states_total_merged)
+union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
-# rtree = get_rtree()
-# remainings = [current_interval]
+remainings = [current_interval]
 
 
-remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-remainings_overlaps = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings_overlaps.p", "rb"))
+# remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+# remainings_overlaps = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings_overlaps.p", "rb"))
 # remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
-#%%
-merged_intervals = merge_supremum(remainings,rounding)
-show_plot([x for x in remainings_overlaps]+[(x[0],"Brown") for x in merged_intervals])
+# merged_intervals = merge_supremum(remainings,rounding)
+# show_plot([x for x in union_states_total] + [(x[0], "Brown") for x in safe_states_merged] + [(x[0], "Purple") for x in unsafe_states_merged])
 t = 0
 # %%
-for i in range(2):
+for i in range(4):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding)
     t = t + 1
     boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]

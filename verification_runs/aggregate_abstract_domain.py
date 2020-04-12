@@ -165,26 +165,29 @@ def merge_with_condition(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]
     return new_result
 
 
-def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    if len(intervals_to_filter) == 0:
+def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, float]], bool]], coordinate: Tuple[float] = None) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    if len(intervals_to_filter) <= 1:
         return intervals_to_filter
     connected_dict = defaultdict(bool)
-    connected_dict[intervals_to_filter[0]] = True  # first element is always connected
-    connected_list = [intervals_to_filter[0]]
+    if coordinate is not None:
+        first_element = (((coordinate[0], coordinate[0]), (coordinate[1], coordinate[1])), True)
+    else:
+        first_element = intervals_to_filter[0]
+    connected_list = [first_element]
     while True:
         found_one = False
         for interval in intervals_to_filter:
             if connected_dict[interval]:
                 continue  # skip
             else:
-                found = is_connected(interval, list(connected_dict.keys()))
+                found = is_connected(interval, connected_list)
                 found_one = found_one or found
                 if found:
                     connected_dict[interval] = True
                     connected_list.append(interval)
         if not found_one:
             break
-    return connected_list
+    return connected_list[1:]  # remove the first element
 
 
 def is_connected(interval: Tuple[Tuple[Tuple[float, float]], bool], intervals_to_connect: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> bool:
