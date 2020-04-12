@@ -16,14 +16,13 @@ import ray
 from contexttimer import Timer
 from rtree import index
 
-from mosaic.utils import chunks, round_tuple, round_tuples, area_tuple, shrink, interval_contains, flatten_interval, show_plot
+from mosaic.utils import chunks, area_tuple, shrink, interval_contains, flatten_interval, show_plot, bulk_load_rtree_helper, create_tree
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_dictionary import get_shared_dictionary
 from prism.shared_rtree import SharedRtree, get_rtree
-from prism.state_storage import StateStorage, get_storage
-from symbolic.cartpole_abstract import CartPoleEnv_abstract
-from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition
+from prism.state_storage import get_storage
+from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition, filter_only_connected
 
 
 def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> Tuple[
@@ -382,7 +381,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
 def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index, rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     intervals_with_relevants = []
     for i, interval in enumerate(current_intervals):
-        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0], rounding)
+        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0])
         relevant_intervals = [x for x in relevant_intervals if x != interval]
         intervals_with_relevants.append((interval, relevant_intervals))
     aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
@@ -425,7 +424,7 @@ def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float
         found_list = [False] * len(intervals)
         for i, interval in enumerate(intervals):
             if not handled_intervals.get(interval):
-                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0], rounding)
+                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0])
                 relevant_intervals = [x for x in relevant_intervals if x != interval]
                 found = len(relevant_intervals) != 0
                 found_list[i] = found
@@ -574,16 +573,23 @@ class NoOverlapRtree:
         return sorted(total)
 
 
-def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """Filter the intervals relevant to the current_interval"""
     # current_interval = inflate(current_interval, rounding)
     results = list(tree.intersection(flatten_interval(current_interval), objects='raw'))
     total = []
     for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
-        suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
+        suitable = all([x[1] != y[0] and x[0] != y[1] if y[0] != y[1] else True for x, y in zip(result[0], current_interval)])
         if suitable:
             total.append(result)
     return sorted(total)
+
+
+def filter_relevant_intervals_action(tree, current_interval: Tuple[Tuple[Tuple[float, float]], bool]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    action = current_interval[1]
+    relevants = filter_relevant_intervals3(tree, current_interval[0])
+    relevants = [x for x in relevants if x[1] == action]  # filter only intervals with matching action
+    return relevants
 
 
 @ray.remote
@@ -620,7 +626,38 @@ def get_rtree_temp() -> NoOverlapRtree:
     return storage
 
 
-def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-    for i, obj in enumerate(data):
-        interval = obj[0]
-        yield (i, flatten_interval(interval), obj)
+def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    """merge all the intervals provided, assumes they all have the same action"""
+    if len(starting_intervals) == 0:
+        return starting_intervals
+    intervals = starting_intervals
+    state_size = len(intervals[0][0])
+    merged_list = []
+    while True:
+        tree = create_tree(intervals)
+        # find leftmost interval
+        left_boundary: float = tree.bounds[0]
+        right_boundary: float = tree.bounds[1]
+        bottom_boundary: float = tree.bounds[2]
+        top_boundary: float = tree.bounds[3]
+        items_left_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, left_boundary), (bottom_boundary, top_boundary)])))
+        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_left_boundary]))
+        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_left_boundary]))
+        items_top_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (top_boundary, top_boundary)])))
+        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_top_boundary]))
+        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_top_boundary]))
+        items_bottom_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(left_boundary, right_boundary), (bottom_boundary, bottom_boundary)])))
+        left_boundary: float = max(left_boundary, min([x[0][0][0] for x in items_bottom_boundary]))
+        right_boundary: float = min(right_boundary, max([x[0][0][1] for x in items_bottom_boundary]))
+        items_right_boundary = filter_only_connected(filter_relevant_intervals3(tree, tuple([(right_boundary, right_boundary), (bottom_boundary, top_boundary)])))
+        top_boundary: float = min(top_boundary, max([x[0][1][1] for x in items_right_boundary]))
+        bottom_boundary: float = max(bottom_boundary, min([x[0][1][0] for x in items_right_boundary]))
+        new_group = (tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)
+        # show_plot(intervals + [(x[0], "Brown") for x in [new_group]])
+        new_group_tree = create_tree([new_group])
+        remainings = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding)
+        merged_list.append(new_group)
+        if len(remainings) == 0:
+            break
+        intervals = remainings
+    return merged_list

@@ -12,6 +12,7 @@ import ray
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from rtree import index
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -184,3 +185,20 @@ def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = 
             fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)
     fig.update_shapes(dict(xref='x', yref='y'))
     fig.show()
+
+
+def create_tree(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> index.Index:
+    if len(intervals) != 0:
+        state_size = len(intervals[0][0])
+        p = index.Property(dimension=state_size)
+        helper = bulk_load_rtree_helper(intervals)
+        tree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
+        return tree
+    else:
+        raise Exception("len(intervals) cannot be 0")
+
+
+def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    for i, obj in enumerate(data):
+        interval = obj[0]
+        yield (i, flatten_interval(interval), obj)

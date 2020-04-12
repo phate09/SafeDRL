@@ -5,8 +5,11 @@ import gym
 from prism.shared_rtree import get_rtree
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
+
+from prism.state_storage import StateStorage
 from symbolic.unroll_methods import *
 from verification_runs.aggregate_abstract_domain import merge_simple
+from symbolic.unroll_methods import merge_supremum
 from verification_runs.domain_explorers_load import generateCartpoleDomainExplorer, generatePendulumDomainExplorer
 
 gym.logger.set_level(40)
@@ -37,10 +40,11 @@ print(f"Finished building the tree")
 
 
 remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-# remainings = [remainings[1]]+[remainings[4]]
-remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
-# merged_intervals = merge_with_condition(remainings_overlaps,rounding,10)
-# show_plot([(x,None) for x in remainings]+[(x[0],"Brown") for x in remainings_overlaps])
+remainings_overlaps = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings_overlaps.p", "rb"))
+# remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
+#%%
+merged_intervals = merge_supremum(remainings,rounding)
+show_plot([x for x in remainings_overlaps]+[(x[0],"Brown") for x in merged_intervals])
 t = 0
 # %%
 for i in range(2):
