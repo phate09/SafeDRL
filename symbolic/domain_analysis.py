@@ -40,7 +40,7 @@ remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings
 # remainings = [remainings[1]]+[remainings[4]]
 remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
 # merged_intervals = merge_with_condition(remainings_overlaps,rounding,10)
-show_plot([(x,None) for x in remainings]+[(x[0],"Brown") for x in remainings_overlaps])
+# show_plot([(x,None) for x in remainings]+[(x[0],"Brown") for x in remainings_overlaps])
 t = 0
 # %%
 for i in range(2):

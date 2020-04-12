@@ -12,6 +12,7 @@ from rtree import index
 from mosaic.utils import partially_contained_interval, partially_contained, contained, chunks, flatten_interval, area_tuple
 from prism.shared_dictionary import get_shared_dictionary, SharedDict
 from prism.shared_rtree import bulk_load_rtree_helper
+from symbolic.unroll_methods import compute_no_overlaps2, compute_remaining_intervals3_multi, filter_relevant_intervals3
 
 
 def merge_list(frozen_safe, sorted_indices) -> np.ndarray:
@@ -184,3 +185,45 @@ def merge_sync(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> List
         handled = handled_intervals.get(interval, False)
         if not handled:
             near_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = tree_global.intersection(flatten_interval(interval[0]), objects='raw')
+
+
+def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]],rounding,n_workers,state_size) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    if len(starting_intervals) == 0:
+        return starting_intervals
+    intervals = starting_intervals
+    state_size = len(intervals[0][0])
+    while True:
+        p = index.Property(dimension=state_size)
+        helper = bulk_load_rtree_helper(intervals)
+        tree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
+        # find leftmost interval
+        left_boundary = tree.bounds[0]
+        leftmost_items = list(tree.intersection((left_boundary, left_boundary, tree.bounds[2], tree.bounds[3]), objects="raw"))
+        leftmost_items = sorted(leftmost_items)
+        top_coordinate = max([x[1][1] for x in leftmost_items])  # the coordinate of the highest point along the left_boundary todo what if detached from lowest point?
+        down_coordinate = min([x[1][0] for x in leftmost_items])  # the coordinate of the lowest point along the left_boundary
+        relevant_items = list(
+            tree.intersection((tree.bounds[0], tree.bounds[1], down_coordinate, top_coordinate), objects="raw"))  # todo check reachability from starting point (method), filter away unreachable points
+        supremum = min([x[1][1] for x in relevant_items])  # todo need to filter by the highest minimum
+        infimum = max([x[1][0] for x in relevant_items])
+        infimum_filtered_intervals = [x for x in relevant_items if x[1][1] >= infimum]
+        supremum_filtered_intervals = [x for x in relevant_items if x[1][0] <= supremum]
+        supremum_above_infimum = min([x[1][1] for x in infimum_filtered_intervals])
+        infimum_below_supremum = max([x[1][0] for x in supremum_filtered_intervals])
+        supremum_lr = min([x[0][1] for x in relevant_items])
+        infimum_lr = max([x[0][0] for x in relevant_items])
+        infimum_lr_filtered_intervals = [x for x in relevant_items if x[0][1] >= supremum_lr]
+        supremum_lr_filtered_intervals = [x for x in relevant_items if x[0][0] <= infimum_lr]
+        supremum_lr_above_infimum = min([x[0][1] for x in infimum_lr_filtered_intervals])
+        infimum_lr_below_supremum = max([x[0][0] for x in supremum_lr_filtered_intervals])
+        new_group = ((infimum_lr_below_supremum, supremum_lr_above_infimum), (infimum_below_supremum, supremum_above_infimum))
+        remainings = compute_remaining_intervals3_multi()
+        p = index.Property(dimension=state_size)
+        helper = bulk_load_rtree_helper(intervals)
+        if len(intervals) != 0:
+            tree = index.Index(helper, interleaved=False, properties=p, overwrite=True)
+        else:
+            tree = index.Index(interleaved=False, properties=p, overwrite=True)
+        intervals_with_relevants = []
+        found_list = [False] * len(intervals)
+        intervals = remainings

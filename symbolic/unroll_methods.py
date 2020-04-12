@@ -206,7 +206,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     remainings = intervals_sorted
     print(f"t:{t} Started")
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, t, n_workers, rounding)  # checks areas not covered by total intervals
+        remainings, intersected_intervals = compute_remaining_intervals3_multi(intervals_sorted, rounding)  # checks areas not covered by total intervals
 
         remainings = sorted(remainings)
         if len(remainings) != 0:
@@ -229,8 +229,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     return next_states
 
 
-def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], t: int, n_workers: int, rounding: int) -> Tuple[
-    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], rounding: int) -> Tuple[List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
     """
     Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
     :param current_intervals:
@@ -380,9 +379,35 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
 
 
+def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index, rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    intervals_with_relevants = []
+    for i, interval in enumerate(current_intervals):
+        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0], rounding)
+        relevant_intervals = [x for x in relevant_intervals if x != interval]
+        intervals_with_relevants.append((interval, relevant_intervals))
+    aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+    old_size = len(current_intervals)
+    proc_ids = []
+    chunk_size = 200
+    with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
+        for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
+            proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))
+            bar.update(i)
+    with progressbar.ProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+        while len(proc_ids) != 0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            results = ray.get(ready_ids[0])
+            for result in results:
+                if result is not None:
+                    (remain, _, _), action = result
+                    aggregated_list.extend([(x, action) for x in remain])
+            bar.update(bar.value + 1)
+    return aggregated_list
+
+
 @ray.remote
 def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]], debug=True):
-    return [(compute_remaining_intervals3(current_interval[0], intervals_to_fill, debug),current_interval[1]) for current_interval, intervals_to_fill in intervals_with_relevants]
+    return [(compute_remaining_intervals3(current_interval[0], intervals_to_fill, debug), current_interval[1]) for current_interval, intervals_to_fill in intervals_with_relevants]
 
 
 def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[
@@ -410,14 +435,14 @@ def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float
                 handled_intervals[interval] = True
                 intervals_with_relevants.append((interval, relevant_intervals))
             else:
-                intervals_with_relevants.append((interval,[]))
+                intervals_with_relevants.append((interval, []))
         old_size = len(intervals)
         aggregated_list = []
         proc_ids = []
         chunk_size = 200
         with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
             for i, chunk in enumerate(chunks([x for i, x in enumerate(intervals_with_relevants) if found_list[i]], chunk_size)):
-                proc_ids.append(compute_remaining_intervals_remote.remote(chunk,False))
+                proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))
                 bar.update(i)
         aggregated_list.extend([interval for i, interval in enumerate(intervals) if not found_list[i]])
         with progressbar.ProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
@@ -426,8 +451,8 @@ def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float
                 results = ray.get(ready_ids[0])
                 for result in results:
                     if result is not None:
-                        (remain, _, _),action = result
-                        aggregated_list.extend([(x,action) for x in remain])
+                        (remain, _, _), action = result
+                        aggregated_list.extend([(x, action) for x in remain])
                 bar.update(bar.value + 1)
         n_founds = sum(x is True for x in found_list)
         new_size = len(aggregated_list)
