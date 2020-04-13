@@ -18,14 +18,14 @@ local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
-gateway = JavaGateway()
-storage: StateStorage = get_storage()
-storage.reset()
+# gateway = JavaGateway()
+# storage: StateStorage = get_storage()
+# storage.reset()
 rounding = 6
 explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
 precision = 1e-6
 print(f"Building the tree")
-rtree = get_rtree()
+rtree = SharedRtree()
 rtree.reset(state_size)
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
 union_states_total = rtree.tree_intervals()
@@ -49,7 +49,7 @@ for i in range(4):
             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
     print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 # %%
-storage.save_state("/home/edoardo/Development/SafeDRL/save")
+# storage.save_state("/home/edoardo/Development/SafeDRL/save")
 rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
 pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))

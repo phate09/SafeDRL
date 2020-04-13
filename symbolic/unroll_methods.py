@@ -5,6 +5,7 @@ import itertools
 import math
 import random
 from collections import defaultdict
+from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
@@ -25,11 +26,10 @@ from prism.state_storage import get_storage
 from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition, filter_only_connected
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, explorer: DomainExplorer, t: int, n_workers: int, rounding: int) -> Tuple[
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, t: int, n_workers: int, rounding: int) -> Tuple[
     List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
-    :param explorer:
     :param env:
     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
     :return: the next abstract states after taking the action (array)
@@ -39,7 +39,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
 
     chunk_size = 1000
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
-    workers = cycle([AbstractStepWorker.remote(explorer, t, rounding, env_class) for _ in range(min(n_workers, n_chunks))])
+    workers = cycle([AbstractStepWorker.remote(t, rounding, env_class) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
     with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
         for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
@@ -164,7 +164,7 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     :param s_array: the list of intervals
     :return: safe intervals,unsafe intervals, ignore/irrelevant intervals
     """
-    total_area_before = sum([area_tuple(remaining) for remaining in s_array])
+    # total_area_before = sum([area_tuple(remaining) for remaining in s_array])
     # given the initial states calculate which intervals go left or right
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
@@ -175,8 +175,8 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     unsafe_next = np.stack(unsafe_next).tolist() if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next).tolist() if len(ignore_next) != 0 else []
     t_states = ([(tuple([tuple(x) for x in k]), True) for k in safe_next] + [(tuple([tuple(x) for x in k]), False) for k in unsafe_next], ignore_next)  # round_tuples
-    total_area_after = sum([area_tuple(remaining) for remaining, action in t_states[0]])
-    assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
+    # total_area_after = sum([area_tuple(remaining) for remaining, action in t_states[0]])
+    # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
     return t_states
 
 
@@ -205,14 +205,15 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     remainings = intervals_sorted
     print(f"t:{t} Started")
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals_sorted,rtree.tree, rounding)  # checks areas not covered by total intervals
+        # assign a dummy action to intervals_sorted
+        remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, True) for x in intervals_sorted], rtree.tree, rounding)  # checks areas not covered by total intervals
 
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-            remainings_merged = merge_supremum([(x, True) for x in remainings], rounding)
+            remainings_merged = merge_supremum(remainings, rounding)  # no need to assign a dummy action
             # show_plot(remainings,remainings_merged)
-            remainings_merged_noaction = [x[0] for x in remainings_merged]
+            remainings_merged_noaction = [x[0] for x in remainings_merged]  # remove dummy action
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged_noaction, explorer, verification_model, n_workers, rounding)
             # show_plot(remainings_merged,assigned_intervals)
             # assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers, state_size)
@@ -228,7 +229,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
         else:  # if no more remainings exit
             break
     # show_plot(intersected_intervals, intervals_sorted)
-    next_states, terminal_states = abstract_step_store2(intersected_intervals, env, explorer, t + 1, n_workers,
+    next_states, terminal_states = abstract_step_store2(intersected_intervals, env, t + 1, n_workers,
                                                         rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
 
@@ -386,7 +387,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
 
 
-def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index, rounding: int) -> Tuple[
+def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index, rounding: int, debug=True) -> Tuple[
     List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
     intervals_with_relevants = []
     for i, interval in enumerate(current_intervals):
@@ -397,19 +398,23 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple
     old_size = len(current_intervals)
     proc_ids = []
     chunk_size = 200
-    # with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
-    for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
-        proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # bar.update(i)
-    # with progressbar.ProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
-    while len(proc_ids) != 0:
-        ready_ids, proc_ids = ray.wait(proc_ids)
-        results = ray.get(ready_ids[0])
-        for result in results:
-            if result is not None:
-                (remain, safe, unsafe), action = result
-                aggregated_list.extend([(x, action) for x in remain])  # bar.update(bar.value + 1)
-                intersection_list.extend([(x, True) for x in safe])
-                intersection_list.extend([(x, False) for x in unsafe])
+    with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
+        for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
+            proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))
+            if debug:
+                bar.update(i)
+    with progressbar.ProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
+        while len(proc_ids) != 0:
+            ready_ids, proc_ids = ray.wait(proc_ids)
+            results = ray.get(ready_ids[0])
+            for result in results:
+                if result is not None:
+                    (remain, safe, unsafe), action = result
+                    aggregated_list.extend([(x, action) for x in remain])
+                    intersection_list.extend([(x, True) for x in safe])
+                    intersection_list.extend([(x, False) for x in unsafe])
+            if debug:
+                bar.update(bar.value + 1)
     return aggregated_list, intersection_list
 
 
@@ -642,9 +647,10 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     intervals = starting_intervals
     state_size = len(intervals[0][0])
     merged_list = []
-    with progressbar.ProgressBar(prefix="Merging the intervals", max_value=progressbar.UnknownLength, is_terminal=True, term_width=200) as bar:
+    with progressbar.ProgressBar(prefix="Merging the intervals", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
         i = 0
         while True:
+            bar.update(len(starting_intervals)-len(intervals))
             tree = create_tree(intervals)
             # find leftmost interval
             left_boundary: float = tree.bounds[0]
@@ -668,11 +674,11 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
             new_group = (tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)
             # show_plot(intervals,[(tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)])
             new_group_tree = create_tree([new_group])
-            remainings = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding)
+            remainings,intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding, debug=False)
             merged_list.append(new_group)
             if len(remainings) == 0:
                 break
             intervals = remainings
             i += 1
-            bar.update(i)
+            # bar.update(i)
     return merged_list

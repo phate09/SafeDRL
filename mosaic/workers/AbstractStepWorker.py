@@ -11,11 +11,9 @@ from symbolic.cartpole_abstract import CartPoleEnv_abstract
 
 @ray.remote
 class AbstractStepWorker:
-    def __init__(self, explorer, t, rounding: int,env_init):
-        self.env = env_init()  # todo find a way to define the initialiser for the environment
-        self.explorer = explorer
+    def __init__(self, t, rounding: int,env_init):
+        self.env = env_init()
         self.t = t
-        # self.storage: StateStorage = get_storage()
         self.rounding = rounding
 
     def work(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> Tuple[List[List[Tuple[Tuple[float, float]]]], List[List[Tuple[Tuple[float, float]]]]]:

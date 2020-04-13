@@ -174,16 +174,21 @@ def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, flo
     else:
         first_element = intervals_to_filter[0]
     connected_list = [first_element]
+    tree = create_tree(connected_list)
     while True:
         found_one = False
         for interval in intervals_to_filter:
             if connected_dict[interval]:
                 continue  # skip
             else:
-                found = is_connected(interval, connected_list)
+                coordinates = flatten_interval(interval[0])
+                intersection = tree.intersection(coordinates, objects='raw')
+                n_intersected = len(list(intersection))
+                found = n_intersected != 0
                 found_one = found_one or found
                 if found:
                     connected_dict[interval] = True
+                    tree.insert(len(connected_list), coordinates, interval)
                     connected_list.append(interval)
         if not found_one:
             break
