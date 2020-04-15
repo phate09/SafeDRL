@@ -3,40 +3,34 @@ Collection of methods to use in unroll_abstract_env
 """
 import itertools
 import math
-import random
 from collections import defaultdict
 from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
 
-import Pyro5.api
 import numpy as np
 import progressbar
 import ray
 from contexttimer import Timer
 from rtree import index
 
-from mosaic.utils import chunks, area_tuple, shrink, interval_contains, flatten_interval, show_plot, bulk_load_rtree_helper, create_tree
+from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
-from plnn.bab_explore import DomainExplorer
-from prism.shared_dictionary import get_shared_dictionary
-from prism.shared_rtree import SharedRtree, get_rtree
-from prism.state_storage import get_storage
-from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, merge_with_condition, filter_only_connected
+from prism.shared_rtree import SharedRtree
+from prism.state_storage import StateStorage
+from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, filter_only_connected
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, t: int, n_workers: int, rounding: int) -> Tuple[
-    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[float, float]]]]:
+def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, t: int, n_workers: int, rounding: int):
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param env:
     :param abstract_states_normalised: the abstract states from which to start, list of tuples of intervals
     :return: the next abstract states after taking the action (array)
     """
-    next_states: List[Tuple[Tuple[float, float]]] = []
-    terminal_states: List[Tuple[Tuple[float, float]]] = []
-
+    next_states = []
+    terminal_states = []
     chunk_size = 1000
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
     workers = cycle([AbstractStepWorker.remote(t, rounding, env_class) for _ in range(min(n_workers, n_chunks))])
@@ -48,112 +42,15 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
-            results: Tuple[List[List[Tuple[Tuple[float, float]]]], List[List[Tuple[Tuple[float, float]]]]] = ray.get(ready_ids)
+            results: List[Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], List[
+                Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]]]] = ray.get(ready_ids)
             bar.update(bar.value + len(results))
             for next_states_local, terminal_states_local in results:
                 for next_state_many in next_states_local:
-                    next_states.extend(next_state_many)
+                    next_states.append(next_state_many)
                 for terminal_states_many in terminal_states_local:
-                    terminal_states.extend(terminal_states_many)
+                    terminal_states.append(terminal_states_many)
     return sorted(next_states), terminal_states
-
-
-def generate_points_in_intervals(total_states: np.ndarray, n_points=100) -> np.ndarray:
-    """
-    :param total_states: 3 dimensional array (n,dimension,interval)
-    :return:
-    """
-    generated_points = []
-    for i in range(n_points):
-        group = i % total_states.shape[0]
-        f = lambda x: [random.uniform(v[0], v[1]) for v in x]
-        random_point = f(total_states[group])
-        generated_points.append(random_point)
-    return np.stack(generated_points)
-
-
-def assign_action(random_points: np.ndarray, t_states):
-    """
-    Given some points and a list of domains divided in 3 categories (safe,unsafe,ignore) check which action to pick.
-    It also check for duplicates throwing an assertion error
-    :param random_points: collection of random points
-    :param t_states: collection of states at timestep t
-    :return:
-    """
-    assigned_action = [""] * len(random_points)
-    for i in range(len(random_points)):
-        point = random_points[i]
-        for r in range(3):  # safe,unsafe,ignore
-            for g in range(len(t_states[r])):  # group
-                matches = 0
-                interval = t_states[r][g]
-                # if interval[0][0] <= point[0] <= interval[0][1]:
-                #     if interval[1][0] <= point[1] <= interval[1][1]:
-                #         if interval[2][0] <= point[2] <= interval[2][1]:
-                #             if interval[3][0] <= point[3] <= interval[3][1]:
-                #                 matches=4
-                for d in range(len(interval)):  # dimension
-                    if interval[d][0] <= point[d] <= interval[d][1]:
-                        matches += 1
-                if matches == 4:
-                    if r == 0:
-                        if assigned_action[i] != "" and assigned_action[i] != "safe":
-                            print("something's wrong")
-                        assigned_action[i] = "safe"
-                    elif r == 1:
-                        if assigned_action[i] != "" and assigned_action[i] != "unsafe":
-                            print("something's wrong 2")
-                        assigned_action[i] = "unsafe"
-                    elif r == 2:
-                        assigned_action[i] = "ignore"
-    return assigned_action
-
-
-def generate_points(t_states, t):
-    """
-    Generate random points and determines the action of the agent given a collection of abstract states and a time step
-    :param t_states: list of list of arrays
-    :param t: timestep
-    :return: random points and corresponding actions
-    """
-    # Generate random points and determines the action of the agent
-    random_points = generate_points_in_intervals(t_states[t][0], 500) if len(t_states[t][0]) > 0 else np.array([]).reshape((0, 4))  # safe
-    random_points2 = generate_points_in_intervals(t_states[t][1], 500) if len(t_states[t][1]) > 0 else np.array([]).reshape((0, 4))  # unsafe
-    random_points3 = generate_points_in_intervals(t_states[t][2], 500) if len(t_states[t][2]) > 0 else np.array([]).reshape((0, 4))  # unsafe
-    random_points = np.concatenate((random_points, random_points2, random_points3))
-    assigned_actions = assign_action(random_points, t_states[t])
-    return random_points, assigned_actions
-
-
-def calculate_area(state: np.ndarray):
-    """Given an interval state calculate the area of the interval"""
-    dom_sides: np.ndarray = np.abs(state[:, 0] - state[:, 1])
-    dom_area = dom_sides.prod()
-    return dom_area
-
-
-def generate_middle_points(t_states, t):
-    """
-    Generate the middle points of each inteval and determines the action of the agent given a collection of abstract states and a time step
-    :param t_states: list of list of arrays
-    :param t: timestep
-    :return: random points and corresponding actions
-    """
-    # Generate random points and determines the action of the agent
-    random_points = []
-    areas = []
-    for s in t_states[t][0]:  # safe
-        random_points.append(np.average(s, axis=1))
-        areas.append(calculate_area(s))
-    for s in t_states[t][1]:  # unsafe
-        random_points.append(np.average(s, axis=1))
-        areas.append(calculate_area(s))
-    for s in t_states[t][2]:  # ignore
-        random_points.append(np.average(s, axis=1))
-        areas.append(calculate_area(s))
-    random_points = np.stack(random_points)
-    assigned_actions = assign_action(random_points, t_states[t])
-    return random_points, areas, assigned_actions
 
 
 def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
@@ -190,17 +87,8 @@ def is_negligible(interval: Tuple[Tuple[float, float]]):
     return any([math.isclose(x, 0) for x in sizes])
 
 
-def list_t_layer(t: int, solution_min: List, solution_max: List) -> List[Tuple[float, float]]:
-    with get_storage() as storage:
-        t_ids = storage.get_t_layer(t)
-        result = []
-        for i in t_ids:
-            result.append((solution_min[i], solution_max[i]))
-        return result
-
-
-def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int) -> List[
-    Tuple[Tuple[float, float]]]:
+def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage) -> \
+        List[Tuple[Tuple[float, float]]]:
     intervals_sorted = sorted(intervals)
     remainings = intervals_sorted
     print(f"t:{t} Started")
@@ -229,57 +117,32 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
         else:  # if no more remainings exit
             break
     # show_plot(intersected_intervals, intervals_sorted)
-    next_states, terminal_states = abstract_step_store2(intersected_intervals, env, t + 1, n_workers,
-                                                        rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    with progressbar.ProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals), is_terminal=True, term_width=200) as bar:
+        for interval, successors in intersected_intervals:
+            parent_id = storage.store(interval[0])
+            ids = storage.store_successor_multi2([x[0] for x in successors], parent_id)
+            storage.assign_t_multi(ids, f"{t}.split")
+            bar.update(bar.value + 1)
+
+    list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
+    next_states, terminal_states = abstract_step_store2(list_assigned_action, env, t + 1, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
+    next_to_compute = []
+    with progressbar.ProgressBar(prefix="Storing successors ", max_value=len(next_states), is_terminal=True, term_width=200) as bar:
+        for interval, successors in next_states:
+            parent_id = storage.store(interval[0])
+            for successor1, successor2 in successors:
+                id1, id2 = storage.store_sticky_successors(successor1, successor2, parent_id)
+                storage.assign_t(id1, t + 1)
+                storage.assign_t(id2, t + 1)
+                next_to_compute.append(successor1)
+                next_to_compute.append(successor2)
+            bar.update(bar.value + 1)
+    storage.mark_as_fail(
+        [storage.store(terminal_state) for terminal_state in list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))])
 
     print(f"t:{t} Finished")
-    return next_states
-
-
-def compute_remaining_intervals3_multi(current_intervals: List[Tuple[Tuple[float, float]]], rounding: int) -> Tuple[List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
-    """
-    Calculates the remaining areas that are not included in the intersection between current_intervals and intervals_to_fill
-    :param current_intervals:
-    :return: the blank intervals and the intersection intervals
-    """
-    # no_overlaps = remove_overlaps([(x, True) for x in current_intervals], rounding, n_workers)  # assign a dummy action
-    # no_overlaps = [x[0] for x in no_overlaps]  # removes the action
-    chunk_size = 1
-    n_chunks = ceil(len(current_intervals) / chunk_size)
-    # workers = cycle([RemainingWorker.remote(rounding) for _ in range(min(n_workers, n_chunks))])
-    proc_ids = []
-    tree = get_rtree()
-    with Timer(factor=1000) as t:  # sort according to the number of relevant intervals so that the slowest operations are executed early
-        relevant_intervals_multi: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = tree.filter_relevant_intervals_multi(current_intervals, rounding)
-        intervals_and_relevant_intervals = list(zip(current_intervals, relevant_intervals_multi))
-        # intervals_and_relevant_intervals = sorted(intervals_and_relevant_intervals, key=lambda x: len(x[1]), reverse=True)
-        chunks_intervals_and_relevant_intervals = list(chunks(intervals_and_relevant_intervals, chunk_size))
-        print(f"Prefilter: {round(t.elapsed)}")
-    with progressbar.ProgressBar(prefix="Starting computer remaining workers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
-        for i, interval_and_relevant_intervals in enumerate(chunks_intervals_and_relevant_intervals):
-            intervals, relevant_intervals = map(list, zip(*interval_and_relevant_intervals))
-            relevant_intervals_merged = []
-            for relevant_intervals_single in relevant_intervals:
-                # if len(relevant_intervals_single) < 500:
-                relevant_intervals_merged.append(
-                    relevant_intervals_single)  # else:  # merge relevant_intervals with a high number of matches  #     list_tuple = merge_with_condition(relevant_intervals_single, rounding, max_iter=100, n_remaining_cutoff=400)  #     relevant_intervals_merged.append(list_tuple)
-            proc_ids.append(compute_remaining_worker.remote(intervals, relevant_intervals_merged, rounding))
-            bar.update(i)
-    remainings = []
-    intersection_states = []
-    with progressbar.ProgressBar(prefix="Compute remaining intervals ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
-        while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
-            results_multi: Tuple[List[List[Tuple[Tuple[float, float], bool]]], List[List[Tuple[Tuple[Tuple[float, float]], bool]]]] = ray.get(ready_ids)
-            bar.update(bar.value + len(results_multi))
-            for remaining_multi, intersection_state_multi in results_multi:
-                for remaining in remaining_multi:
-                    remainings.extend(remaining)
-                for intersection_state in intersection_state_multi:  # todo handle storing of successors
-                    intersection_states.extend(intersection_state)
-    remainings_left = discard_negligibles(remainings)
-    return remainings_left, intersection_states
+    return next_to_compute
 
 
 def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers: int, state_size: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
@@ -291,10 +154,6 @@ def remove_overlaps(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     """
     print("Removing overlaps")
     no_overlaps = compute_no_overlaps2(current_intervals, rounding, n_workers, state_size)
-    # no_overlaps = no_overlaps_tree.tree_intervals()
-    # for no_overlap_interval in no_overlaps:  # test there are no overlaps
-    #     if len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0:
-    #         assert len(no_overlaps_tree.filter_relevant_intervals3(no_overlap_interval[0], rounding)) == 0
     print("Removed overlaps")
 
     return no_overlaps
@@ -388,39 +247,42 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
 
 
 def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], tree: index.Index, rounding: int, debug=True) -> Tuple[
-    List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+    List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]]]:
     intervals_with_relevants = []
+    dict_intervals = defaultdict(list)
     for i, interval in enumerate(current_intervals):
         relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval[0])
         intervals_with_relevants.append((interval, relevant_intervals))
-    aggregated_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
-    intersection_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+    remain_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+
     old_size = len(current_intervals)
     proc_ids = []
     chunk_size = 200
-    with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
-        for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
-            proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))
-            if debug:
-                bar.update(i)
+    # with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
+    for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
+        proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
     with progressbar.ProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             results = ray.get(ready_ids[0])
             for result in results:
                 if result is not None:
-                    (remain, safe, unsafe), action = result
-                    aggregated_list.extend([(x, action) for x in remain])
-                    intersection_list.extend([(x, True) for x in safe])
-                    intersection_list.extend([(x, False) for x in unsafe])
+                    (remain, safe, unsafe), (previous_interval, action) = result
+                    remain_list.extend([(x, action) for x in remain])
+                    dict_intervals[(previous_interval, action)].extend([(x, True) for x in safe])
+                    dict_intervals[(previous_interval, action)].extend([(x, False) for x in unsafe])
             if debug:
                 bar.update(bar.value + 1)
-    return aggregated_list, intersection_list
+    intersection_list: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]] = []  # list with intervals and associated intervals with action assigned
+    for key in dict_intervals.keys():
+        if len(dict_intervals[key]) != 0:
+            intersection_list.append((key, dict_intervals[key]))
+    return remain_list, intersection_list
 
 
 @ray.remote
 def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]], debug=True):
-    return [(compute_remaining_intervals3(current_interval[0], intervals_to_fill, debug), current_interval[1]) for current_interval, intervals_to_fill in intervals_with_relevants]
+    return [(compute_remaining_intervals3(current_interval[0], intervals_to_fill, debug), current_interval) for current_interval, intervals_to_fill in intervals_with_relevants]
 
 
 def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[
@@ -480,113 +342,6 @@ def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float
     return aggregated_list
 
 
-def compute_no_overlaps(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int, n_workers, state_size: int, max_iter: int = -1) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    aggregated_list = intervals
-    completed_iterations = 0
-    # self_proxy = self
-    # self._pyroDaemon.register(self_proxy)
-    no_overlap_tree = get_rtree_temp()
-    no_overlap_tree.reset(state_size)
-    workers = cycle([NoOverlapWorker.remote(no_overlap_tree, rounding) for _ in range(n_workers)])
-    with get_shared_dictionary() as shared_dict:
-        while True:
-            shared_dict.reset()  # reset the dictionary
-            no_overlap_tree.load(aggregated_list)
-            old_size = len(aggregated_list)
-            proc_ids = []
-            chunk_size = 200
-            with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
-                for i, chunk in enumerate(chunks(aggregated_list, chunk_size)):
-                    proc_ids.append(next(workers).no_overlap_worker.remote(chunk))
-                    bar.update(i)
-            aggregated_list = []
-            found_list = []
-            with progressbar.ProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
-                while len(proc_ids) != 0:
-                    ready_ids, proc_ids = ray.wait(proc_ids)
-                    result = ray.get(ready_ids[0])
-                    if result is not None:
-                        aggregated_list.extend(result[0])
-                        found_list.extend(result[1])
-                    bar.update(bar.value + 1)
-            n_founds = sum(x is True for x in found_list)
-            new_size = len(aggregated_list)
-            if n_founds != 0:
-                print(f"Reduced overlaps to {n_founds / new_size:.2%}")
-            else:
-                print("Finished!")
-            if n_founds == 0:
-                break
-            completed_iterations += 1
-            if completed_iterations >= max_iter != -1:
-                break
-    return aggregated_list
-
-
-@Pyro5.api.expose
-@Pyro5.api.behavior(instance_mode="single")
-class NoOverlapRtree:
-    def __init__(self):
-        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
-
-    def reset(self, dimension):
-        print("Resetting the tree")
-        self.dimension = dimension
-        self.p = index.Property(dimension=self.dimension)
-        self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
-
-    def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
-        # with self.lock:
-        print("Building the tree")
-        helper = bulk_load_rtree_helper(intervals)
-        self.tree.close()
-        if len(intervals) != 0:
-            self.tree = index.Index(helper, interleaved=False, properties=self.p, overwrite=True)
-        else:
-            self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.tree.flush()
-        print("Finished building the tree")
-
-    def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
-        id = len(self.union_states_total)
-        # interval = (open_close_tuple(interval[0]), interval[1])
-        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.filter_relevant_intervals3(interval[0], rounding)
-        # relevant_intervals = [x for x in relevant_intervals if x != interval[0]]  # remove itself todo needed?
-        remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
-        for remaining_interval in [(x, interval[1]) for x in remaining]:
-            self.union_states_total.append(remaining_interval)
-            coordinates = flatten_interval(remaining_interval[0])
-            action = remaining_interval[1]
-            self.tree.insert(id, coordinates, (remaining_interval[0], action))
-
-    def tree_intervals(self) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-        return self.union_states_total
-
-    def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
-        """
-        Store all the intervals in the tree with the same action
-        :param intervals:
-        :param action: the action to be assigned to all the intervals
-        :return:
-        """
-        with progressbar.ProgressBar(prefix="Add many temp:", max_value=len(intervals), is_terminal=True, term_width=200) as bar:
-            for i, interval in enumerate(intervals):
-                self.add_single(interval, rounding)
-                bar.update(i)
-
-    def filter_relevant_intervals3(self, current_interval: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-        """Filter the intervals relevant to the current_interval"""
-        # current_interval = inflate(current_interval, rounding)
-        results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
-        total = []
-        for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
-            suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])
-            if suitable:
-                total.append(result)
-        return sorted(total)
-
-
 def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """Filter the intervals relevant to the current_interval"""
     # current_interval = inflate(current_interval, rounding)
@@ -606,40 +361,6 @@ def filter_relevant_intervals_action(tree, current_interval: Tuple[Tuple[Tuple[f
     return relevants
 
 
-@ray.remote
-class NoOverlapWorker:
-    def __init__(self, tree: NoOverlapRtree, rounding):
-        self.rounding = rounding
-        self.tree: NoOverlapRtree = tree
-        self.handled_intervals = get_shared_dictionary()
-
-    def no_overlap_worker(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> Tuple[List[Tuple[Tuple[Tuple[float, float]], bool]], List[bool]]:
-        aggregated_list = []
-        found_list = [False] * len(intervals)
-        for i, interval in enumerate(intervals):
-            handled = self.handled_intervals.get(interval, False)
-            if not handled:
-                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = self.tree.filter_relevant_intervals3(interval[0], self.rounding)
-                relevant_intervals = [x for x in relevant_intervals if x != interval]
-                found = len(relevant_intervals) != 0
-                found_list[i] = found
-                relevant_intervals = [x for x in relevant_intervals if not self.handled_intervals.get(x, False)]
-                self.handled_intervals.set_multiple([interval] + relevant_intervals, True)  # mark the interval as handled
-                remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval[0], relevant_intervals, False)
-                aggregated_list.extend([(x, interval[1]) for x in remaining])  # todo merge here?
-            else:
-                # already handled previously
-                aggregated_list.append(interval)
-        return aggregated_list, found_list
-
-
-def get_rtree_temp() -> NoOverlapRtree:
-    Pyro5.api.config.SERIALIZER = "marshal"
-    Pyro5.api.config.SERVERTYPE = "multiplex"
-    storage = Pyro5.api.Proxy("PYRONAME:prism.rtreetemp")
-    return storage
-
-
 def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """merge all the intervals provided, assumes they all have the same action"""
     if len(starting_intervals) == 0:
@@ -647,10 +368,10 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     intervals = starting_intervals
     state_size = len(intervals[0][0])
     merged_list = []
-    with progressbar.ProgressBar(prefix="Merging the intervals", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
+    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
         i = 0
         while True:
-            bar.update(len(starting_intervals)-len(intervals))
+            bar.update(max(len(starting_intervals) - len(intervals), 0))
             tree = create_tree(intervals)
             # find leftmost interval
             left_boundary: float = tree.bounds[0]
@@ -674,11 +395,10 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
             new_group = (tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)
             # show_plot(intervals,[(tuple([(left_boundary, right_boundary), (bottom_boundary, top_boundary)]), True)])
             new_group_tree = create_tree([new_group])
-            remainings,intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding, debug=False)
+            remainings, intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding, debug=False)
             merged_list.append(new_group)
             if len(remainings) == 0:
                 break
             intervals = remainings
-            i += 1
-            # bar.update(i)
+            i += 1  # bar.update(i)
     return merged_list

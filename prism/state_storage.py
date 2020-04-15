@@ -3,6 +3,8 @@ import pickle
 from collections import defaultdict
 import threading
 from typing import Tuple, List
+
+import progressbar
 import zmq
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
@@ -19,9 +21,7 @@ class StateStorage:
         self.dictionary = bidict()
         self.t_dictionary = defaultdict(list)
         self.last_index = 0
-        self.gateway = JavaGateway()
-        self.gateway.entry_point.reset_mdp()
-        self.mdp = self.gateway.entry_point.getMdpSimple()
+
         self.graph = nx.DiGraph()
         self.prism_needs_update = False
         self.terminal_dictionary = defaultdict(bool)
@@ -31,8 +31,6 @@ class StateStorage:
         self.dictionary = bidict()
         self.t_dictionary = defaultdict(list)
         self.last_index = 0
-        self.gateway.entry_point.reset_mdp()
-        self.mdp = self.gateway.entry_point.getMdpSimple()
         self.graph = nx.DiGraph()
         self.prism_needs_update = False
 
@@ -67,6 +65,12 @@ class StateStorage:
         self.prism_needs_update = True
         return successor_id
 
+    def store_successor_multi2(self, items: List[Tuple[Tuple[float, float]]], parent_id: int):
+        ids = self.store_multi(items)
+        self.graph.add_edges_from([(parent_id, x) for x in ids])
+        self.prism_needs_update = True
+        return ids
+
     def store_successor_multi(self, items: List[Tuple[Tuple[float, float]]], parent_id: int):
         return [self.store_successor(interval, parent_id) for interval in items]
 
@@ -83,8 +87,8 @@ class StateStorage:
         pickle.dump(self.terminal_dictionary, open(folder_path + "/terminal_dictionary.p", "wb+"))
         pickle.dump(self.t_dictionary, open(folder_path + "/t_dictionary.p", "wb+"))
         pickle.dump(self.last_index, open(folder_path + "/last_index.p", "wb+"))
-        self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
-        nx.write_gml(self.graph, folder_path + "/nx_graph.gml")
+        # self.mdp.exportToPrismExplicit(folder_path + "/last_save.prism")
+        nx.write_gpickle(self.graph, folder_path + "/nx_graph.p")
         print("Mdp Saved")
 
     def load_state(self, folder_path):
@@ -92,8 +96,8 @@ class StateStorage:
         self.terminal_dictionary = pickle.load(open(folder_path + "/terminal_dictionary.p", "rb"))
         self.t_dictionary = pickle.load(open(folder_path + "/t_dictionary.p", "rb"))
         self.last_index = pickle.load(open(folder_path + "/last_index.p", "rb"))
-        self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
-        self.graph = nx.read_gml(folder_path + "/nx_graph.gml")
+        # self.mdp.buildFromPrismExplicit(folder_path + "/last_save.prism.tra")
+        self.graph = nx.read_gpickle(folder_path + "/nx_graph.p")
         self.prism_needs_update = True
         print("Mdp Loaded")
 
@@ -108,6 +112,13 @@ class StateStorage:
     def get_forward(self, id):
         return self.dictionary[id]
 
+    def get_terminal_states_ids(self):
+        terminal_ids = []
+        for key in self.terminal_dictionary.keys():
+            if self.terminal_dictionary[key]:
+                terminal_ids.append(key)
+        return terminal_ids
+
     def get_t_layer(self, t: int) -> List[int]:
         return self.t_dictionary[t]
 
@@ -117,37 +128,49 @@ class StateStorage:
     def purge_branch(self, index_to_remove, initial_state=0):
         """Removes the given index and all the unconnected successors from the initial state after it"""
         self.graph.remove_node(index_to_remove)
+        components_removed = []
         for component in nx.connected_components(self.graph.to_undirected()):
             if initial_state not in component:
                 self.graph.remove_nodes_from(component)
+                components_removed.extend(component)
         self.prism_needs_update = True
+        return components_removed
 
     def recreate_prism(self):
+        gateway = JavaGateway()
+        gateway.entry_point.reset_mdp()
+        # mdp = self.gateway.entry_point.getMdpSimple()
+        mdp = gateway.entry_point.reset_mdp()
+        gateway.entry_point.add_states(self.last_index)
         fail_states_ids = [key for key in self.terminal_dictionary.keys() if self.terminal_dictionary[key] is True]
-        java_list = ListConverter().convert(fail_states_ids, self.gateway._gateway_client)
-        self.gateway.entry_point.update_fail_label_list(java_list)
-        self.mdp = self.gateway.entry_point.reset_mdp()
-        for i in range(self.last_index):  # generate the states
-            index = self.mdp.addState()
-        for parent_id, successors in self.graph.adjacency():  # generate the edges
-            last_distribution_name = None
-            distribution = None
-            last_successor = None
+        java_list = ListConverter().convert(fail_states_ids, gateway._gateway_client)
+        gateway.entry_point.update_fail_label_list(java_list)
+        for parent_id, successors in progressbar.progressbar(self.graph.adjacency(), prefix="", ):  # generate the edges
+
             if len(successors.items()) != 0:
+                values = set()  # extract action names
                 for successor_id, eattr in successors.items():
-                    # print(f"u:{parent_id} v:{successor_id} wt:{eattr}")
-                    p = eattr.get("p", 1.0 / len(successors.items()))
-                    a = eattr.get("a")
-                    if last_distribution_name != a:
-                        if distribution is not None:  # save the previous distribution to prism
-                            self.mdp.addActionLabelledChoice(int(parent_id), distribution, int(last_successor))
-                        distribution = self.gateway.newDistribution()
-                        last_distribution_name = a
-                    last_successor = successor_id
-                    distribution.add(int(successor_id), p)
-                self.mdp.addActionLabelledChoice(int(parent_id), distribution, int(successor_id))
+                    values.add(eattr.get("a"))
+                group_by_action = [(x, [(successor_id, eattr) for successor_id, eattr in successors.items() if eattr.get("a") == x]) for x in values]  # group successors by action names
+                for action, successors_grouped in group_by_action:
+
+                    if action is None:  # a new action for each successor
+                        for successor_id, eattr in successors_grouped:
+                            distribution = gateway.newDistribution()
+                            distribution.add(int(successor_id), 1.0)
+                            mdp.addActionLabelledChoice(int(parent_id), distribution, int(successor_id))
+                    else:
+                        last_distribution_name = None
+                        distribution = gateway.newDistribution()
+                        last_successor = None  # this is used just for naming the action
+                        for successor_id, eattr in successors_grouped:
+                            p = eattr.get("p", 1.0 / len(successors.items()))
+                            distribution.add(int(successor_id), p)
+                            last_successor = successor_id
+                        mdp.addActionLabelledChoice(int(parent_id), distribution, int(successor_id))
         print("Prism updated with new data")
         self.prism_needs_update = False
+        return mdp, gateway
 
 
 def get_storage():
