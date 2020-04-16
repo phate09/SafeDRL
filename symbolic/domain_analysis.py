@@ -25,12 +25,12 @@ n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = StateStorage()
 storage.reset()
 rounding = 6
-explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-2, rounding)
 precision = 1e-6
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
-rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
@@ -42,20 +42,20 @@ remainings = [current_interval]
 # show_plot([x for x in union_states_total] + [(x[0], "Brown") for x in safe_states_merged] + [(x[0], "Purple") for x in unsafe_states_merged])
 t = 0
 # %%
-# for i in range(3):
-#     remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding,storage)
-#     t = t + 1
-#     boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]
-#     for interval in remainings:
-#         for d in range(len(interval)):
-#             boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
-#     print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
-# # %%
-# storage.save_state("/home/edoardo/Development/SafeDRL/save")
-# rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
-# pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
-# pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
-# print("Checkpoint Saved...")
+for i in range(3):
+    remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding,storage)
+    t = t + 1
+    boundaries = [[999, -999], [999, -999], [999, -999], [999, -999]]
+    for interval in remainings:
+        for d in range(len(interval)):
+            boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
+    print(boundaries)  # rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+# %%
+storage.save_state("/home/edoardo/Development/SafeDRL/save")
+rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
+pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
+pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
+print("Checkpoint Saved...")
 
 # %%
 remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
@@ -67,9 +67,9 @@ storage.load_state("/home/edoardo/Development/SafeDRL/save")
 #     for d in range(len(interval)):
 #         boundaries[d] = [min(boundaries[d][0], interval[d][0]), max(boundaries[d][0], interval[d][1])]
 # print(boundaries)
-t0 = [storage.dictionary[i] for i in storage.get_t_layer(0)]
-t0split = [storage.dictionary[i] for i in storage.get_t_layer(f"{0}.split")]
-show_plot(t0, t0split)
+# t0 = [storage.dictionary[i] for i in storage.get_t_layer(0)]
+# t0split = [storage.dictionary[i] for i in storage.get_t_layer(f"{0}.split")]
+# show_plot(t0, t0split)
 # %%
 while True:
     mdp, gateway = storage.recreate_prism()
@@ -91,6 +91,7 @@ while True:
     intervals_safe = []
     intervals_unsafe = []
     intervals_split = []
+    intervals_split_ids = []
     for i, interval_probability in enumerate(probabilities):
         if interval_probability[0] >= 1 - safe_threshold:
             # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
@@ -102,24 +103,24 @@ while True:
             intervals_unsafe.append(storage.dictionary[t_ids[i]])
         else:
             print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
-            intervals_split.append(storage.dictionary[t_ids[i]])
             split_performed = True
             interval_to_split = storage.dictionary_get(t_ids[i])
+            intervals_split.append(interval_to_split)
+            intervals_split_ids.append(t_ids[i])
             dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split, rounding)
-            # storage.purge(0, [t_ids[i]])
-            removed_components = storage.purge_branch(t_ids[i], 0)  # todo by removing the interval here, it causes issues when looking for other intervals
-            storage.t_dictionary[f"{analysis_t}.split"].remove(t_ids[i])  # remove the index from the t_dictionary
-            for key in storage.t_dictionary.keys():
-                for item in removed_components:
-                    if item in storage.t_dictionary[key]:
-                        storage.t_dictionary[key].remove(item)
-            # print("Removed old values from storage")
             id1 = storage.store_successor(dom1, 0)
             id2 = storage.store_successor(dom2, 0)
             storage.assign_t(id1, f"{analysis_t}.split")
             storage.assign_t(id2, f"{analysis_t}.split")
             to_analyse.append(dom1)
             to_analyse.append(dom2)
+    for i, interval_split_id in enumerate(intervals_split_ids):
+        removed_components = storage.purge_branch(interval_split_id, 0)
+        storage.t_dictionary[f"{analysis_t}.split"].remove(interval_split_id)  # remove the index from the t_dictionary
+        for key in storage.t_dictionary.keys():
+            for item in removed_components:
+                if item in storage.t_dictionary[key]:
+                    storage.t_dictionary[key].remove(item)
     t = analysis_t + 1  # start inserting the new values after the current timestep
     print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
     show_plot(intervals_safe, intervals_unsafe, intervals_split)
