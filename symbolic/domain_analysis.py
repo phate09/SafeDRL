@@ -13,7 +13,7 @@ from mosaic.utils import show_plot
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
-from symbolic.unroll_methods import analysis_iteration, compute_remaining_intervals4_multi, abstract_step_store2
+from symbolic.unroll_methods import analysis_iteration, compute_remaining_intervals4_multi, abstract_step_store2, merge_supremum2
 from verification_runs.domain_explorers_load import generatePendulumDomainExplorer
 
 gym.logger.set_level(40)
@@ -25,20 +25,21 @@ n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = StateStorage()
 storage.reset()
 rounding = 6
-explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-2, rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
 precision = 1e-6
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
-# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p", rounding)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
 
-# remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
+remainings=remainings[0:100]
 # remainings_overlaps = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings_overlaps.p", "rb"))
 # remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
-# merged_intervals = merge_supremum(remainings,rounding)
+merged_intervals = merge_supremum2([(x, None) for x in remainings],rounding)
 # show_plot([x for x in union_states_total] + [(x[0], "Brown") for x in safe_states_merged] + [(x[0], "Purple") for x in unsafe_states_merged])
 t = 0
 # %%

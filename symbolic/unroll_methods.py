@@ -8,14 +8,13 @@ from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
-
 import numpy as np
 import progressbar
 import ray
 from contexttimer import Timer
 from rtree import index
-
-from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree
+from sympy.combinatorics.graycode import GrayCode
+from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree, show_plot
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
@@ -402,3 +401,81 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
             intervals = remainings
             i += 1  # bar.update(i)
     return merged_list
+
+
+def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    """merge all the intervals provided, assumes they all have the same action"""
+    if len(starting_intervals) == 0:
+        return starting_intervals
+    intervals = starting_intervals
+    state_size = len(intervals[0][0])
+    merged_list = []
+
+    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
+        i = 0
+        while True:
+            bar.update(max(len(starting_intervals) - len(intervals), 0))
+            tree = create_tree(intervals)
+            # find leftmost interval
+            boundaries = []
+            for i in range(state_size):
+                boundaries.append((float(tree.get_bounds()[i * 2]), float(tree.get_bounds()[i * 2 + 1])))
+            boundaries = tuple(boundaries)
+            a = GrayCode(state_size)
+            codes = list(a.generate_gray())
+            for c, code in enumerate(codes):
+                new_boundaries = merge_iteration(boundaries, codes, c, tree, intervals)
+                boundaries = new_boundaries
+            show_plot(intervals, [(boundaries, True)])
+            new_group_tree = create_tree([(boundaries, True)])  # add dummy action
+            remainings, intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding, debug=False)
+            merged_list.append(boundaries)
+            if len(remainings) == 0:
+                break
+            intervals = remainings
+            i += 1  # bar.update(i)
+    return merged_list
+
+
+def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree, intervals) -> Tuple[Tuple[float, float]]:
+    flattened_bounds = []
+    starting_coordinate = []
+    dimensions = len(bounds)
+    previous_codes = []
+    for i in range(dimensions):
+        previous_codes.append(codes[(iteration_n - i + len(codes)) % len(codes)])  # find all the previous codes in order to check which dimension doesn't change
+    same_dimension = -1
+    for d in range(dimensions):
+        if all(x[d] == previous_codes[0][d] for x in previous_codes):
+            same_dimension = d
+            break
+    if same_dimension == -1:
+        raise Exception("No dimension is different from the previous iteration")
+
+    for d in range(dimensions):
+        if d == same_dimension:
+            direction = int(previous_codes[0][d])  # either squash left (0) or right(1)
+            flattened_bounds.append((float(bounds[d][direction]), float(bounds[d][direction])))
+        else:
+            flattened_bounds.append(bounds[d])  # starting_coordinate.append(float(bounds[d][int(previous_codes[len(previous_codes)-1][d])]))#len(previous_codes)-1
+
+    relevant_intervals = filter_relevant_intervals3(tree, tuple(flattened_bounds))
+    for d in range(dimensions):
+
+        direction = int(previous_codes[1][d])  # determine upper or lower bound
+        if direction == 1:
+            coordinate = float(min(max([x[0][d][direction] for x in relevant_intervals]), bounds[d][direction]))
+        else:
+            coordinate = float(max(min([x[0][d][direction] for x in relevant_intervals]), bounds[d][direction]))
+        starting_coordinate.append(coordinate)
+    starting_coordinate = tuple(starting_coordinate)
+    connected_relevant = filter_only_connected(relevant_intervals, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
+    new_bounds = []
+    for d in range(dimensions):
+        # if d == same_dimension:
+        ub = float(min(max([x[0][d][1] for x in connected_relevant]), bounds[d][1]))
+        lb = float(max(min([x[0][d][0] for x in connected_relevant]), bounds[d][0]))
+        new_bounds.append((lb, ub))
+        # else:
+        #     new_bounds.append(bounds[d])
+    return tuple(new_bounds)
