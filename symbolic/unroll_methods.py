@@ -98,7 +98,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-            remainings_merged = merge_supremum(remainings, rounding)  # no need to assign a dummy action
+            remainings_merged = merge_supremum2(remainings, rounding)  # no need to assign a dummy action
             # show_plot(remainings,remainings_merged)
             remainings_merged_noaction = [x[0] for x in remainings_merged]  # remove dummy action
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged_noaction, explorer, verification_model, n_workers, rounding)
@@ -108,8 +108,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals)
             # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-            merged1 = [(x[0], True) for x in merge_supremum([x for x in union_states_total if x[1] == True], rounding)]
-            merged2 = [(x[0], False) for x in merge_supremum([x for x in union_states_total if x[1] == False], rounding)]
+            merged1 = [(x[0], True) for x in merge_supremum2([x for x in union_states_total if x[1] == True], rounding)]
+            merged2 = [(x[0], False) for x in merge_supremum2([x for x in union_states_total if x[1] == False], rounding)]
             union_states_total_merged = merged1 + merged2
             # show_plot([x for x in assigned_intervals] + [(x[0], "Brown") for x in merged1] + [(x[0], "Purple") for x in merged2])
             rtree.load(union_states_total_merged)
@@ -426,7 +426,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], b
             for c, code in enumerate(codes):
                 new_boundaries = merge_iteration(boundaries, codes, c, tree, intervals)
                 boundaries = new_boundaries
-            show_plot(intervals, [(boundaries, True)])
+            # show_plot(intervals, [(boundaries, True)])
             new_group_tree = create_tree([(boundaries, True)])  # add dummy action
             remainings, intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, rounding, debug=False)
             merged_list.append(boundaries)
