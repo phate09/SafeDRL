@@ -14,8 +14,9 @@ import ray
 from contexttimer import Timer
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
-from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree, show_plot
+from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree, show_plot, show_plot3d
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
+from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
 from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, filter_only_connected
@@ -86,6 +87,11 @@ def is_negligible(interval: Tuple[Tuple[float, float]]):
     return any([math.isclose(x, 0) for x in sizes])
 
 
+def is_small(interval: Tuple[Tuple[float, float]], min_size: float):
+    sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
+    return any([x < min_size for x in sizes])
+
+
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage) -> \
         List[Tuple[Tuple[float, float]]]:
     intervals_sorted = sorted(intervals)
@@ -94,22 +100,22 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     while True:
         # assign a dummy action to intervals_sorted
         remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, True) for x in intervals_sorted], rtree.tree, rounding)  # checks areas not covered by total intervals
-
+        remainings = [x for x in remainings if not is_small(x[0], 1e-15)]  # removes very small
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-            remainings_merged = merge_supremum2(remainings, rounding)  # no need to assign a dummy action
+            remainings_merged = merge_supremum3(remainings, rounding)  # no need to assign a dummy action
             # show_plot(remainings,remainings_merged)
-            remainings_merged_noaction = [x[0] for x in remainings_merged]  # remove dummy action
-            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged_noaction, explorer, verification_model, n_workers, rounding)
+            # remainings_merged_noaction = [x[0] for x in remainings_merged]  # remove dummy action
+            assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
             # show_plot(remainings_merged,assigned_intervals)
             # assigned_intervals_no_overlaps = remove_overlaps(assigned_intervals, rounding, n_workers, state_size)
             print(f"Adding {len(assigned_intervals)} states to the tree")
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals)
             # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-            merged1 = [(x[0], True) for x in merge_supremum2([x for x in union_states_total if x[1] == True], rounding)]
-            merged2 = [(x[0], False) for x in merge_supremum2([x for x in union_states_total if x[1] == False], rounding)]
+            merged1 = [(x, True) for x in merge_supremum3([x for x in union_states_total if x[1] == True], rounding)]
+            merged2 = [(x, False) for x in merge_supremum3([x for x in union_states_total if x[1] == False], rounding)]
             union_states_total_merged = merged1 + merged2
             # show_plot([x for x in assigned_intervals] + [(x[0], "Brown") for x in merged1] + [(x[0], "Purple") for x in merged2])
             rtree.load(union_states_total_merged)
@@ -408,6 +414,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], b
     if len(starting_intervals) == 0:
         return starting_intervals
     intervals = starting_intervals
+    intervals = [(x, action) for x, action in intervals if not is_negligible(x)]  # remove size 0 intervals
     state_size = len(intervals[0][0])
     merged_list = []
 
@@ -460,22 +467,86 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
             flattened_bounds.append(bounds[d])  # starting_coordinate.append(float(bounds[d][int(previous_codes[len(previous_codes)-1][d])]))#len(previous_codes)-1
 
     relevant_intervals = filter_relevant_intervals3(tree, tuple(flattened_bounds))
+    # filter_not in bounds
+    filtered = []
+    for x, action in relevant_intervals:
+        suitable = all(x[d][1] > bounds[d][0] and x[d][0] < bounds[d][1] for d in range(len(x)))
+        if suitable:
+            filtered.append((x, action))
+        else:
+            pass
     for d in range(dimensions):
 
         direction = int(previous_codes[1][d])  # determine upper or lower bound
         if direction == 1:
-            coordinate = float(min(max([x[0][d][direction] for x in relevant_intervals]), bounds[d][direction]))
+            coordinate = float(min(max([x[0][d][direction] for x in filtered]), bounds[d][direction]))
         else:
-            coordinate = float(max(min([x[0][d][direction] for x in relevant_intervals]), bounds[d][direction]))
+            coordinate = float(max(min([x[0][d][direction] for x in filtered]), bounds[d][direction]))
         starting_coordinate.append(coordinate)
     starting_coordinate = tuple(starting_coordinate)
-    connected_relevant = filter_only_connected(relevant_intervals, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
+    connected_relevant = filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
+    if len(connected_relevant) == 0:
+        return bounds  # nothing we can do at this iteration
     new_bounds = []
     for d in range(dimensions):
         # if d == same_dimension:
         ub = float(min(max([x[0][d][1] for x in connected_relevant]), bounds[d][1]))
         lb = float(max(min([x[0][d][0] for x in connected_relevant]), bounds[d][0]))
-        new_bounds.append((lb, ub))
-        # else:
-        #     new_bounds.append(bounds[d])
+        new_bounds.append((lb, ub))  # else:  #     new_bounds.append(bounds[d])
     return tuple(new_bounds)
+
+
+def merge_supremum3(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int) -> List[Tuple[Tuple[float, float]]]:
+    if len(starting_intervals) == 0:
+        return []
+    dimensions = len(starting_intervals[0])
+    # generate tree
+    tree = create_tree(starting_intervals)
+    # find bounds
+    boundaries = compute_boundaries(starting_intervals)
+    # split
+    split_list = [boundaries]
+    n_splits = 10
+    for i in range(n_splits):
+        domain = split_list.pop(0)
+        splitted_domains = DomainExplorer.box_split_tuple(domain, 0)
+        split_list.extend(splitted_domains)
+    # find relevant intervals
+    working_list = []
+    for domain in split_list:
+        relevant_list = list(tree.intersection(flatten_interval(domain), objects='raw'))
+        local_working_list = []
+        for relevant, action in relevant_list:
+            resized = shrink(relevant, domain)
+            local_working_list.append((resized, action))
+        working_list.append(local_working_list)
+    # resize intervals
+    intervals = starting_intervals
+    merged_list: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+    merge_remote = ray.remote(merge_supremum2)
+    chunk_size = 1000
+    n_chunks = ceil(len(starting_intervals) / chunk_size)
+    proc_ids = []
+    for i, intervals in enumerate(working_list):  # chunks(starting_intervals, chunk_size)
+        proc_ids.append(merge_remote.remote(intervals, 0))
+    with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+        while len(proc_ids) != 0:
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(len(proc_ids), 5), timeout=0.5)
+            results = ray.get(ready_ids)
+            for result in results:
+                if result is not None:
+                    merged_list.extend(result)
+            bar.update(bar.value + len(ready_ids))
+    new_merged_list = merge_supremum2([(x, None) for x in merged_list], 0)
+    # show_plot(merged_list, new_merged_list)
+    return new_merged_list
+
+
+def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    dimensions = len(starting_intervals[0][0])
+    boundaries = [(float("inf"), float("-inf")) for _ in range(dimensions)]
+    for interval, action in starting_intervals:
+        for d in range(dimensions):
+            boundaries[d] = (min(boundaries[d][0], interval[d][0]), max(boundaries[d][1], interval[d][1]))
+    boundaries = tuple(boundaries)
+    return boundaries

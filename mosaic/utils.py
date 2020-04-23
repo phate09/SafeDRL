@@ -13,6 +13,9 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from rtree import index
+import plotly.express as px
+
+from symbolic.mesh_cube import get_mesh
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -147,6 +150,23 @@ def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
     for d in range(len(current_interval)):
         result.extend([current_interval[d][0], current_interval[d][1]])
     return tuple(result)
+
+
+def show_plot3d(*args):
+    meshes = []
+    for i, interval_list in enumerate(args):
+        x_list = []
+        y_list = []
+        if len(interval_list) == 0:
+            continue
+        if count_elements(interval_list[0]) % 2 != 0:
+            interval_list = [x[0] for x in interval_list]  # remove the action component from the list
+        color = str(px.colors.qualitative.Plotly[i])
+        for interval in interval_list:
+            # fig.add_mesh3d(get_mesh(interval, color))
+            meshes.append(get_mesh(interval, color))
+    fig = go.Figure(data=meshes)
+    fig.show()
 
 
 def show_plot(*args):

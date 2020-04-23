@@ -166,11 +166,11 @@ def merge_with_condition(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]
 
 
 def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, float]], bool]], coordinate: Tuple[float] = None) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    if len(intervals_to_filter) <= 1:
+    if len(intervals_to_filter) == 0:
         return intervals_to_filter
     connected_dict = defaultdict(bool)
     if coordinate is not None:
-        first_element = (((coordinate[0], coordinate[0]), (coordinate[1], coordinate[1])), True)
+        first_element = (tuple([(x, x) for x in coordinate]), True)
     else:
         first_element = intervals_to_filter[0]
     connected_list = [first_element]

@@ -145,7 +145,7 @@ class StateStorage:
         fail_states_ids = [key for key in self.terminal_dictionary.keys() if self.terminal_dictionary[key] is True]
         java_list = ListConverter().convert(fail_states_ids, gateway._gateway_client)
         gateway.entry_point.update_fail_label_list(java_list)
-        for parent_id, successors in progressbar.progressbar(self.graph.adjacency(), prefix="", ):  # generate the edges
+        for parent_id, successors in progressbar.progressbar(self.graph.adjacency(), prefix="Updating Prism", ):  # generate the edges
 
             if len(successors.items()) != 0:
                 values = set()  # extract action names
