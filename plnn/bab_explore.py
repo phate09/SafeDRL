@@ -99,31 +99,44 @@ class DomainExplorer:
 
     def start_explore_one_domain(self, global_min_area, message_queue, net, queue, shortest_dimension):
         normed_domain = queue.pop(0)
-        # Genearate new, smaller (normalized) domains using box split.
-        ndoms = self.box_split(normed_domain, self.rounding)
-        for i, ndom_i in enumerate(ndoms):
-            area = mosaic.utils.area_tensor(ndom_i)
-            length, dim = self.max_length(ndom_i)
-            global_min_area = min(area, global_min_area)
-            shortest_dimension = min(length, shortest_dimension)
-            if length < self.precision_constraints[dim]:  # or area < min_area:
-                # too short or too small
-                # approximate the interval to the closest datapoint and determine if it is safe or not
-                action_values = self.assign_approximate_action(net, ndom_i)
-                value, index = torch.max(action_values, dim=0)
-                if index == self.safe_property_index:
-                    self.safe_domains.append(ndom_i)
-                    self.safe_area += area
+        # check max length
+        length, dim = self.max_length(normed_domain)
+        length = round(length, self.rounding)
+        if length <= self.precision_constraints[dim]:
+            self.store_approximation(normed_domain, net)
+        else:
+            # Genearate new, smaller (normalized) domains using box split.
+            ndoms = self.box_split(normed_domain, self.rounding)
+            for i, ndom_i in enumerate(ndoms):
+                area = mosaic.utils.area_tensor(ndom_i)
+                length, dim = self.max_length(ndom_i)
+                length = round(length, self.rounding)
+                min_length, dim = self.min_length(ndom_i)
+                min_length = round(min_length, self.rounding)
+                global_min_area = min(area, global_min_area)
+                shortest_dimension = min(length, shortest_dimension)
+                if length <= self.precision_constraints[dim]:  # or area < min_area:
+                    # too short or too small
+                    # approximate the interval to the closest datapoint and determine if it is safe or not
+                    self.store_approximation(ndom_i, net)
                 else:
-                    self.unsafe_domains.append(ndom_i)
-                    self.unsafe_area += area
-                if not self.hasIgnored:
-                    # print("The value has been ignored succesfully")
-                    self.hasIgnored = True
-            else:
-                # queue up the next split at the beginning of the list
-                message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
+                    # queue up the next split at the beginning of the list
+                    message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
         return global_min_area, shortest_dimension
+
+    def store_approximation(self, ndom_i, net):
+        area = mosaic.utils.area_tensor(ndom_i)
+        action_values = self.assign_approximate_action(net, ndom_i)
+        value, index = torch.max(action_values, dim=0)
+        if index == self.safe_property_index:
+            self.safe_domains.append(ndom_i)
+            self.safe_area += area
+        else:
+            self.unsafe_domains.append(ndom_i)
+            self.unsafe_area += area
+        if not self.hasIgnored:
+            # print("The value has been ignored succesfully")
+            self.hasIgnored = True
 
     def process_one_queue_element(self, message_queue, queue):
         message_ready, message_queue = ray.wait(message_queue)  # retrieve the next ready item
@@ -199,6 +212,16 @@ class DomainExplorer:
         return edgelength, dim
 
     @staticmethod
+    def min_length(domain):
+        diff = domain[:, 1] - domain[:, 0]
+        edgelength, dim = torch.min(diff, 0)
+
+        # Unwrap from tensor containers
+        edgelength = edgelength.item()
+        dim = dim.item()
+        return edgelength, dim
+
+    @staticmethod
     def check_min_area(domain, min_area=float("inf")):
         return mosaic.utils.area_tensor(domain) < min_area
 
@@ -226,6 +249,7 @@ class DomainExplorer:
         # Now split over dimension dim:
         half_length = edgelength / 2
         new_value = domain[dim, 1] - half_length
+        new_value = np.round(new_value, rounding)  # rounding
         # dom1: Upper bound in the 'dim'th dimension is now at halfway point.
         dom1 = domain.clone()
         dom1[dim, 1] = new_value
@@ -245,6 +269,7 @@ class DomainExplorer:
         edgelength = np.max(diff, 0).item()
         dim = np.argmax(diff, 0).item()
         half_length = edgelength / 2
+        half_length = round(half_length, rounding)  # rounding
         dom1 = domain_array.copy()
         dom1[dim, 1] -= half_length
         dom2 = domain_array.copy()

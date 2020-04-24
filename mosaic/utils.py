@@ -127,7 +127,7 @@ def chunker_list(seq, size):
     return (seq[i::size] for i in range(size))
 
 
-def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int = 6) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     return [(round_tuple(interval, rounding), action) for interval, action in intervals]
 
 
@@ -137,7 +137,7 @@ def truncate(n, decimals=0):
 
 
 def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
-    return interval  # tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+    return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
 
 
 # def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
@@ -191,6 +191,7 @@ def show_plot(*args):
     # fig['layout']['xaxis1'].update(title='', autorange=False)
     # fig.update_layout(autosize=False)
     fig.show()
+    return fig
 
 
 def count_elements(l):

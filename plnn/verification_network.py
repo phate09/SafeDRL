@@ -1019,7 +1019,7 @@ class VerificationNetwork(nn.Module):
         for i in range(input_domain.shape[0]):
             ub = input_domain[i][1].item()  # check this value, it can be messed up
             lb = input_domain[i][0].item()
-            assert ub > lb, "ub should be greater that lb"
+            assert ub >= lb, f"ub should be greater that lb, ub:{ub} lb:{lb}"
             v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'inp_{i}')
             inp_gurobi_vars[i] = v
             inp_lb[i] = lb

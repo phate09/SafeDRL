@@ -2,10 +2,13 @@
 import itertools
 import os
 import pickle
+
 import gym
 import progressbar
 import ray
 from py4j.java_collections import ListConverter
+from py4j.java_gateway import JavaGateway
+
 from mosaic.utils import show_plot
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
@@ -15,18 +18,18 @@ from verification_runs.domain_explorers_load import generatePendulumDomainExplor
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = StateStorage()
 storage.reset()
-rounding = 1
+rounding = 3
 explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
-# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
@@ -38,9 +41,6 @@ remainings = [current_interval]
 # merged_intervals = merge_supremum3([(x, None) for x in remainings],rounding)
 # show_plot([x for x in union_states_total] + [(x[0], "Brown") for x in safe_states_merged] + [(x[0], "Purple") for x in unsafe_states_merged])
 t = 0
-# %%
-# intervals = rtree.tree_intervals()
-# show_plot(intervals)
 # %%
 for i in range(3):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
@@ -68,7 +68,6 @@ storage.load_state("/home/edoardo/Development/SafeDRL/save")
 # t0 = [storage.dictionary[i] for i in storage.get_t_layer(0)]
 # t0split = [storage.dictionary[i] for i in storage.get_t_layer(f"{0}.split")]
 # show_plot(t0, t0split)
-
 # %%
 iteration = 0
 while True:
@@ -161,12 +160,4 @@ while True:
             t = t + 1
     iteration += 1
     if not split_performed:
-        print(f"No more splits performed")
         break
-# %% save intervals+ probabilities
-interval_probability_pairs = []
-for id in t_ids:
-    interval = storage.dictionary.inverse.get(id)
-    probability = probabilities[id]
-    interval_probability_pairs.append((interval, probability))
-pickle.dump(interval_probability_pairs, open("/home/edoardo/Development/SafeDRL/save/interval_probability_pairs.p", "wb+"))
