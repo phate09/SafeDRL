@@ -269,11 +269,13 @@ class DomainExplorer:
         edgelength = np.max(diff, 0).item()
         dim = np.argmax(diff, 0).item()
         half_length = edgelength / 2
-        half_length = round(half_length, rounding)  # rounding
+        new_value = domain_array[dim, 1] - half_length
+        new_value = np.round(new_value, rounding)
+        # half_length = round(half_length, rounding)  # rounding
         dom1 = domain_array.copy()
-        dom1[dim, 1] -= half_length
+        dom1[dim, 1] = new_value
         dom2 = domain_array.copy()
-        dom2[dim, 0] += half_length
+        dom2[dim, 0] = new_value
         sub_domains = [mosaic.utils.array_to_tuple(dom1), mosaic.utils.array_to_tuple(dom2)]
         return sub_domains
 

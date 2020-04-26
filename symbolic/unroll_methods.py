@@ -87,9 +87,9 @@ def is_negligible(interval: Tuple[Tuple[float, float]]):
     return any([math.isclose(x, 0) for x in sizes])
 
 
-def is_small(interval: Tuple[Tuple[float, float]], min_size: float):
-    sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
-    return any([x < min_size for x in sizes])
+def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
+    sizes = [round(abs(interval[dimension][1] - interval[dimension][0]), rounding) for dimension in range(len(interval))]
+    return max(sizes) <= min_size
 
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage) -> \
@@ -99,13 +99,13 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     print(f"t:{t} Started")
     while True:
         # assign a dummy action to intervals_sorted
-        remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, True) for x in intervals_sorted], rtree.tree, rounding)  # checks areas not covered by total intervals
-        remainings = [x for x in remainings if not is_small(x[0], 1e-15)]  # removes very small
+        remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, None) for x in intervals_sorted], rtree.tree, rounding)  # checks areas not covered by total intervals
+        # remainings = [x for x in remainings if not is_small(x[0], 1e-15)]  # removes very small
         remainings = sorted(remainings)
         if len(remainings) != 0:
             print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
             remainings_merged = merge_supremum3(remainings, rounding)  # no need to assign a dummy action
-            remainings_merged = [x for x in remainings_merged if not is_small(x, 1e-15)]  # removes very small
+            # remainings_merged = [x for x in remainings_merged if not is_small(x, 1e-15)]  # removes very small
             # show_plot(remainings,remainings_merged)
             # remainings_merged_noaction = [x[0] for x in remainings_merged]  # remove dummy action
             assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
@@ -115,8 +115,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             union_states_total = rtree.tree_intervals()
             union_states_total.extend(assigned_intervals)
             # union_states_total_merged = merge_with_condition(union_states_total, rounding, max_iter=100)
-            merged1 = [(x, True) for x in merge_supremum2([x for x in union_states_total if x[1] == True], rounding)]
-            merged2 = [(x, False) for x in merge_supremum2([x for x in union_states_total if x[1] == False], rounding)]
+            merged1 = [(x, True) for x in merge_supremum3([x for x in union_states_total if x[1] == True], rounding)]
+            merged2 = [(x, False) for x in merge_supremum3([x for x in union_states_total if x[1] == False], rounding)]
             union_states_total_merged = merged1 + merged2
             # show_plot([x for x in assigned_intervals] + [(x[0], "Brown") for x in merged1] + [(x[0], "Purple") for x in merged2])
             rtree.load(union_states_total_merged)
@@ -124,14 +124,19 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
             break
     # show_plot(intersected_intervals, intervals_sorted)
     # todo aggregate intersected_intervals
+    list_assigned_action = []
     with progressbar.ProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals), is_terminal=True, term_width=200) as bar:
         for interval, successors in intersected_intervals:
             parent_id = storage.store(interval[0])
-            ids = storage.store_successor_multi2([x[0] for x in successors], parent_id)
+            merged1 = [(x, True) for x in merge_supremum2([x for x in successors if x[1] == True], rounding, show_bar=False)]
+            merged2 = [(x, False) for x in merge_supremum2([x for x in successors if x[1] == False], rounding, show_bar=False)]
+            successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            list_assigned_action.extend(successors_merged)
+            ids = storage.store_successor_multi2([x[0] for x in successors_merged], parent_id)
             storage.assign_t_multi(ids, f"{t}.split")
             bar.update(bar.value + 1)
 
-    list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
+    # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
     next_states, terminal_states = abstract_step_store2(list_assigned_action, env, t + 1, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
     next_to_compute = []
@@ -411,21 +416,22 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     return merged_list
 
 
-def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
     """merge all the intervals provided, assumes they all have the same action"""
-    if len(starting_intervals) == 0:
-        return starting_intervals
+    if len(starting_intervals) <= 1:
+        return [x[0] for x in starting_intervals]
     intervals = starting_intervals
     intervals = [(x, action) for x, action in intervals if not is_negligible(x)]  # remove size 0 intervals
-    if len(intervals) == 0:
-        return intervals
+    if len(intervals) <= 1:
+        return [x[0] for x in intervals]
     state_size = len(intervals[0][0])
     merged_list = []
 
-    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
+    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) if show_bar else nullcontext()  as bar:
         i = 0
         while True:
-            bar.update(max(len(starting_intervals) - len(intervals), 0))
+            if show_bar:
+                bar.update(max(len(starting_intervals) - len(intervals), 0))
             tree = create_tree(intervals)
             # find leftmost interval
             boundaries = []
@@ -490,19 +496,24 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
     starting_coordinate = tuple(starting_coordinate)
     connected_relevant = filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
     if len(connected_relevant) == 0:
-        return bounds  # nothing we can do at this iteration
+        if len(filtered) == 0:
+            return bounds  # nothing we can do at this iteration
+        else:
+            connected_relevant = filtered  # if connected relevant fails to find a relevant cluster than take any result
     new_bounds = []
     for d in range(dimensions):
-        # if d == same_dimension:
-        ub = float(min(max([x[0][d][1] for x in connected_relevant]), bounds[d][1]))
-        lb = float(max(min([x[0][d][0] for x in connected_relevant]), bounds[d][0]))
-        new_bounds.append((lb, ub))  # else:  #     new_bounds.append(bounds[d])
+        if d != same_dimension:
+            ub = float(min(max([x[0][d][1] for x in connected_relevant]), bounds[d][1]))
+            lb = float(max(min([x[0][d][0] for x in connected_relevant]), bounds[d][0]))
+            new_bounds.append((lb, ub))  #
+        else:
+            new_bounds.append(bounds[d])
     return tuple(new_bounds)
 
 
 def merge_supremum3(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers: int, positional_method=False) -> List[Tuple[Tuple[float, float]]]:
-    if len(starting_intervals) == 0:
-        return []
+    if len(starting_intervals) <= 1:
+        return [x[0] for x in starting_intervals]
     dimensions = len(starting_intervals[0])
     # generate tree
     tree = create_tree(starting_intervals)

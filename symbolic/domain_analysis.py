@@ -15,18 +15,19 @@ from verification_runs.domain_explorers_load import generatePendulumDomainExplor
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = StateStorage()
 storage.reset()
-rounding = 1
-explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(1e-1, rounding)
+rounding = 2
+precision = 10 ** (-rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = generatePendulumDomainExplorer(precision, rounding)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
-# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
@@ -42,15 +43,15 @@ t = 0
 # intervals = rtree.tree_intervals()
 # show_plot(intervals)
 # %%
-for i in range(3):
+for i in range(4):
     remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
     t = t + 1
     boundaries = compute_boundaries([(x, True) for x in remainings])
     print(boundaries)
-    rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
+    rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e2.p")
 # %%
 storage.save_state("/home/edoardo/Development/SafeDRL/save")
-rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
+rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e2.p")
 pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
 pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
 print("Checkpoint Saved...")
@@ -59,6 +60,7 @@ print("Checkpoint Saved...")
 remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
 storage.load_state("/home/edoardo/Development/SafeDRL/save")
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
 # %%
 # boundaries = [[999, 0], [999, 0], [999, 0], [999, 0]]
 # for interval, action in union_states_total:
@@ -79,12 +81,12 @@ while True:
     terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
     solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
     solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
-    t_ids = storage.get_t_layer(f"{analysis_t}.split")
-    probabilities = []
+    t_ids = list(storage.graph.successors(0))  # storage.get_t_layer(f"{analysis_t}.split")
+    intervals_probabilities = []
     for id in t_ids:
-        probabilities.append((solution_min[id], solution_max[id]))  # print(f"Interval {id} ({solution_min[id]},{solution_max[id]})")
-
-    safe_threshold = 0.8
+        intervals_probabilities.append((id, storage.dictionary.get(id), (solution_min[id], solution_max[id])))
+    del t_ids
+    unsafe_threshold = 0.8
     to_analyse = []
     safe_count = 0
     unsafe_count = 0
@@ -92,50 +94,46 @@ while True:
     intervals_unsafe = []
     intervals_split = []
     intervals_split_ids = []
-    for i, interval_probability in enumerate(probabilities):
-        if is_small(storage.dictionary[t_ids[i]], 1e-3):
-            print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is too small, considering it unsafe")
+    for i, (id, interval, interval_probability) in enumerate(intervals_probabilities):
+        if interval_probability[0] >= unsafe_threshold:  # high probability of encountering a terminal state
             unsafe_count += 1
-            intervals_safe.append(storage.dictionary[t_ids[i]])
+            intervals_unsafe.append(interval)
+        elif interval_probability[1] < 1 - unsafe_threshold:  # low probability of not encountering a terminal state
+            safe_count += 1
+            intervals_safe.append(interval)
+        elif is_small(interval, precision, rounding):
+            print(f"Interval {interval} ({interval_probability[0]},{interval_probability[1]}) is too small, considering it unsafe")
+            unsafe_count += 1
+            intervals_unsafe.append(interval)
         else:
-            if interval_probability[0] >= 1 - safe_threshold:
-                # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is unsafe")
-                unsafe_count += 1
-                intervals_safe.append(storage.dictionary[t_ids[i]])
-            elif interval_probability[1] < 1 - safe_threshold:
-                # print(f"Interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]}) is safe")
-                safe_count += 1
-                intervals_unsafe.append(storage.dictionary[t_ids[i]])
-            else:
-                print(f"Splitting interval {t_ids[i]} ({interval_probability[0]},{interval_probability[1]})")  # split
-                split_performed = True
-                interval_to_split = storage.dictionary_get(t_ids[i])
-                intervals_split.append(interval_to_split)
-                intervals_split_ids.append(t_ids[i])
-                dom1, dom2 = DomainExplorer.box_split_tuple(interval_to_split, rounding)
-                id1 = storage.store_successor(dom1, 0)
-                id2 = storage.store_successor(dom2, 0)
-                storage.assign_t(id1, f"{analysis_t}.split")
-                storage.assign_t(id2, f"{analysis_t}.split")
-                to_analyse.append(dom1)
-                to_analyse.append(dom2)
-    with progressbar.ProgressBar(prefix="Removing old instances ", max_value=len(intervals_split_ids), is_terminal=True, term_width=200) as bar:
-        for i, interval_split_id in enumerate(intervals_split_ids):
-            removed_components = storage.purge_branch(interval_split_id, 0)
-            storage.t_dictionary[f"{analysis_t}.split"].remove(interval_split_id)  # remove the index from the t_dictionary
-            for key in storage.t_dictionary.keys():
-                for item in removed_components:
-                    if item in storage.t_dictionary[key]:
-                        storage.t_dictionary[key].remove(item)
-            bar.update(i)
+            print(f"Splitting interval {interval} ({interval_probability[0]},{interval_probability[1]})")  # split
+            split_performed = True
+            intervals_split.append(interval)
+            intervals_split_ids.append(id)
+            storage.purge_branch(id, 0)
+            dom1, dom2 = DomainExplorer.box_split_tuple(interval, rounding)
+            id1 = storage.store_successor(dom1, 0)
+            id2 = storage.store_successor(dom2, 0)
+            storage.assign_t(id1, f"{analysis_t}.split")
+            storage.assign_t(id2, f"{analysis_t}.split")
+            to_analyse.append(dom1)
+            to_analyse.append(dom2)
+    # with progressbar.ProgressBar(prefix="Removing old instances ", max_value=len(intervals_split_ids), is_terminal=True, term_width=200) as bar:
+    #     for i, interval_split_id in enumerate(intervals_split_ids):
+    #         removed_components = storage.purge_branch(interval_split_id, 0)
+    #         # storage.t_dictionary[f"{analysis_t}.split"].remove(interval_split_id)  # remove the index from the t_dictionary
+    #         # for key in storage.t_dictionary.keys():
+    #         #     for item in removed_components:
+    #         #         if item in storage.t_dictionary[key]:
+    #         #             storage.t_dictionary[key].remove(item)
+    #         bar.update(i)
     t = analysis_t + 1  # start inserting the new values after the current timestep
     print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
-    fig = show_plot(intervals_safe, intervals_unsafe, intervals_split)
+    fig = show_plot(intervals_safe, intervals_unsafe, to_analyse)
     fig.write_html(f"/home/edoardo/Development/SafeDRL/save/fig_{iteration}.html")
     # perform one iteration without splitting the interval because the interval is already being splitted
-    remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, True) for x in to_analyse], rtree.tree, rounding)
-    if len(remainings) != 0:
-        print("------------WARNING: at this stage remainings should be 0-----------")
+    remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, None) for x in to_analyse], rtree.tree, rounding)
+    assert len(remainings) == 0, "------------WARNING: at this stage remainings should be 0-----------"
     list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
     next_states, terminal_states = abstract_step_store2(list_assigned_action, env_class, t + 1, n_workers,
                                                         rounding)  # performs a step in the environment with the assigned action and retrieve the result
@@ -156,7 +154,7 @@ while True:
     print(f"t:{t} Finished")
     t = t + 1
     if len(to_analyse) != 0:
-        for i in range(1, 3):
+        for i in range(1, 4):
             to_analyse = analysis_iteration(to_analyse, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
             t = t + 1
     iteration += 1
@@ -164,9 +162,4 @@ while True:
         print(f"No more splits performed")
         break
 # %% save intervals+ probabilities
-interval_probability_pairs = []
-for id in t_ids:
-    interval = storage.dictionary.inverse.get(id)
-    probability = probabilities[id]
-    interval_probability_pairs.append((interval, probability))
-pickle.dump(interval_probability_pairs, open("/home/edoardo/Development/SafeDRL/save/interval_probability_pairs.p", "wb+"))
+pickle.dump(intervals_probabilities, open("/home/edoardo/Development/SafeDRL/save/interval_probability_pairs.p", "wb+"))
