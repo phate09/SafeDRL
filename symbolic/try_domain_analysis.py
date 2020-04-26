@@ -32,13 +32,13 @@ def try_load():
     remainings = [current_interval]
     t = 0
 
-    remainings_new1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    remainings_new1 = analysis_iteration(remainings, n_workers, rtree, env, explorer, rounding)
     # remainings_new1_2 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
     # assert_lists_equal(remainings_new1, remainings_new1_2)
-    remainings_new2 = analysis_iteration(remainings_new1, t + 1, n_workers, rtree, env, explorer, rounding)
+    remainings_new2 = analysis_iteration(remainings_new1, n_workers, rtree, env, explorer, rounding)
     # remainings_new2_2 = analysis_iteration(remainings_new1, t + 1, n_workers, rtree, env, explorer, rounding)
     # assert_lists_equal(remainings_new2, remainings_new2_2)
-    remainings_new3 = analysis_iteration(remainings_new2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_new3 = analysis_iteration(remainings_new2, n_workers, rtree, env, explorer, rounding)
     rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total.p")
     previous_union = [x[0] for x in rtree.tree_intervals()]
     previous_length = len(rtree.tree_intervals())
@@ -50,16 +50,16 @@ def try_load():
     assert_lists_equal(previous_union, [x[0] for x in rtree.tree_intervals()])
     after_length = len(rtree.tree_intervals())
     assert after_length == previous_length, f"The size of the tree before and after load do not match: {previous_length} vs {after_length}"
-    remainings_after_first1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first1 = analysis_iteration(remainings, n_workers, rtree, env, explorer, rounding)
     # remainings_after_first1_2 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
     # assert_lists_equal(remainings_after_first1, remainings_after_first1_2)
     assert_lists_equal(remainings_new1, remainings_after_first1)
-    remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first2 = analysis_iteration(remainings_after_first1, n_workers, rtree, env, explorer, rounding)
     assert_lists_equal(remainings_new2, remainings_after_first2)
     # remainings_after_first2_2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer,
     #                                                rounding)
     # assert_lists_equal(remainings_after_first2, remainings_after_first2_2)
-    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first3 = analysis_iteration(remainings_after_first2, n_workers, rtree, env, explorer, rounding)
     assert_lists_equal(remainings_new3, remainings_after_first3)
 
 
@@ -87,13 +87,13 @@ def try_merge():
     remainings = [current_interval]
     t = 0
     # remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-    remainings_new1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    remainings_new1 = analysis_iteration(remainings, n_workers, rtree, env, explorer, rounding)
     no_overlaps1 = remove_overlaps([(x, True) for x in remainings_new1], rounding, n_workers)
     no_overlaps1 = [x[0] for x in no_overlaps1]
-    remainings_new2 = analysis_iteration(no_overlaps1, t + 1, n_workers, rtree, env, explorer, rounding)
+    remainings_new2 = analysis_iteration(no_overlaps1, n_workers, rtree, env, explorer, rounding)
     no_overlaps2 = remove_overlaps([(x, True) for x in remainings_new2], rounding, n_workers)
     no_overlaps2 = [x[0] for x in no_overlaps2]
-    remainings_new3 = analysis_iteration(remainings_new2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_new3 = analysis_iteration(remainings_new2, n_workers, rtree, env, explorer, rounding)
     no_overlaps3 = remove_overlaps([(x, True) for x in remainings_new3], rounding, n_workers)
     no_overlaps3 = [x[0] for x in no_overlaps3]
     print("-------------------------AFTER MERGING-------------------------")
@@ -104,18 +104,18 @@ def try_merge():
     total_area_after = sum([area_tuple(remaining[0]) for remaining in union_states_total_merged])
     assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
     rtree.load(union_states_total_merged)
-    remainings_after_first1 = analysis_iteration(remainings, t, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first1 = analysis_iteration(remainings, n_workers, rtree, env, explorer, rounding)
     no_overlaps_after1 = remove_overlaps([(x, True) for x in remainings_after_first1], rounding, n_workers)
     no_overlaps_after1 = [x[0] for x in no_overlaps_after1]
     assert_area_equal(no_overlaps1, no_overlaps_after1)
-    remainings_after_first2 = analysis_iteration(no_overlaps_after1, t + 1, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first2 = analysis_iteration(no_overlaps_after1, n_workers, rtree, env, explorer, rounding)
     no_overlaps_after2 = remove_overlaps([(x, True) for x in remainings_after_first2], rounding, n_workers)
     no_overlaps_after2 = [x[0] for x in no_overlaps_after2]
     assert_area_equal(no_overlaps2, no_overlaps_after2)
 
     # remainings_after_first2 = analysis_iteration(remainings_after_first1, t + 1, n_workers, rtree, env, explorer, rounding)
     # assert_area_equal(remainings_new2, remainings_after_first2)
-    remainings_after_first3 = analysis_iteration(remainings_after_first2, t + 2, n_workers, rtree, env, explorer, rounding)
+    remainings_after_first3 = analysis_iteration(remainings_after_first2, n_workers, rtree, env, explorer, rounding)
     no_overlaps_after3 = remove_overlaps([(x, True) for x in remainings_after_first3], rounding, n_workers)
     no_overlaps_after3 = [x[0] for x in no_overlaps_after3]
     assert_area_equal(no_overlaps3, no_overlaps_after3)

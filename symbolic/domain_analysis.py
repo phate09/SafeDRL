@@ -5,8 +5,7 @@ import gym
 import ray
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
-from symbolic.unroll_methods import analysis_iteration, compute_boundaries, \
-    probability_iteration
+from symbolic.unroll_methods import analysis_iteration, compute_boundaries, probability_iteration
 from verification_runs.domain_explorers_load import generatePendulumDomainExplorer
 
 gym.logger.set_level(40)
@@ -39,18 +38,18 @@ t = 0
 # intervals = rtree.tree_intervals()
 # show_plot(intervals)
 # %%
-for i in range(4):
-    remainings = analysis_iteration(remainings, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
-    t = t + 1
-    boundaries = compute_boundaries([(x, True) for x in remainings])
-    print(boundaries)
-    rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
+# for i in range(4):
+#     remainings = analysis_iteration(remainings, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
+#     t = t + 1
+#     boundaries = compute_boundaries([(x, True) for x in remainings])
+#     print(boundaries)
+#     rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
 # %%
-storage.save_state("/home/edoardo/Development/SafeDRL/save")
-rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
-pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
-pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
-print("Checkpoint Saved...")
+# storage.save_state("/home/edoardo/Development/SafeDRL/save")
+# rtree.save_to_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p")
+# pickle.dump(t, open("/home/edoardo/Development/SafeDRL/save/t.p", "wb+"))
+# pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
+# print("Checkpoint Saved...")
 
 # %%
 remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
@@ -58,4 +57,4 @@ t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
 storage.load_state("/home/edoardo/Development/SafeDRL/save")
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
 # %%
-probability_iteration(storage,rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size,"/home/edoardo/Development/SafeDRL/save/")
+probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=4, max_iteration=10)

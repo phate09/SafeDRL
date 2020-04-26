@@ -52,18 +52,18 @@ class StateStorage:
     def store_multi(self, items: List[Tuple[Tuple[float, float]]]) -> List[int]:
         return [self.store(item) for item in items]
 
-    def assign_t(self, item_id: int, t):
-        # if item_id not in self.t_dictionary[t]:
-        #     self.t_dictionary[t].append(item_id)
-        pass
+    # def assign_t(self, item_id: int, t):
+    #     # if item_id not in self.t_dictionary[t]:
+    #     #     self.t_dictionary[t].append(item_id)
+    #     pass
 
-    def assign_t_multi(self, items_id: List[int], t):
-        for item in items_id:
-            self.assign_t(item, t)
+    # def assign_t_multi(self, items_id: List[int], t):
+    #     for item in items_id:
+    #         self.assign_t(item, t)
 
     def store_successor(self, item: Tuple[Tuple[float, float]], parent_id: int) -> int:
         successor_id = self.store(item)
-        self.graph.add_edge(parent_id, successor_id, p=1.0, a=successor_id)
+        self.graph.add_edge(parent_id, successor_id, p=1.0, a=f"{parent_id}_{successor_id}")
         self.prism_needs_update = True
         return successor_id
 
@@ -115,7 +115,8 @@ class StateStorage:
     def get_terminal_states_ids(self):
         possible_fail_states = self.graph.nodes.data(data='fail', default=False)
         return list([x[0] for x in possible_fail_states if x[1]])
-
+    def get_terminal_states_dict(self):
+        return dict(self.graph.nodes.data(data='fail', default=False))
     # def get_t_layer(self, t: int) -> List[int]:
     #     return self.t_dictionary[t]
 
