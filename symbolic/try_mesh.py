@@ -28,5 +28,5 @@ if __name__ == '__main__':
         domains.append(create_random_domain(dimensions))
     if not ray.is_initialized():
         ray.init(local_mode=True)
-    merged_domains = merge_supremum3([(x, True) for x in domains], 8)
+    merged_domains = merge_supremum3([(x, True) for x in domains])
     show_plot3d(domains, merged_domains)
