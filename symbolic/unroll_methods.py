@@ -3,15 +3,19 @@ Collection of methods to use in unroll_abstract_env
 """
 import itertools
 import math
+import pickle
 from collections import defaultdict
 from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
+
+import networkx as nx
 import numpy as np
 import progressbar
 import ray
 from contexttimer import Timer
+from py4j.java_collections import ListConverter
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
 from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree, show_plot, show_plot3d, round_tuples, round_tuple
@@ -19,6 +23,7 @@ from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
+from utility.standard_progressbar import StandardProgressBar
 from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, filter_only_connected
 
 
@@ -35,11 +40,11 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
     workers = cycle([AbstractStepWorker.remote(t, rounding, env_class) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
-    with progressbar.ProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks, is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks) as bar:
         for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
             proc_ids.append(next(workers).work.remote(intervals))
             bar.update(i)
-    with progressbar.ProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids)) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
             results: List[Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], List[
@@ -125,7 +130,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     # show_plot(intersected_intervals, intervals_sorted)
     # todo aggregate intersected_intervals
     list_assigned_action = []
-    with progressbar.ProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals), is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval, successors in intersected_intervals:
             parent_id = storage.store(interval[0])
             merged1 = [(x, True) for x in merge_supremum2([x for x in successors if x[1] == True], rounding, show_bar=False)]
@@ -140,7 +145,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], t, n_workers
     next_states, terminal_states = abstract_step_store2(list_assigned_action, env, t + 1, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
     print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
     next_to_compute = []
-    with progressbar.ProgressBar(prefix="Storing successors ", max_value=len(next_states), is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Storing successors ", max_value=len(next_states)) as bar:
         for interval, successors in next_states:
             parent_id = storage.store(interval[0])
             for successor1, successor2 in successors:
@@ -211,7 +216,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     if len(intervals_to_fill) == 0:
         return remaining_intervals, [], []
     if debug:
-        bar = progressbar.ProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill), is_terminal=True).start()
+        bar = StandardProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill)).start()
     for i, (interval, action) in enumerate(intervals_to_fill):
 
         examine_intervals.extend(remaining_intervals)
@@ -273,7 +278,7 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[Tuple
     # with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
     for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
         proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
-    with progressbar.ProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) if debug else nullcontext() as bar:
+    with StandardProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids)) if debug else nullcontext() as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             results = ray.get(ready_ids[0])
@@ -327,12 +332,12 @@ def compute_no_overlaps2(starting_intervals: List[Tuple[Tuple[Tuple[float, float
         aggregated_list = []
         proc_ids = []
         chunk_size = 200
-        with progressbar.ProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size), is_terminal=True, term_width=200) as bar:
+        with StandardProgressBar(prefix="Starting workers", max_value=ceil(old_size / chunk_size)) as bar:
             for i, chunk in enumerate(chunks([x for i, x in enumerate(intervals_with_relevants) if found_list[i]], chunk_size)):
                 proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))
                 bar.update(i)
         aggregated_list.extend([interval for i, interval in enumerate(intervals) if not found_list[i]])
-        with progressbar.ProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+        with StandardProgressBar(prefix="Computing no overlap intervals", max_value=len(proc_ids)) as bar:
             while len(proc_ids) != 0:
                 ready_ids, proc_ids = ray.wait(proc_ids)
                 results = ray.get(ready_ids[0])
@@ -380,7 +385,7 @@ def merge_supremum(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bo
     intervals = starting_intervals
     state_size = len(intervals[0][0])
     merged_list = []
-    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals)) as bar:
         i = 0
         while True:
             bar.update(max(len(starting_intervals) - len(intervals), 0))
@@ -427,7 +432,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], b
     state_size = len(intervals[0][0])
     merged_list = []
 
-    with progressbar.ProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals), is_terminal=True, term_width=200) if show_bar else nullcontext()  as bar:
+    with StandardProgressBar(prefix="Merging the intervals ", max_value=len(starting_intervals)) if show_bar else nullcontext()  as bar:
         i = 0
         while True:
             if show_bar:
@@ -546,7 +551,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], b
     proc_ids = []
     for i, intervals in enumerate(working_list):  # chunks(starting_intervals, chunk_size)
         proc_ids.append(merge_remote.remote(intervals, 0))
-    with progressbar.ProgressBar(prefix="Merging intervals", max_value=len(proc_ids), is_terminal=True, term_width=200) as bar:
+    with StandardProgressBar(prefix="Merging intervals", max_value=len(proc_ids)) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(len(proc_ids), 5), timeout=0.5)
             results = ray.get(ready_ids)
@@ -567,3 +572,80 @@ def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]]
             boundaries[d] = (min(boundaries[d][0], interval[d][0]), max(boundaries[d][1], interval[d][1]))
     boundaries = tuple(boundaries)
     return boundaries
+
+
+def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, save_folder, safe_threshold=0.2,
+                          unsafe_threshold=0.8):
+    iteration = 0
+    while True:
+        storage.recreate_prism()
+        split_performed = False
+        analysis_t = 0  # for now we analyse the layer t=0 after it gets splitted
+        t_ids = list(storage.graph.successors(analysis_t))
+        to_analyse = []
+        safe_count = 0
+        unsafe_count = 0
+        intervals_safe = []
+        intervals_unsafe = []
+        intervals_split = []
+        intervals_split_ids = []
+        for id in t_ids:
+            interval = storage.dictionary.get(id)
+            interval_probability = (storage.graph.nodes[id]['lb'], storage.graph.nodes[id]['ub'])
+            if interval_probability[0] >= unsafe_threshold:  # high probability of encountering a terminal state
+                unsafe_count += 1
+                intervals_unsafe.append(interval)
+            elif interval_probability[1] < safe_threshold:  # low probability of not encountering a terminal state
+                safe_count += 1
+                intervals_safe.append(interval)
+            elif is_small(interval, precision, rounding):
+                print(f"Interval {interval} ({interval_probability[0]},{interval_probability[1]}) is too small, considering it unsafe")
+                unsafe_count += 1
+                intervals_unsafe.append(interval)
+            else:
+                print(f"Splitting interval {interval} ({interval_probability[0]},{interval_probability[1]})")  # split
+                split_performed = True
+                intervals_split.append(interval)
+                intervals_split_ids.append(id)
+                storage.graph.remove_node(id)
+                dom1, dom2 = DomainExplorer.box_split_tuple(interval, rounding)
+                storage.store_successor(dom1, 0)
+                storage.store_successor(dom2, 0)
+                to_analyse.append(dom1)
+                to_analyse.append(dom2)
+        t = analysis_t + 1  # start inserting the new values after the current timestep
+        print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
+        fig = show_plot(intervals_safe, intervals_unsafe, to_analyse)
+        fig.write_html(f"{save_folder}fig_{iteration}.html")
+        # perform one iteration without splitting the interval because the interval is already being splitted
+        remainings, intersected_intervals = compute_remaining_intervals4_multi([(x, None) for x in to_analyse], rtree.tree, rounding)
+        assert len(remainings) == 0, "------------WARNING: at this stage remainings should be 0-----------"
+        list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
+        next_states, terminal_states = abstract_step_store2(list_assigned_action, env_class, t + 1, n_workers,
+                                                            rounding)  # performs a step in the environment with the assigned action and retrieve the result
+        print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
+        next_to_compute = []
+        with StandardProgressBar(prefix="Storing successors ", max_value=len(next_states)) as bar:
+            for interval, successors in next_states:
+                parent_id = storage.store(interval[0])
+                for successor1, successor2 in successors:
+                    id1, id2 = storage.store_sticky_successors(successor1, successor2, parent_id)
+                    storage.assign_t(id1, t + 1)
+                    storage.assign_t(id2, t + 1)
+                    next_to_compute.append(successor1)
+                    next_to_compute.append(successor2)
+                bar.update(bar.value + 1)
+        storage.mark_as_fail(
+            [storage.store(terminal_state) for terminal_state in list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))])
+        print(f"t:{t} Finished")
+        t = t + 1
+        if len(to_analyse) != 0:
+            for i in range(1, 4):
+                to_analyse = analysis_iteration(to_analyse, t, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
+                t = t + 1
+        iteration += 1
+        if not split_performed:
+            print(f"No more splits performed")
+            break
+    # %% save intervals+ probabilities
+    # pickle.dump(storage.graph, open("/home/edoardo/Development/SafeDRL/save/refined_graph.p", "wb+"))

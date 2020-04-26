@@ -16,6 +16,7 @@ import torch.utils.data as utils
 
 # from black_white_generator import BlackWhite
 # from plnn.simplified.conv_net import Net
+from utility.standard_progressbar import StandardProgressBar
 
 
 def get_weights(layers, inp_shape=(1, 28, 28)):
@@ -61,7 +62,7 @@ def convert_conv2d(W, b, cur_size=(1, 28, 28),stride=(1,1)):  # works for pytorc
     b_flat = np.zeros((flat_out))
     in_channel, in_height, in_width = cur_size
     o_channel, o_height, o_width = new_size
-    bar = progressbar.ProgressBar(prefix="Conv2d conversion ", max_value=flat_out,is_terminal=True).start()
+    bar = StandardProgressBar(prefix="Conv2d conversion ", max_value=flat_out).start()
     progress = 0
     for o_h in range(o_height):
         for o_w in range(o_width):
