@@ -6,7 +6,7 @@ import ray
 from mpmath import iv
 
 from mosaic.utils import round_tuple
-from prism.state_storage import get_storage, StateStorage
+from prism.state_storage import StateStorage
 from symbolic.cartpole_abstract import CartPoleEnv_abstract
 
 

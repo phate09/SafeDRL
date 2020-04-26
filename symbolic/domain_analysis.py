@@ -3,6 +3,8 @@ import os
 import pickle
 import gym
 import ray
+
+from mosaic.utils import round_tuple
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
 from symbolic.unroll_methods import analysis_iteration, compute_boundaries, probability_iteration
@@ -26,6 +28,7 @@ rtree.reset(state_size)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
+storage.root = round_tuple(current_interval, rounding)
 
 # remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
 # remainings=remainings[0:5000]
