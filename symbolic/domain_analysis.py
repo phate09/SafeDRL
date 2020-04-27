@@ -3,11 +3,10 @@ import os
 import pickle
 import gym
 import ray
-
-from mosaic.utils import round_tuple
+from mosaic.utils import round_tuple, show_heatmap, show_plot
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
-from symbolic.unroll_methods import analysis_iteration, compute_boundaries, probability_iteration
+from symbolic.unroll_methods import probability_iteration, get_property_at_timestep, analysis_iteration, compute_boundaries
 from verification_runs.domain_explorers_load import generatePendulumDomainExplorer
 
 gym.logger.set_level(40)
@@ -24,22 +23,13 @@ explorer, verification_model, env, current_interval, state_size, env_class = gen
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
-# rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
+rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
 union_states_total = rtree.tree_intervals()
 print(f"Finished building the tree")
 remainings = [current_interval]
 storage.root = round_tuple(current_interval, rounding)
-
-# remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings.p", "rb"))
-# remainings=remainings[0:5000]
-# remainings_overlaps = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings_overlaps.p", "rb"))
-# remainings_overlaps = remove_overlaps([(x, None) for x in remainings],rounding,n_workers,state_size)
-# merged_intervals = merge_supremum3([(x, None) for x in remainings],rounding)
-# show_plot([x for x in union_states_total] + [(x[0], "Brown") for x in safe_states_merged] + [(x[0], "Purple") for x in unsafe_states_merged])
+horizon = 4
 t = 0
-# %%
-# intervals = rtree.tree_intervals()
-# show_plot(intervals)
 # %%
 # for i in range(4):
 #     remainings = analysis_iteration(remainings, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage)
@@ -59,5 +49,14 @@ remainings = pickle.load(open("/home/edoardo/Development/SafeDRL/save/remainings
 t = pickle.load(open("/home/edoardo/Development/SafeDRL/save/t.p", "rb"))
 storage.load_state("/home/edoardo/Development/SafeDRL/save")
 rtree.load_from_file("/home/edoardo/Development/SafeDRL/save/union_states_total_e1.p", rounding)
+storage.recreate_prism()
 # %%
-probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=4, max_iteration=10)
+probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon, max_iteration=-1)
+# %%
+list_to_show = get_property_at_timestep(storage,1,"lb")
+show_heatmap(list_to_show)
+list_to_show = get_property_at_timestep(storage,2,"lb")
+show_heatmap(list_to_show)
+list_to_show = get_property_at_timestep(storage,3,"lb")
+show_heatmap(list_to_show)
+# show_plot(rtree.tree_intervals())

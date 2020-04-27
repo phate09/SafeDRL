@@ -185,13 +185,49 @@ def show_plot(*args):
             x_list.append(None)
             y_list.extend(y)
             y_list.append(None)
-        fig.add_scatter(x=x_list, y=y_list, fill="toself")
+        fig.add_scatter(x=x_list, y=y_list, fill="toself", hoveron="points")
     fig.update_shapes(dict(xref='x', yref='y'))
     # fig['layout']['yaxis1'].update(title='', autorange=False)
     # fig['layout']['xaxis1'].update(title='', autorange=False)
     # fig.update_layout(autosize=False)
     fig.show()
     return fig
+
+
+def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]]):
+    fig = go.Figure()
+    if len(interval_list) == 0:
+        return
+    probabilities = set(map(lambda x: x[1], interval_list))
+    newlist = [(x, [y[0] for y in interval_list if y[1] == x]) for x in probabilities]
+    for probability,intervals in newlist:
+        x_list = []
+        y_list = []
+        for interval in intervals:
+            x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
+            y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
+            x_list.extend(x)
+            x_list.append(None)
+            y_list.extend(y)
+            y_list.append(None)
+        color = assign_color(probability)
+        fig.add_scatter(x=x_list, y=y_list, fill="toself", hoveron="points",fillcolor=color, opacity=0.2, name=str(probability),marker=dict(size=1))#line=dict(color="Black")
+    # for interval, probability in interval_list:
+    #     x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
+    #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
+    #     color = assign_color(probability)
+    #     fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color, opacity=0.2, line=dict(color=color), name=str(probability), hovertext=str(probability), marker=dict(size=0))
+    fig.show()
+
+
+def assign_color(value):
+    mapping = [(0.0, "rgb(165,0,38)"), (0.1111111111111111, "rgb(215,48,39)"), (0.2222222222222222, "rgb(244,109,67)"), (0.3333333333333333, "rgb(253,174,97)"),
+               (0.4444444444444444, "rgb(254,224,144)"), (0.5555555555555556, "rgb(224,243,248)"), (0.6666666666666666, "rgb(171,217,233)"), (0.7777777777777778, "rgb(116,173,209)"),
+               (0.8888888888888888, "rgb(69,117,180)"), (1.0, "rgb(49,54,149)")]
+    for prob, color in mapping:
+        if value <= prob:
+            return color
+    print("something wrong")
 
 
 def count_elements(l):
@@ -203,43 +239,7 @@ def count_elements(l):
             count += 1
     return count
 
-
-# def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None, aggregate=True):
-#     fig = go.Figure()
-#     x_y_dict = defaultdict(list)
-#     if intervals_action is None:
-#         intervals_action = []
-#     if intervals is None:
-#         intervals = []
-#     intervals_with_action = [(x, None) for x in intervals]
-#     for interval in intervals_with_action + intervals_action:
-#         if interval[1] is True:
-#             color = 'Red'
-#         elif interval[1] is False:
-#             color = 'Blue'
-#         elif interval[1] is None:
-#             color = 'Green'
-#         else:
-#             color = interval[1]
-#         x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]
-#         y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]
-#         x_y_dict[color].append((x, y))
-#     if not aggregate:
-#         for color in x_y_dict.keys():
-#             for x, y in x_y_dict[color]:
-#                 fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color)
-#     else:
-#         for color in x_y_dict.keys():
-#             x_list = []
-#             y_list = []
-#             for x, y in x_y_dict[color]:
-#                 x_list.extend(x)
-#                 x_list.append(None)
-#                 y_list.extend(y)
-#                 y_list.append(None)
-#             fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)
-#     fig.update_shapes(dict(xref='x', yref='y'))
-#     fig.show()
+    # def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None, aggregate=True):  #     fig = go.Figure()  #     x_y_dict = defaultdict(list)  #     if intervals_action is None:  #         intervals_action = []  #     if intervals is None:  #         intervals = []  #     intervals_with_action = [(x, None) for x in intervals]  #     for interval in intervals_with_action + intervals_action:  #         if interval[1] is True:  #             color = 'Red'  #         elif interval[1] is False:  #             color = 'Blue'  #         elif interval[1] is None:  #             color = 'Green'  #         else:  #             color = interval[1]  #         x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]  #         y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]  #         x_y_dict[color].append((x, y))  #     if not aggregate:  #         for color in x_y_dict.keys():  #             for x, y in x_y_dict[color]:  #                 fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color)  #     else:  #         for color in x_y_dict.keys():  #             x_list = []  #             y_list = []  #             for x, y in x_y_dict[color]:  #                 x_list.extend(x)  #                 x_list.append(None)  #                 y_list.extend(y)  #                 y_list.append(None)  #             fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)  #     fig.update_shapes(dict(xref='x', yref='y'))  #     fig.show()
 
 
 def create_tree(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> index.Index:
