@@ -5,6 +5,8 @@ import shelve
 from collections import defaultdict
 from functools import reduce
 from typing import Tuple, List
+
+import networkx as nx
 import plotly.graph_objects as go
 import intervals as I
 import numpy as np
@@ -14,8 +16,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from rtree import index
 import plotly.express as px
-
+import importlib
 from symbolic.mesh_cube import get_mesh
+from networkx.drawing.nx_pydot import write_dot
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -199,8 +202,8 @@ def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]]):
     if len(interval_list) == 0:
         return
     probabilities = set(map(lambda x: x[1], interval_list))
-    newlist = [(x, [y[0] for y in interval_list if y[1] == x]) for x in probabilities]
-    for probability,intervals in newlist:
+    newlist = [(x, [y[0] for y in interval_list if y[1] == x]) for x in sorted(probabilities)]
+    for probability, intervals in newlist:
         x_list = []
         y_list = []
         for interval in intervals:
@@ -211,7 +214,7 @@ def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]]):
             y_list.extend(y)
             y_list.append(None)
         color = assign_color(probability)
-        fig.add_scatter(x=x_list, y=y_list, fill="toself", hoveron="points",fillcolor=color, opacity=0.2, name=str(probability),marker=dict(size=1))#line=dict(color="Black")
+        fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color, opacity=0.2, name=str(probability), marker=dict(size=1))  # hoveron="points"
     # for interval, probability in interval_list:
     #     x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
     #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
@@ -257,3 +260,28 @@ def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
     for i, obj in enumerate(data):
         interval = obj[0]
         yield (i, flatten_interval(interval), obj)
+
+
+def save_graph_as_dot(graph):
+    pos = nx.nx_agraph.graphviz_layout(graph)
+    nx.draw(graph, pos=pos)
+    write_dot(graph, 'file.dot')
+    replace_list = []
+    replace_list.append(("fail=True", "color = orange, penwidth=4.0"))
+    replace_list.append(("p=\"", "xlabel=\""))
+    replace_list.append(("lb=\"", "xlabel=\""))
+    replace_list.append(("strict digraph  {", "strict digraph  { ranksep=4;"))
+    inplace_change('file.dot', replace_list)
+
+
+def inplace_change(filename, replace_list: List[Tuple[str, str]]):
+    # Safely read the input filename using 'with'
+    with open(filename) as f:
+        s = f.read()
+
+    # Safely write the changed content, if found in the file
+    with open(filename, 'w') as f:
+        # s = f.read()
+        for old, new in replace_list:
+            s = s.replace(old, new)
+        f.write(s)

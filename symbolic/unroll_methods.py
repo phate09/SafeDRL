@@ -9,7 +9,7 @@ from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
 from typing import Tuple, List
-
+import importlib
 import networkx as nx
 import numpy as np
 import progressbar
@@ -18,16 +18,16 @@ from contexttimer import Timer
 from py4j.java_collections import ListConverter
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
-from mosaic.utils import chunks, shrink, interval_contains, flatten_interval, bulk_load_rtree_helper, create_tree, show_plot, show_plot3d, round_tuples, round_tuple
+import mosaic.utils as utils
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
 from utility.standard_progressbar import StandardProgressBar
-from verification_runs.aggregate_abstract_domain import merge_simple, merge_simple_interval_only, filter_only_connected
+import verification_runs.aggregate_abstract_domain
 
 
-def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, n_workers: int, rounding: int):
+def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, n_workers: int, rounding: int):
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param env:
@@ -41,7 +41,7 @@ def abstract_step_store2(abstract_states_normalised: List[Tuple[Tuple[Tuple[floa
     workers = cycle([AbstractStepWorker.remote(rounding, env_class) for _ in range(min(n_workers, n_chunks))])
     proc_ids = []
     with StandardProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=n_chunks) as bar:
-        for i, intervals in enumerate(chunks(abstract_states_normalised, chunk_size)):
+        for i, intervals in enumerate(utils.chunks(abstract_states_normalised, chunk_size)):
             proc_ids.append(next(workers).work.remote(intervals))
             bar.update(i)
     with StandardProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids)) as bar:
@@ -97,11 +97,20 @@ def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
     return max(sizes) <= min_size
 
 
+def remove_spurious_nodes(graph: nx.DiGraph):
+    candidates_ids = [id for id, x in graph.nodes.data() if (x.get('fail') is not None and x.get('fail'))]
+    for node_id in candidates_ids:
+        edges = list(graph.edges(node_id))
+        if len(edges) != 0:
+            print(f"removed edges from {node_id}")
+            graph.remove_edges_from(edges)
+
+
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
                        allow_assign_action=True) -> List[Tuple[Tuple[float, float]]]:
     if len(intervals) == 0:
         return []
-    intervals_sorted = [round_tuple(x, rounding) for x in sorted(intervals)]
+    intervals_sorted = [utils.round_tuple(x, rounding) for x in sorted(intervals)]
     remainings = intervals_sorted
     # print(f"Started")
     while True:
@@ -128,23 +137,27 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     list_assigned_action = []
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
-            if allow_assign_action:
-                merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
-                merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
-                successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
-                list_assigned_action.extend(successors_merged)
-                if len(successors)==1:
-                    if successors[0][0] == interval_noaction:
-                        print("let's see") #figure out a way to differentiate between split layer and action layer
-                storage.store_successor_multi([x[0] for x in successors_merged], interval_noaction)
-            else:
-                list_assigned_action.extend(successors)
+            merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
+            merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
+            successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            list_assigned_action.extend(successors_merged)
+            # if len(successors) == 1:
+            #     if successors[0][0] == interval_noaction:
+            #         print("let's see")  # figure out a way to differentiate between split layer and action layer
+            storage.store_successor_multi([x for x in successors_merged], (interval_noaction, None))  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
-    next_states, terminal_states = abstract_step_store2(list_assigned_action, env, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    next_to_compute = compute_successors(env, list_assigned_action, n_workers, rounding, storage)
+
+    # print(f"Finished")
+    return next_to_compute
+
+
+def compute_successors(env, list_assigned_action, n_workers, rounding, storage):
+    next_states, terminal_states = abstract_step(list_assigned_action, env, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states_dict = defaultdict(bool)
     terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))
-    storage.mark_as_fail(terminal_states_list)
+    storage.mark_as_fail([(x, None) for x in terminal_states_list])
     for terminal in terminal_states_list:
         terminal_states_dict[terminal] = True
     next_to_compute = []
@@ -153,7 +166,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
         for interval, successors in next_states:
             for successor1, successor2 in successors:
                 n_successors += 2
-                storage.store_sticky_successors(successor1, successor2, interval[0])
+                storage.store_sticky_successors((successor1, None), (successor2, None), interval)  # interval with action
                 if not terminal_states_dict[successor1]:
                     next_to_compute.append(successor1)
                 if not terminal_states_dict[successor2]:
@@ -161,8 +174,6 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
             bar.update(bar.value + 1)
     # store terminal states
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Next States :{len(next_to_compute)}")
-
-    # print(f"Finished")
     return next_to_compute
 
 
@@ -183,8 +194,8 @@ def compute_remaining_worker(current_intervals: List[Tuple[Tuple[float, float]]]
                 intersection_total.append(intersection_safe + intersection_unsafe)
                 print(f"Timer1:{t.elapsed} ")
         print(f"Timer chunk:{t1.elapsed}")
-        intersection_total = [merge_simple(x, rounding) if len(x) > 1 else x for x in intersection_total]  # merging
-        remaining_total = [merge_simple_interval_only(x, rounding) if len(x) > 1 else x for x in remaining_total]
+        intersection_total = [verification_runs.aggregate_abstract_domain.merge_simple(x, rounding) if len(x) > 1 else x for x in intersection_total]  # merging
+        remaining_total = [verification_runs.aggregate_abstract_domain.merge_simple_interval_only(x, rounding) if len(x) > 1 else x for x in remaining_total]
         print(f"Timer merge:{t1.elapsed}")
     return remaining_total, intersection_total  # , remaining_ids_total
 
@@ -214,8 +225,8 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
         while len(examine_intervals) != 0:
             examine_interval = examine_intervals.pop(0)
             if not is_negligible(examine_interval):
-                state = shrink(interval, examine_interval)
-                contains = interval_contains(state, examine_interval)  # check it is partially contained in every dimension
+                state = utils.shrink(interval, examine_interval)
+                contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
                 if contains:
                     points_of_interest = []
                     for dimension in range(dimensions):
@@ -263,7 +274,7 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[float
     remain_list: List[Tuple[Tuple[float, float]]] = []
     proc_ids = []
     chunk_size = 200
-    for i, chunk in enumerate(chunks(intervals_with_relevants, chunk_size)):
+    for i, chunk in enumerate(utils.chunks(intervals_with_relevants, chunk_size)):
         proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
     with StandardProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids)) if debug else nullcontext() as bar:
         while len(proc_ids) != 0:
@@ -292,7 +303,7 @@ def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Tupl
 def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
     """Filter the intervals relevant to the current_interval"""
     # current_interval = inflate(current_interval, rounding)
-    results = list(tree.intersection(flatten_interval(current_interval), objects='raw'))
+    results = list(tree.intersection(utils.flatten_interval(current_interval), objects='raw'))
     total = []
     for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
         suitable = all([x[1] != y[0] and x[0] != y[1] if y[0] != y[1] else True for x, y in zip(result[0], current_interval)])
@@ -323,7 +334,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
         while True:
             if show_bar:
                 bar.update(max(len(starting_intervals) - len(intervals), 0))
-            tree = create_tree([(x, True) for x in intervals])
+            tree = utils.create_tree([(x, True) for x in intervals])
             # find leftmost interval
             boundaries = []
             for i in range(state_size):
@@ -335,7 +346,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
                 new_boundaries = merge_iteration(boundaries, codes, c, tree, intervals)
                 boundaries = new_boundaries
             # show_plot(intervals, [(boundaries, True)])
-            new_group_tree = create_tree([(boundaries, True)])  # add dummy action
+            new_group_tree = utils.create_tree([(boundaries, True)])  # add dummy action
             remainings, intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
             merged_list.append(boundaries)
             if len(remainings) == 0:
@@ -385,7 +396,7 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
             coordinate = float(max(min([x[0][d][direction] for x in filtered]), bounds[d][direction]))
         starting_coordinate.append(coordinate)
     starting_coordinate = tuple(starting_coordinate)
-    connected_relevant = filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
+    connected_relevant = verification_runs.aggregate_abstract_domain.filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
     if len(connected_relevant) == 0:
         if len(filtered) == 0:
             return bounds  # nothing we can do at this iteration
@@ -408,7 +419,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positi
     dimensions = len(starting_intervals[0])
     # generate tree
     intervals_dummy_action = [(x, True) for x in starting_intervals]
-    tree = create_tree(intervals_dummy_action)
+    tree = utils.create_tree(intervals_dummy_action)
     # find bounds
     boundaries = compute_boundaries(intervals_dummy_action)
     if positional_method:
@@ -423,15 +434,15 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positi
         # find relevant intervals
         working_list = []
         for domain in split_list:
-            relevant_list = list(tree.intersection(flatten_interval(domain), objects='raw'))
+            relevant_list = list(tree.intersection(utils.flatten_interval(domain), objects='raw'))
             local_working_list = []
             # resize intervals
             for relevant, action in relevant_list:
-                resized = shrink(relevant, domain)
+                resized = utils.shrink(relevant, domain)
                 local_working_list.append((resized, action))
             working_list.append(local_working_list)
     else:
-        working_list = chunks(starting_intervals, 1000)
+        working_list = utils.chunks(starting_intervals, 1000)
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
     merge_remote = ray.remote(merge_supremum2)
@@ -469,62 +480,56 @@ def compute_predecessors(storage, ids):
     return result
 
 
+def get_layers(graph: nx.DiGraph, root):
+    candidates_ids = [(id, x.get('lb'), x.get('ub')) for id, x in graph.nodes.data()]
+    path_length = nx.shortest_path_length(graph, source=root)
+    candidate_length_dict = defaultdict(list)
+    for id, lb, ub in candidates_ids:
+        # if not terminal_states_dict[id]:  # ignore terminal states
+        if path_length.get(id) is not None:
+            candidate_length = path_length[id]
+            candidate_length_dict[candidate_length].append((id, lb, ub))
+    return candidate_length_dict
+
+
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
                           unsafe_threshold=0.8, max_iteration=-1):
     iteration = 0
-    while True:
-        storage.recreate_prism()
-        # get the furthest nodes that have a maximum probability less than safe_threshold
-        candidates_ids = [(id, x.get('lb'), x.get('ub')) for id, x in storage.graph.nodes.data() if
-                          (x.get('lb') is not None and x.get('lb') < unsafe_threshold and x.get('ub') > safe_threshold and not x.get('ignore') and not x.get('fail'))]
-        # terminal_states_dict = storage.get_terminal_states_dict()
-        path_length = nx.shortest_path_length(storage.graph, source=storage.root)
+    storage.recreate_prism()
+    # get the furthest nodes that have a maximum probability less than safe_threshold
+    candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
+            attributes.get('lb') is not None and attributes.get('lb') < unsafe_threshold and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get(
+        'fail') and not is_small(interval[0], precision, rounding))]
+    # terminal_states_dict = storage.get_terminal_states_dict()
+    path_length = nx.shortest_path_length(storage.graph, source=storage.root)
+    max_path_length = max(list(path_length.values()))
+    if max_path_length >= horizon * 2:  # if reached the min horizon, refine
         candidate_length_dict = defaultdict(list)
         for id, lb, ub in candidates_ids:
-            # if not terminal_states_dict[id]:  # ignore terminal states
-            candidate_length = path_length[id]
-            candidate_length_dict[candidate_length].append((id, lb, ub))
-        max_length = 100
-        for length in [x for x in candidate_length_dict.keys() if x % 2 == 1]:  # only odd numbered distances
-            max_length = min(length, max_length)
-        if max_length == 100 or (max_iteration != -1 and iteration >= max_iteration):
-            break
+            if path_length.get(id) is not None:
+                candidate_length = path_length[id]
+                candidate_length_dict[candidate_length].append((id, lb, ub))
+        odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1]
+        if len(odd_layers) == 0:
+            return False
+        max_length = min(odd_layers)  # get only odd numbers
         t_ids = [x[0] for x in candidate_length_dict[max_length]]
         split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
-        # fig = show_plot(intervals_safe, intervals_unsafe, to_analyse)
-        # fig.write_html(f"{save_folder}fig_{iteration}.html")
-        # perform one iteration without splitting the interval because the interval is already being splitted
-        # to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=False)
-        # remainings, intersected_intervals = compute_remaining_intervals4_multi(to_analyse, rtree.tree)
-        # assert len(remainings) == 0, "------------WARNING: at this stage remainings should be 0-----------"
-        # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
-        # next_states, terminal_states = abstract_step_store2(list_assigned_action, env_class, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
-        # print(f"Sucessors : {len(next_states)} Terminals : {len(terminal_states)}")
-        # terminal_states_dict = defaultdict(bool)
-        # terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))
-        # storage.mark_as_fail(terminal_states_list)
-        # for terminal in terminal_states_list:
-        #     terminal_states_dict[terminal] = True
-        # next_to_compute = []
-        # with StandardProgressBar(prefix="Storing successors ", max_value=len(next_states)) as bar:
-        #     for interval, successors in next_states:
-        #         for successor1, successor2 in successors:
-        #             storage.store_sticky_successors(successor1, successor2, interval[0])
-        #             if not terminal_states_dict[successor1]:
-        #                 next_to_compute.append(successor1)
-        #             if not terminal_states_dict[successor2]:
-        #                 next_to_compute.append(successor2)
-        #         bar.update(bar.value + 1)
-        # # print(f"t:{t} Finished")
-        # to_analyse = next_to_compute
+        to_analyse = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+        iterations_needed = horizon - 1 - max_length // 2
+        allow_assign_action = False
+    else:
+        to_analyse = [x[0][0] for x in get_layers(storage.graph, storage.root)[max_path_length]]
+        max_length = max_path_length
         iterations_needed = horizon - max_length // 2
-        for i in range(iterations_needed):
-            allow_assign_action = i != 0
-            to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action)
-        iteration += 1
+        allow_assign_action = True
+    for i in range(iterations_needed):
+        to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action)
+    iteration += 1
+    return True
 
 
-def perform_split(ids_split: List[Tuple[Tuple[float, float]]], storage: StateStorage, safe_threshold: float, unsafe_threshold: float, precision: float, rounding: int):
+def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], storage: StateStorage, safe_threshold: float, unsafe_threshold: float, precision: float, rounding: int):
     split_performed = False
     to_analyse = []
     safe_count = 0
@@ -540,7 +545,7 @@ def perform_split(ids_split: List[Tuple[Tuple[float, float]]], storage: StateSto
         elif interval_probability[1] <= safe_threshold:  # low probability of not encountering a terminal state
             safe_count += 1
             intervals_safe.append(interval)
-        elif is_small(interval, precision, rounding):
+        elif is_small(interval[0], precision, rounding):
             if not storage.graph.nodes[interval].get('ignore'):
                 print(f"Interval {interval} ({interval_probability[0]},{interval_probability[1]}) is too small, considering it unsafe")
                 unsafe_count += 1
@@ -549,13 +554,16 @@ def perform_split(ids_split: List[Tuple[Tuple[float, float]]], storage: StateSto
         else:
             # print(f"Splitting interval {interval} ({interval_probability[0]},{interval_probability[1]})")  # split
             split_performed = True
+            action = interval[1]
             predecessors = list(storage.graph.predecessors(interval))
-            dom1, dom2 = DomainExplorer.box_split_tuple(interval, rounding)
+            dom1, dom2 = DomainExplorer.box_split_tuple(interval[0], rounding)
             for parent_id in predecessors:
-                storage.store_successor_multi([dom1, dom2], parent_id)
-            storage.graph.remove_node(interval)
-            to_analyse.append(dom1)
-            to_analyse.append(dom2)
+                storage.store_successor_multi([(dom1, action), (dom2, action)], parent_id)
+                storage.graph.remove_edge(parent_id, interval)
+            # storage.graph.remove_node(interval)
+            storage.graph.nodes[interval]['ignore'] = True
+            to_analyse.append((dom1, action))
+            to_analyse.append((dom2, action))
     print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
     return split_performed, to_analyse
 
@@ -565,8 +573,9 @@ def get_property_at_timestep(storage: StateStorage, t: int, property: str):
     candidate_length_dict = defaultdict(list)
     for id in path_length.keys():
         # if not terminal_states_dict[id]:  # ignore terminal states
-        candidate_length = path_length[id]
-        candidate_length_dict[candidate_length].append(id)
+        if path_length.get(id) is not None:
+            candidate_length = path_length[id]
+            candidate_length_dict[candidate_length].append(id)
     list_to_show = []
     for x in candidate_length_dict[t]:
         attr = storage.graph.nodes[x]

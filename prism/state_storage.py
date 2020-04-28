@@ -3,7 +3,7 @@ import pickle
 from collections import defaultdict
 import threading
 from typing import Tuple, List
-
+import importlib
 import progressbar
 import zmq
 from py4j.java_gateway import JavaGateway
@@ -32,8 +32,8 @@ class StateStorage:
         self.graph.add_edges_from([(parent, x) for x in items], p=1.0)
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], parent: Tuple[Tuple[float, float]]):
-        self.graph.add_edge(parent, successor, p=0.8, a=(successor,sticky_successor,parent))
-        self.graph.add_edge(parent, sticky_successor, p=0.2, a=(successor,sticky_successor,parent))  # same action
+        self.graph.add_edge(parent, successor, p=0.8, a=(successor, sticky_successor, parent))
+        self.graph.add_edge(parent, sticky_successor, p=0.2, a=(successor, sticky_successor, parent))  # same action
 
     def save_state(self, folder_path):
         nx.write_gpickle(self.graph, folder_path + "/nx_graph.p")
@@ -54,6 +54,20 @@ class StateStorage:
 
     def get_terminal_states_dict(self):
         return dict(self.graph.nodes.data(data='fail', default=False))
+
+    def remove_unreachable(self):
+        descendants = list(nx.algorithms.descendants(self.graph, self.root))  # descendants from 0
+        descendants.insert(0, self.root)
+        descendants_dict = defaultdict(bool)
+        for descendant in descendants:
+            descendants_dict[descendant] = True
+        to_remove = []
+        for parent_id, successors in self.graph.adjacency():  # generate the edges
+            if not descendants_dict[parent_id]:
+                to_remove.append(parent_id)
+        for id in to_remove:
+            print(f"removed {id}")
+            self.graph.remove_node(id)
 
     def recreate_prism(self):  # todo remake after using  networkx.relabel.convert_node_labels_to_integers
         gateway = JavaGateway()
@@ -103,8 +117,9 @@ class StateStorage:
                     # print(f"Non descending item found")
                     to_remove.append(parent_id)
                     pass
-        for id in to_remove:
-            self.graph.remove_node(id)
+        # for id in to_remove:
+            # print(f"removed {id}")
+            # self.graph.remove_node(id)
         terminal_states = [mapping[x] for x in self.get_terminal_states_ids()]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state
@@ -119,7 +134,6 @@ class StateStorage:
         print("Prism updated with new data")
         self.prism_needs_update = False
         return mdp, gateway
-
 
 # def get_storage():
 #     Pyro5.api.config.SERIALIZER = "marshal"
