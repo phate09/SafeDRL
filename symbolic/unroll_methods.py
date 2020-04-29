@@ -111,10 +111,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     if len(intervals) == 0:
         return []
     intervals_sorted = [utils.round_tuple(x, rounding) for x in sorted(intervals)]
-    remainings = intervals_sorted
-    # print(f"Started")
     while True:
-        # assign a dummy action to intervals_sorted
         remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals_sorted, rtree.tree)  # checks areas not covered by total intervals
         remainings = sorted(remainings)
         if len(remainings) != 0:
@@ -141,9 +138,6 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
             merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
             successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
             list_assigned_action.extend(successors_merged)
-            # if len(successors) == 1:
-            #     if successors[0][0] == interval_noaction:
-            #         print("let's see")  # figure out a way to differentiate between split layer and action layer
             storage.store_successor_multi([x for x in successors_merged], (interval_noaction, None))  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
@@ -493,18 +487,21 @@ def get_layers(graph: nx.DiGraph, root):
 
 
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
-                          unsafe_threshold=0.8, max_iteration=-1):
+                          unsafe_threshold=0.8, max_iteration=-1, allow_assign_actions=False):
     iteration = 0
     storage.recreate_prism()
-    # get the furthest nodes that have a maximum probability less than safe_threshold
-    candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
-            attributes.get('lb') is not None and attributes.get('lb') < unsafe_threshold and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get(
-        'fail') and not is_small(interval[0], precision, rounding))]
+
     # terminal_states_dict = storage.get_terminal_states_dict()
     path_length = nx.shortest_path_length(storage.graph, source=storage.root)
-    max_path_length = max(list(path_length.values()))
+    leaves = [(interval, path_length[interval], attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
+              storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in path_length]
+    max_path_length = max([x[1] for x in leaves])  # longest path to a leave
     if max_path_length >= horizon * 2:  # if reached the min horizon, refine
         candidate_length_dict = defaultdict(list)
+        # get the furthest nodes that have a maximum probability less than safe_threshold
+        candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
+                attributes.get('lb') is not None and attributes.get('lb') < unsafe_threshold and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get(
+            'fail') and not is_small(interval[0], precision, rounding))]
         for id, lb, ub in candidates_ids:
             if path_length.get(id) is not None:
                 candidate_length = path_length[id]
@@ -516,14 +513,20 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
         t_ids = [x[0] for x in candidate_length_dict[max_length]]
         split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
         to_analyse = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+        to_analyse = [x for x in to_analyse if not storage.graph.nodes[(x, None)].get('fail')]  # filter out the terminal states
         iterations_needed = horizon - 1 - max_length // 2
-        allow_assign_action = False
+        allow_assign_action = allow_assign_actions or False
     else:
-        to_analyse = [x[0][0] for x in get_layers(storage.graph, storage.root)[max_path_length]]
-        max_length = max_path_length
-        iterations_needed = horizon - max_length // 2
-        allow_assign_action = True
-    for i in range(iterations_needed):
+        to_analyse = []
+        for interval, length, lb, ub in leaves:
+            path = nx.shortest_path(storage.graph, source=storage.root, target=interval)
+            worst_probability = max([storage.graph.nodes[x].get('lb') for x in path])
+            if worst_probability < unsafe_threshold:
+                to_analyse.append(interval[0])  # just interval no action
+        # to_analyse = [x[0][0] for x in get_layers(storage.graph, storage.root)[max_path_length]]
+        # max_length = max_path_length
+        # iterations_needed = horizon - max_length // 2
+        allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
         to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action)
     iteration += 1
     return True

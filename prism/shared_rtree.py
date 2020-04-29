@@ -1,3 +1,4 @@
+import os
 import pickle
 from typing import List, Tuple
 
@@ -65,13 +66,16 @@ class SharedRtree:
         print("Finished building the tree")
 
     def load_from_file(self, filename, rounding):
-        # with self.lock:
-        print("Loading from file")
-        union_states_total = pickle.load(open(filename, "rb"))
-        # print("Loaded from file")
-        self.union_states_total = union_states_total  # round_tuples(union_states_total, rounding=rounding)
-        print("Rounded intervals")
-        self.load(self.union_states_total)
+        if os.path.exists(filename):
+            # with self.lock:
+            print("Loading from file")
+            union_states_total = pickle.load(open(filename, "rb"))
+            # print("Loaded from file")
+            self.union_states_total = union_states_total  # round_tuples(union_states_total, rounding=rounding)
+            print("Rounded intervals")
+            self.load(self.union_states_total)
+        else:
+            print(f"{filename} does not exist")
 
     def save_to_file(self, file_name):
         # with self.lock:

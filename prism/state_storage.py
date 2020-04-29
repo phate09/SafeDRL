@@ -1,4 +1,5 @@
 # import multiprocessing
+import os
 import pickle
 from collections import defaultdict
 import threading
@@ -36,12 +37,15 @@ class StateStorage:
         self.graph.add_edge(parent, sticky_successor, p=0.2, a=(successor, sticky_successor, parent))  # same action
 
     def save_state(self, folder_path):
-        nx.write_gpickle(self.graph, folder_path + "/nx_graph.p")
+        nx.write_gpickle(self.graph, folder_path)
         print("Mdp Saved")
 
     def load_state(self, folder_path):
-        self.graph = nx.read_gpickle(folder_path + "/nx_graph.p")
-        print("Mdp Loaded")
+        if os.path.exists(folder_path):
+            self.graph = nx.read_gpickle(folder_path)
+            print("Mdp Loaded")
+        else:
+            print(f"{folder_path} does not exist")
 
     def mark_as_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
         for item in fail_states:
@@ -118,8 +122,8 @@ class StateStorage:
                     to_remove.append(parent_id)
                     pass
         # for id in to_remove:
-            # print(f"removed {id}")
-            # self.graph.remove_node(id)
+        # print(f"removed {id}")
+        # self.graph.remove_node(id)
         terminal_states = [mapping[x] for x in self.get_terminal_states_ids()]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state
