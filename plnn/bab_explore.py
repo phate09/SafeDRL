@@ -139,16 +139,17 @@ class DomainExplorer:
             self.hasIgnored = True
 
     def process_one_queue_element(self, message_queue, queue):
-        message_ready, message_queue = ray.wait(message_queue)  # retrieve the next ready item
-        explore, safe, unsafe = ray.get(message_ready[0])
-        if safe is not None:
-            self.safe_domains.append(safe)
-            self.safe_area += mosaic.utils.area_tensor(safe)
-        if unsafe is not None:
-            self.unsafe_domains.append(unsafe)
-            self.unsafe_area += mosaic.utils.area_tensor(unsafe)
-        if explore is not None:
-            queue.insert(0, explore)
+        message_ready, message_queue = ray.wait(message_queue, min(len(message_queue), 10), 0.5)  # retrieve the next ready item
+        results = ray.get(message_ready)
+        for explore, safe, unsafe in results:
+            if safe is not None:
+                self.safe_domains.append(safe)
+                self.safe_area += mosaic.utils.area_tensor(safe)
+            if unsafe is not None:
+                self.unsafe_domains.append(unsafe)
+                self.unsafe_area += mosaic.utils.area_tensor(unsafe)
+            if explore is not None:
+                queue.insert(0, explore)
         return message_queue
 
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:

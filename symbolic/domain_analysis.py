@@ -1,6 +1,8 @@
 # %%
 import os
 import pickle
+import time
+
 import gym
 import ray
 import importlib
@@ -21,9 +23,9 @@ if not ray.is_initialized():
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
 storage.reset()
-rounding = 2
+rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
@@ -34,7 +36,7 @@ print(f"Finished building the tree")
 remainings = [current_interval]
 storage.root = (utils.round_tuple(current_interval, rounding), None)
 storage.graph.add_node(storage.root)
-horizon = 10
+horizon = 8
 t = 0
 # %%
 # for i in range(horizon):
@@ -53,12 +55,20 @@ storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}
 rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 # %%
 iterations = 0
+time_from_last_save = time.time()
 while True:
     print(f"Iteration {iterations}")
     split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon, max_iteration=-1,
                                                            allow_assign_actions=True)
-    if not split_performed or iterations == 20:
+    if time.time() - time_from_last_save >= 60 * 5:
+        storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+        rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+        print("Graph Saved - Checkpoint")
+        time_from_last_save = time.time()
+    if not split_performed or iterations == 1000:
         # utils.save_graph_as_dot(storage.graph)
+        if not split_performed:
+            print("No more split performed")
         break
     iterations += 1
 # %%

@@ -253,10 +253,10 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[float
             results = ray.get(ready_ids[0])
             for result in results:
                 if result is not None:
-                    (remain, safe, unsafe), (previous_interval, action) = result
+                    (remain, safe, unsafe), previous_interval = result
                     remain_list.extend(remain)
-                    dict_intervals[(previous_interval, action)].extend([(x, True) for x in safe])
-                    dict_intervals[(previous_interval, action)].extend([(x, False) for x in unsafe])
+                    dict_intervals[previous_interval].extend([(x, True) for x in safe])
+                    dict_intervals[previous_interval].extend([(x, False) for x in unsafe])
             if debug:
                 bar.update(bar.value + 1)
     intersection_list: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]] = []  # list with intervals and associated intervals with action assigned
@@ -318,7 +318,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
                 boundaries = new_boundaries
             # show_plot(intervals, [(boundaries, True)])
             new_group_tree = utils.create_tree([(boundaries, True)])  # add dummy action
-            remainings, intersection_intervals = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
+            remainings, _ = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
             merged_list.append(boundaries)
             if len(remainings) == 0:
                 break
@@ -384,6 +384,11 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
     return tuple(new_bounds)
 
 
+@ray.remote
+def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]], show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+    return merge_supremum2(starting_intervals, show_bar)
+
+
 def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positional_method=False) -> List[Tuple[Tuple[float, float]]]:
     if len(starting_intervals) <= 1:
         return starting_intervals
@@ -416,10 +421,9 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positi
         working_list = utils.chunks(starting_intervals, 1000)
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
-    merge_remote = ray.remote(merge_supremum2)
     proc_ids = []
     for i, intervals in enumerate(working_list):
-        proc_ids.append(merge_remote.remote(intervals))
+        proc_ids.append(merge_supremum2_remote.remote(intervals))
     with StandardProgressBar(prefix="Merging intervals", max_value=len(proc_ids)) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(len(proc_ids), 5), timeout=0.5)
