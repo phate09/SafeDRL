@@ -138,7 +138,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
             merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
             successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
             list_assigned_action.extend(successors_merged)
-            storage.store_successor_multi([x for x in successors_merged], (interval_noaction, None))  # store also the action
+            storage.store_successor_multi([((interval_noaction, None), x) for x in successors_merged])  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
     next_to_compute = compute_successors(env, list_assigned_action, n_workers, rounding, storage)
@@ -169,29 +169,6 @@ def compute_successors(env, list_assigned_action, n_workers, rounding, storage):
     # store terminal states
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Next States :{len(next_to_compute)}")
     return next_to_compute
-
-
-@ray.remote
-def compute_remaining_worker(current_intervals: List[Tuple[Tuple[float, float]]], relevant_intervals_multi: List[List[Tuple[Tuple[Tuple[float, float]], bool]]], rounding: int) -> Tuple[
-    List[List[Tuple[Tuple[float, float]]]], List[List[Tuple[Tuple[Tuple[float, float]], bool]]]]:
-    remaining_total: List[List[Tuple[Tuple[float, float]]]] = []
-    intersection_total: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = []
-    with Timer(factor=1000) as t1:
-        for i, interval in enumerate(current_intervals):
-            with Timer(factor=1000) as t:
-                relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = relevant_intervals_multi[i]
-                print(f"Relevant_intervals:{len(relevant_intervals)}")
-                remaining, intersection_safe, intersection_unsafe = compute_remaining_intervals3(interval, relevant_intervals, False)
-                intersection_safe = [(x, True) for x in intersection_safe]
-                intersection_unsafe = [(x, False) for x in intersection_unsafe]
-                remaining_total.append(remaining)
-                intersection_total.append(intersection_safe + intersection_unsafe)
-                print(f"Timer1:{t.elapsed} ")
-        print(f"Timer chunk:{t1.elapsed}")
-        intersection_total = [verification_runs.aggregate_abstract_domain.merge_simple(x, rounding) if len(x) > 1 else x for x in intersection_total]  # merging
-        remaining_total = [verification_runs.aggregate_abstract_domain.merge_simple_interval_only(x, rounding) if len(x) > 1 else x for x in remaining_total]
-        print(f"Timer merge:{t1.elapsed}")
-    return remaining_total, intersection_total  # , remaining_ids_total
 
 
 def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
@@ -466,14 +443,6 @@ def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]]
     return boundaries
 
 
-def compute_predecessors(storage, ids):
-    result = []
-    for id in ids:
-        predecessors = storage.graph.predecessors(id)
-        result.append((id, predecessors))
-    return result
-
-
 def get_layers(graph: nx.DiGraph, root):
     candidates_ids = [(id, x.get('lb'), x.get('ub')) for id, x in graph.nodes.data()]
     path_length = nx.shortest_path_length(graph, source=root)
@@ -492,10 +461,11 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     storage.recreate_prism()
 
     # terminal_states_dict = storage.get_terminal_states_dict()
-    path_length = nx.shortest_path_length(storage.graph, source=storage.root)
-    leaves = [(interval, path_length[interval], attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
-              storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in path_length]
-    max_path_length = max([x[1] for x in leaves])  # longest path to a leave
+    shortest_path = nx.shortest_path(storage.graph, source=storage.root)
+    leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
+              storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in shortest_path and max(
+                  [storage.graph.nodes[x].get('lb') for x in shortest_path[interval]]) < unsafe_threshold]
+    max_path_length = min([x[1] for x in leaves])  # longest path to a leave
     if max_path_length >= horizon * 2:  # if reached the min horizon, refine
         candidate_length_dict = defaultdict(list)
         # get the furthest nodes that have a maximum probability less than safe_threshold
@@ -503,8 +473,8 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
                 attributes.get('lb') is not None and attributes.get('lb') < unsafe_threshold and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get(
             'fail') and not is_small(interval[0], precision, rounding))]
         for id, lb, ub in candidates_ids:
-            if path_length.get(id) is not None:
-                candidate_length = path_length[id]
+            if shortest_path.get(id) is not None:
+                candidate_length = len(shortest_path[id])
                 candidate_length_dict[candidate_length].append((id, lb, ub))
         odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1]
         if len(odd_layers) == 0:
@@ -519,9 +489,9 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     else:
         to_analyse = []
         for interval, length, lb, ub in leaves:
-            path = nx.shortest_path(storage.graph, source=storage.root, target=interval)
-            worst_probability = max([storage.graph.nodes[x].get('lb') for x in path])
-            if worst_probability < unsafe_threshold:
+            # path = nx.shortest_path(storage.graph, source=storage.root, target=interval)
+            # worst_probability = max([storage.graph.nodes[x].get('lb') for x in path])
+            if length == max_path_length:
                 to_analyse.append(interval[0])  # just interval no action
         # to_analyse = [x[0][0] for x in get_layers(storage.graph, storage.root)[max_path_length]]
         # max_length = max_path_length
@@ -561,7 +531,7 @@ def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], stor
             predecessors = list(storage.graph.predecessors(interval))
             dom1, dom2 = DomainExplorer.box_split_tuple(interval[0], rounding)
             for parent_id in predecessors:
-                storage.store_successor_multi([(dom1, action), (dom2, action)], parent_id)
+                storage.store_successor_multi([(parent_id, (dom1, action)), (parent_id, (dom2, action))])
                 storage.graph.remove_edge(parent_id, interval)
             # storage.graph.remove_node(interval)
             storage.graph.nodes[interval]['ignore'] = True

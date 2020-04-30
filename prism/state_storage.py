@@ -29,12 +29,14 @@ class StateStorage:
         self.graph = nx.DiGraph()
         self.root = None
 
-    def store_successor_multi(self, items: List[Tuple[Tuple[float, float]]], parent: Tuple[Tuple[float, float]]):
-        self.graph.add_edges_from([(parent, x) for x in items], p=1.0)
+    def store_successor_multi(self, items: List[Tuple[Tuple[Tuple[float, float]], Tuple[Tuple[float, float]]]]):
+        # first element is parent
+        self.graph.add_edges_from(items, p=1.0)
 
     def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], parent: Tuple[Tuple[float, float]]):
-        self.graph.add_edge(parent, successor, p=0.8, a=(successor, sticky_successor, parent))
-        self.graph.add_edge(parent, sticky_successor, p=0.2, a=(successor, sticky_successor, parent))  # same action
+        action_name = max([action_n for parent, successor, action_n in self.graph.edges(self.root, data='a', default=0)]) + 1
+        self.graph.add_edge(parent, successor, p=0.8, a=action_name)
+        self.graph.add_edge(parent, sticky_successor, p=0.2, a=action_name)  # same action
 
     def save_state(self, folder_path):
         nx.write_gpickle(self.graph, folder_path)

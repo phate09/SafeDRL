@@ -34,7 +34,7 @@ print(f"Finished building the tree")
 remainings = [current_interval]
 storage.root = (utils.round_tuple(current_interval, rounding), None)
 storage.graph.add_node(storage.root)
-horizon = 8
+horizon = 10
 t = 0
 # %%
 # for i in range(horizon):
