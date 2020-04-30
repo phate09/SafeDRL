@@ -36,7 +36,7 @@ print(f"Finished building the tree")
 remainings = [current_interval]
 storage.root = (utils.round_tuple(current_interval, rounding), None)
 storage.graph.add_node(storage.root)
-horizon = 8
+horizon = 9
 t = 0
 # %%
 # for i in range(horizon):
@@ -51,8 +51,8 @@ t = 0
 # pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
 # print("Checkpoint Saved...")
 # %%
-storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
+# storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+# rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 # %%
 iterations = 0
 time_from_last_save = time.time()
@@ -61,8 +61,8 @@ while True:
     split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon, max_iteration=-1,
                                                            allow_assign_actions=True)
     if time.time() - time_from_last_save >= 60 * 5:
-        storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-        rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+        # storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+        # rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
         print("Graph Saved - Checkpoint")
         time_from_last_save = time.time()
     if not split_performed or iterations == 1000:
@@ -72,8 +72,8 @@ while True:
         break
     iterations += 1
 # %%
-storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+# storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+# rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
 # %%
 # unroll_methods.remove_spurious_nodes(storage.graph)
 # storage.remove_unreachable()

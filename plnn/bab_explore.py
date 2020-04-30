@@ -34,43 +34,39 @@ class DomainExplorer:
         self.rounding = rounding
 
     def explore(self, net, domains: List[Tuple[Tuple[float, float]]], n_workers: int, debug=True):
-        # eps = 1e-3
-        # precision = 1e-3  # does not allow precision of any dimension to go under this amount
-        # min_area = 1e-5  # minimum area of the domain for it to be considered
-        global_min_area = float("inf")
-        shortest_dimension = float("inf")
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
         self.reset()  # reset statistics
         for domain in domains:
-            # normed_domain = np.copy(domain)
             tensor = torch.tensor(domain, dtype=torch.float64)
             queue.append(tensor)
             total_area += mosaic.utils.area_tensor(tensor)
-        last_save = time.time()
-        while len(queue) > 0:
-            while len(queue) > 0:
-                for i in range(min(len(queue), n_workers)):
-                    global_min_area, shortest_dimension = self.start_explore_one_domain(global_min_area, message_queue, net, queue, shortest_dimension)
-                while len(message_queue) > n_workers:
-                    message_queue = self.process_one_queue_element(message_queue, queue)
-                if debug:
-                    print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
-                          f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
-                          end="")
-                if time.time() - last_save > 60 * 10:  # every 5 minutes
-                    # save the queue and the safe/unsafe domains
-                    with open("./save/safe_domains.json", 'w+') as f:
-                        f.write(jsonpickle.encode(self.safe_domains))
-                    with open("./save/unsafe_domains.json", 'w+') as f:
-                        f.write(jsonpickle.encode(self.unsafe_domains))
-                    with open("./save/queue.json", 'w+') as f:
-                        f.write(jsonpickle.encode(queue))
-                    # print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
-                    last_save = time.time()
-            while len(message_queue) > 0:
-                message_queue = self.process_one_queue_element(message_queue, queue)
+        # last_save = time.time()
+        while len(queue) > 0 or len(message_queue) > 0:
+            to_process = self.split_and_queue(queue, net)
+            queue = []
+            while len(message_queue) < n_workers and len(to_process) != 0:
+                max_chunk_size = min(30, len(to_process))  # chunks of size 10
+                chunk = to_process[:max_chunk_size]
+                to_process = to_process[(max_chunk_size + 1):]
+                message_queue.insert(0, bab_remote.remote(chunk, self.safe_property_index, net))
+            message_ready, message_queue = ray.wait(message_queue, len(message_queue), 0.5)  # retrieve the next ready item, wait at max 0.5 secs
+            results = ray.get(message_ready)
+            for result in results:
+                for explore, safe, unsafe in result:
+                    if safe is not None:
+                        self.safe_domains.append(safe)
+                        self.safe_area += mosaic.utils.area_tensor(safe)
+                    if unsafe is not None:
+                        self.unsafe_domains.append(unsafe)
+                        self.unsafe_area += mosaic.utils.area_tensor(unsafe)
+                    if explore is not None:
+                        queue.insert(0, explore)
+            if debug:
+                print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
+                      f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
+                      end="")
         if debug:
             print("\n")
         # save the queue and the safe/unsafe domains
@@ -97,32 +93,57 @@ class DomainExplorer:
 
     hasIgnored = False
 
-    def start_explore_one_domain(self, global_min_area, message_queue, net, queue, shortest_dimension):
-        normed_domain = queue.pop(0)
-        # check max length
-        length, dim = self.max_length(normed_domain)
-        length = round(length, self.rounding)
-        if length <= self.precision_constraints[dim]:
-            self.store_approximation(normed_domain, net)
-        else:
-            # Genearate new, smaller (normalized) domains using box split.
-            ndoms = self.box_split(normed_domain, self.rounding)
-            for i, ndom_i in enumerate(ndoms):
-                area = mosaic.utils.area_tensor(ndom_i)
-                length, dim = self.max_length(ndom_i)
-                length = round(length, self.rounding)
-                min_length, dim = self.min_length(ndom_i)
-                min_length = round(min_length, self.rounding)
-                global_min_area = min(area, global_min_area)
-                shortest_dimension = min(length, shortest_dimension)
-                if length <= self.precision_constraints[dim]:  # or area < min_area:
-                    # too short or too small
-                    # approximate the interval to the closest datapoint and determine if it is safe or not
-                    self.store_approximation(ndom_i, net)
-                else:
-                    # queue up the next split at the beginning of the list
-                    message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
-        return global_min_area, shortest_dimension
+    # def start_explore_one_domain(self, global_min_area, message_queue, net, queue, shortest_dimension):
+    #     normed_domain = queue.pop(0)
+    #     # check max length
+    #     length, dim = self.max_length(normed_domain)
+    #     length = round(length, self.rounding)
+    #     if length <= self.precision_constraints[dim]:
+    #         self.store_approximation(normed_domain, net)
+    #     else:
+    #         # Genearate new, smaller (normalized) domains using box split.
+    #         ndoms = self.box_split(normed_domain, self.rounding)
+    #         for i, ndom_i in enumerate(ndoms):
+    #             area = mosaic.utils.area_tensor(ndom_i)
+    #             length, dim = self.max_length(ndom_i)
+    #             length = round(length, self.rounding)
+    #             min_length, dim = self.min_length(ndom_i)
+    #             min_length = round(min_length, self.rounding)
+    #             global_min_area = min(area, global_min_area)
+    #             shortest_dimension = min(length, shortest_dimension)
+    #             if length <= self.precision_constraints[dim]:  # or area < min_area:
+    #                 # too short or too small
+    #                 # approximate the interval to the closest datapoint and determine if it is safe or not
+    #                 self.store_approximation(ndom_i, net)
+    #             else:
+    #                 # queue up the next split at the beginning of the list
+    #                 message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
+    #     return global_min_area, shortest_dimension
+
+    def split_and_queue(self, queue, net):
+        message_queue = []
+        for normed_domain in queue:
+            # check max length
+            length, dim = self.max_length(normed_domain)
+            length = round(length, self.rounding)
+            if length <= self.precision_constraints[dim]:
+                self.store_approximation(normed_domain, net)
+            else:
+                # Genearate new, smaller (normalized) domains using box split.
+                ndoms = self.box_split(normed_domain, self.rounding)
+                for i, ndom_i in enumerate(ndoms):
+                    length, dim = self.max_length(ndom_i)
+                    length = round(length, self.rounding)
+                    min_length, dim = self.min_length(ndom_i)
+                    if length <= self.precision_constraints[dim]:  # or area < min_area:
+                        # too short or too small
+                        # approximate the interval to the closest datapoint and determine if it is safe or not
+                        self.store_approximation(ndom_i, net)
+                    else:
+                        # queue up the next split at the beginning of the list
+                        # message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
+                        message_queue.append(ndom_i)
+        return message_queue  # these need to be evaluated
 
     def store_approximation(self, ndom_i, net):
         area = mosaic.utils.area_tensor(ndom_i)
@@ -138,19 +159,20 @@ class DomainExplorer:
             # print("The value has been ignored succesfully")
             self.hasIgnored = True
 
-    def process_one_queue_element(self, message_queue, queue):
-        message_ready, message_queue = ray.wait(message_queue, min(len(message_queue), 10), 0.5)  # retrieve the next ready item
-        results = ray.get(message_ready)
-        for explore, safe, unsafe in results:
-            if safe is not None:
-                self.safe_domains.append(safe)
-                self.safe_area += mosaic.utils.area_tensor(safe)
-            if unsafe is not None:
-                self.unsafe_domains.append(unsafe)
-                self.unsafe_area += mosaic.utils.area_tensor(unsafe)
-            if explore is not None:
-                queue.insert(0, explore)
-        return message_queue
+    # def process_n_queue_element(self, n, message_queue, queue):
+    #     message_ready, message_queue = ray.wait(message_queue, min(len(message_queue), n), 0.5)  # retrieve the next ready item, wait at max 0.5 secs
+    #     results = ray.get(message_ready)
+    #     for result in results:
+    #         for explore, safe, unsafe in result:
+    #             if safe is not None:
+    #                 self.safe_domains.append(safe)
+    #                 self.safe_area += mosaic.utils.area_tensor(safe)
+    #             if unsafe is not None:
+    #                 self.unsafe_domains.append(unsafe)
+    #                 self.unsafe_area += mosaic.utils.area_tensor(unsafe)
+    #             if explore is not None:
+    #                 queue.insert(0, explore)
+    #     return message_queue
 
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:
         """Used for assigning an action value to an interval that is so small it gets approximated to the closest single datapoint according to #precision field"""
@@ -290,22 +312,21 @@ class DomainExplorer:
 
 
 @ray.remote
-def bab_remote(normed_domain, safe_property_index, net):
-    eps = 1e-6
-    dom_ub, dom_lb = net.get_boundaries(normed_domain, safe_property_index, False)
-    assert dom_lb <= dom_ub, "lb must be lower than ub"
-    if dom_ub < 0:
-        # discard
-        return None, None, normed_domain
-    if dom_lb >= 0:
-        # keep
-        return None, normed_domain, None
-    # if dom_ub - dom_lb < eps:
-    #     # ignore
-    #     return None, None, None
-    if dom_lb <= 0 <= dom_ub:
-        # explore
-        return normed_domain, None, None
+def bab_remote(normed_domains, safe_property_index, net):
+    result = []
+    for normed_domain in normed_domains:
+        dom_ub, dom_lb = net.get_boundaries(normed_domain, safe_property_index, False)
+        assert dom_lb <= dom_ub, "lb must be lower than ub"
+        if dom_ub < 0:
+            # discard
+            result.append((None, None, normed_domain))
+        if dom_lb >= 0:
+            # keep
+            result.append((None, normed_domain, None))
+        if dom_lb <= 0 <= dom_ub:
+            # explore
+            result.append((normed_domain, None, None))
+    return result
 
 
 def run_once(f):

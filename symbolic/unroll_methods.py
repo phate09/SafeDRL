@@ -470,7 +470,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
               storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in shortest_path and max(
                   [storage.graph.nodes[x].get('lb') for x in shortest_path[interval]]) < unsafe_threshold]
     max_path_length = min([x[1] for x in leaves])  # longest path to a leave
-    if max_path_length >= horizon * 2:  # if reached the min horizon, refine
+    if max_path_length >= horizon * 2:  # REFINE
         candidate_length_dict = defaultdict(list)
         # get the furthest nodes that have a maximum probability less than safe_threshold
         candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
@@ -490,7 +490,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
         to_analyse = [x for x in to_analyse if not storage.graph.nodes[(x, None)].get('fail')]  # filter out the terminal states
         iterations_needed = horizon - 1 - max_length // 2
         allow_assign_action = allow_assign_actions or False
-    else:
+    else: #EXPLORE
         to_analyse = []
         for interval, length, lb, ub in leaves:
             # path = nx.shortest_path(storage.graph, source=storage.root, target=interval)
