@@ -117,13 +117,13 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
         if len(remainings) != 0:
             if allow_assign_action:
                 print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-                remainings_merged = merge_supremum3(remainings)  # no need to assign a dummy action
+                remainings_merged = merge_supremum3(remainings, n_workers)  # no need to assign a dummy action
                 assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
                 print(f"Adding {len(assigned_intervals)} states to the tree")
                 union_states_total = rtree.tree_intervals()
                 union_states_total.extend(assigned_intervals)
-                merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True])]
-                merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False])]
+                merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True], n_workers)]
+                merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False], n_workers)]
                 union_states_total_merged = merged1 + merged2
                 rtree.load(union_states_total_merged)
             else:
@@ -389,7 +389,7 @@ def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]],
     return merge_supremum2(starting_intervals, show_bar)
 
 
-def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positional_method=False) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, positional_method=False) -> List[Tuple[Tuple[float, float]]]:
     if len(starting_intervals) <= 1:
         return starting_intervals
     dimensions = len(starting_intervals[0])
@@ -422,11 +422,12 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], positi
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
     proc_ids = []
-    for i, intervals in enumerate(working_list):
-        proc_ids.append(merge_supremum2_remote.remote(intervals))
     with StandardProgressBar(prefix="Merging intervals", max_value=len(proc_ids)) as bar:
-        while len(proc_ids) != 0:
-            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(len(proc_ids), 5), timeout=0.5)
+        while len(working_list) != 0 and len(proc_ids) != 0:
+            while len(proc_ids) < n_workers and len(working_list) != 0:
+                intervals = working_list.pop()
+                proc_ids.append(merge_supremum2_remote.remote(intervals))
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
             results = ray.get(ready_ids)
             for result in results:
                 if result is not None:
@@ -490,7 +491,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
         to_analyse = [x for x in to_analyse if not storage.graph.nodes[(x, None)].get('fail')]  # filter out the terminal states
         iterations_needed = horizon - 1 - max_length // 2
         allow_assign_action = allow_assign_actions or False
-    else: #EXPLORE
+    else:  # EXPLORE
         to_analyse = []
         for interval, length, lb, ub in leaves:
             # path = nx.shortest_path(storage.graph, source=storage.root, target=interval)

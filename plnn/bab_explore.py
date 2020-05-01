@@ -33,7 +33,7 @@ class DomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains: List[Tuple[Tuple[float, float]]], n_workers: int, debug=True):
+    def explore(self, net, domains: List[Tuple[Tuple[float, float]]], n_workers: int, debug=True, save=False):
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
@@ -69,14 +69,15 @@ class DomainExplorer:
                       end="")
         if debug:
             print("\n")
-        # save the queue and the safe/unsafe domains
-        with open("./save/safe_domains.json", 'w+') as f:
-            f.write(jsonpickle.encode(self.safe_domains))
-        with open("./save/unsafe_domains.json", 'w+') as f:
-            f.write(jsonpickle.encode(self.unsafe_domains))
-        with open("./save/queue.json", 'w+') as f:
-            f.write(jsonpickle.encode(queue))
-        print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+        if save:
+            # save the queue and the safe/unsafe domains
+            with open("./save/safe_domains.json", 'w+') as f:
+                f.write(jsonpickle.encode(self.safe_domains))
+            with open("./save/unsafe_domains.json", 'w+') as f:
+                f.write(jsonpickle.encode(self.unsafe_domains))
+            with open("./save/queue.json", 'w+') as f:
+                f.write(jsonpickle.encode(queue))
+            print(f"Saved at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
         # prepare stats
         stats = dict()
         # total_area = (self.safe_area + self.unsafe_area + self.ignore_area)
