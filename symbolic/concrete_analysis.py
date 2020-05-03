@@ -60,7 +60,7 @@ iterations = 0
 time_from_last_save = time.time()
 while True:
     print(f"Iteration {iterations}")
-    split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon, max_iteration=-1,
+    split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
                                                            allow_assign_actions=True, allow_merge=False)
     if time.time() - time_from_last_save >= 60 * 5:
         storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}_concrete.p")

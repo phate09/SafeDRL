@@ -470,7 +470,7 @@ def get_layers(graph: nx.DiGraph, root):
 
 
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
-                          unsafe_threshold=0.8, max_iteration=-1, allow_assign_actions=False, allow_merge=True):
+                          unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True):
     iteration = 0
     storage.recreate_prism()
 
