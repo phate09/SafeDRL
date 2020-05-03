@@ -69,7 +69,7 @@ def shrink(a, b):
 def interval_contains(a, b):
     """Condition used to check if an a touches b and partially covers it"""
     dimensions = len(a)
-    partial = all([(I.closed(*a[dimension]) & I.open(*b[dimension])).is_empty() == False for dimension in range(dimensions)])
+    partial = all([(I.closed(*a[dimension]) & I.open(*b[dimension])).is_empty() == False if not I.open(*b[dimension]).is_empty() else (I.closed(*a[dimension]) & I.closed(*b[dimension])).is_empty() == False  for dimension in range(dimensions)])
     return partial
 
 

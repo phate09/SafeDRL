@@ -42,6 +42,7 @@ class DomainExplorer:
             tensor = torch.tensor(domain, dtype=torch.float64)
             queue.append(tensor)
             total_area += mosaic.utils.area_tensor(tensor)
+        total_area = max(total_area, 1e-16)
         # last_save = time.time()
         while len(queue) > 0 or len(message_queue) > 0:
             to_process = self.split_and_queue(queue, net)

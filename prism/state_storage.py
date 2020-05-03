@@ -46,8 +46,10 @@ class StateStorage:
         if os.path.exists(folder_path):
             self.graph = nx.read_gpickle(folder_path)
             print("Mdp Loaded")
+            return True
         else:
             print(f"{folder_path} does not exist")
+            return False
 
     def mark_as_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
         for item in fail_states:

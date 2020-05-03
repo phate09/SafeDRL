@@ -107,7 +107,7 @@ def remove_spurious_nodes(graph: nx.DiGraph):
 
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
-                       allow_assign_action=True) -> List[Tuple[Tuple[float, float]]]:
+                       allow_assign_action=True, allow_merge=True) -> List[Tuple[Tuple[float, float]]]:
     if len(intervals) == 0:
         return []
     intervals_sorted = [utils.round_tuple(x, rounding) for x in sorted(intervals)]
@@ -117,7 +117,10 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
         if len(remainings) != 0:
             if allow_assign_action:
                 print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
-                remainings_merged = merge_supremum3(remainings, n_workers)  # no need to assign a dummy action
+                if allow_merge:
+                    remainings_merged = merge_supremum3(remainings, n_workers)  # no need to assign a dummy action
+                else:
+                    remainings_merged = remainings
                 assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
                 print(f"Adding {len(assigned_intervals)} states to the tree")
                 union_states_total = rtree.tree_intervals()
@@ -134,9 +137,12 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     list_assigned_action = []
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
-            merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
-            merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
-            successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            if allow_merge:
+                merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
+                merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
+                successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            else:
+                successors_merged = successors
             list_assigned_action.extend(successors_merged)
             storage.store_successor_multi([((interval_noaction, None), x) for x in successors_merged])  # store also the action
             bar.update(bar.value + 1)
@@ -147,8 +153,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     return next_to_compute
 
 
-def compute_successors(env, list_assigned_action, n_workers, rounding, storage):
-    next_states, terminal_states = abstract_step(list_assigned_action, env, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
+def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers, rounding, storage: StateStorage):
+    next_states, terminal_states = abstract_step(list_assigned_action, env_class, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states_dict = defaultdict(bool)
     terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))
     storage.mark_as_fail([(x, None) for x in terminal_states_list])
@@ -195,10 +201,16 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
         remaining_intervals = []
         while len(examine_intervals) != 0:
             examine_interval = examine_intervals.pop(0)
-            if not is_negligible(examine_interval):
-                state = utils.shrink(interval, examine_interval)
-                contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
-                if contains:
+            # if not is_negligible(examine_interval):
+            state = utils.shrink(interval, examine_interval)
+            contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
+            if contains:
+                if state == examine_interval:
+                    if action:
+                        union_safe_intervals.append(state)
+                    else:
+                        union_unsafe_intervals.append(state)
+                else:
                     points_of_interest = []
                     for dimension in range(dimensions):
                         points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
@@ -211,8 +223,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
                     permutations_of_interest = []
                     for j, permutation_idx in enumerate(permutations_indices):
                         permutations_of_interest.append(tuple(
-                            [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in
-                             range(dimensions)]))
+                            [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
                     for j, permutation in enumerate(permutations_of_interest):
                         if permutation != state:
                             if permutation != examine_interval:
@@ -224,10 +235,8 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
                                 union_safe_intervals.append(permutation)
                             else:
                                 union_unsafe_intervals.append(permutation)
-                else:
-                    remaining_intervals.append(examine_interval)
             else:
-                print("Discarded negligible in compute_remaining_intervals3")
+                remaining_intervals.append(examine_interval)  # else:  #     print("Discarded negligible in compute_remaining_intervals3")
         if debug:
             bar.update(i)
     if debug:
@@ -418,7 +427,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
                 local_working_list.append((resized, action))
             working_list.append(local_working_list)
     else:
-        working_list = utils.chunks(starting_intervals, 1000)
+        working_list = list(utils.chunks(starting_intervals, 1000))
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
     proc_ids = []
@@ -461,7 +470,7 @@ def get_layers(graph: nx.DiGraph, root):
 
 
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
-                          unsafe_threshold=0.8, max_iteration=-1, allow_assign_actions=False):
+                          unsafe_threshold=0.8, max_iteration=-1, allow_assign_actions=False, allow_merge=True):
     iteration = 0
     storage.recreate_prism()
 
@@ -502,7 +511,8 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
         # max_length = max_path_length
         # iterations_needed = horizon - max_length // 2
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action)
+        to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
+                                        allow_merge=allow_merge)
     iteration += 1
     return True
 
