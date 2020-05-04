@@ -78,4 +78,4 @@ rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e
 # storage.remove_unreachable()
 # storage.recreate_prism()
 # utils.save_graph_as_dot(storage.graph)
-utils.show_heatmap([(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, "lb")])
+utils.show_heatmap([(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["lb"])])

@@ -1,20 +1,18 @@
 # %%
 import itertools
 import os
-import pickle
 import time
 import numpy as np
 import gym
 import ray
-import importlib
 import mosaic.utils as utils
 from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import verification_runs.domain_explorers_load
-import matplotlib.pyplot as plt
 import networkx as nx
-from networkx.drawing.nx_pydot import write_dot
+
+from symbolic.unroll_methods import get_n_states
 
 
 def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rounding: int = 3, *, folder_path="/home/edoardo/Development/SafeDRL/save", max_iterations=-1, load_only=False):
@@ -70,7 +68,7 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
         while True:
             print(f"Iteration {iterations}")
             split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                                   allow_assign_actions=True, allow_merge=False)
+                                                                   allow_assign_actions=True, allow_merge=abstract)
             if time.time() - time_from_last_save >= 60 * 5:
                 storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
                 rtree.save_to_file(f"{folder_path}/union_states_total_{environment_name}_e{rounding}_{env_type}.p")
@@ -87,28 +85,13 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
     return storage, rtree
 
 
-def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
-    """
-    Returns the number of states up to horizon timesteps
-    :param storage:
-    :param horizon:
-    :return: a list containing the number of states in the graph
-    """
-    shortest_path_abstract = nx.shortest_path(storage.graph, source=storage.root)
-    n_states = []
-    for t in range(1, horizon):
-        leaves_abstract = [(interval, len(shortest_path_abstract[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
-                           interval in shortest_path_abstract and (len(shortest_path_abstract[interval]) - 1) < t * 2 and (len(shortest_path_abstract[interval]) - 1) % 2 == 0]
-        n_states.append(len(leaves_abstract))
-    return n_states
-
-
 if __name__ == '__main__':
-    horizon = 6
+    folder_path = "/home/edoardo/Development/SafeDRL/save"
+    horizon = 9
     precision = 2
     environment_name = "pendulum"
-    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False)
-    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False)
+    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=True, folder_path=folder_path)
+    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
     shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
     n_states_abstract = get_n_states(storage_abstract, horizon)
     n_states_concrete = get_n_states(storage_concrete, horizon)
@@ -126,3 +109,4 @@ if __name__ == '__main__':
     plt.xticks(np.arange(1, horizon, step=1))  # Set x label locations.
     # Display a figure.
     plt.show()
+    plt.savefig(f"{folder_path}/plot_states_{environment_name}_e{precision}_h{horizon}_{time.time()}.png")

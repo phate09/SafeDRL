@@ -69,7 +69,9 @@ def shrink(a, b):
 def interval_contains(a, b):
     """Condition used to check if an a touches b and partially covers it"""
     dimensions = len(a)
-    partial = all([(I.closed(*a[dimension]) & I.open(*b[dimension])).is_empty() == False if not I.open(*b[dimension]).is_empty() else (I.closed(*a[dimension]) & I.closed(*b[dimension])).is_empty() == False  for dimension in range(dimensions)])
+    partial = all(
+        [(I.closed(*a[dimension]) & I.open(*b[dimension])).is_empty() == False if not I.open(*b[dimension]).is_empty() else (I.closed(*a[dimension]) & I.closed(*b[dimension])).is_empty() == False for
+         dimension in range(dimensions)])
     return partial
 
 
@@ -172,9 +174,9 @@ def show_plot3d(*args):
     fig.show()
 
 
-def show_plot(*args):
+def show_plot(*args, legend: List = None):
     fig = go.Figure()
-    for interval_list in args:
+    for i, interval_list in enumerate(args):
         x_list = []
         y_list = []
         if len(interval_list) == 0:
@@ -188,7 +190,8 @@ def show_plot(*args):
             x_list.append(None)
             y_list.extend(y)
             y_list.append(None)
-        fig.add_scatter(x=x_list, y=y_list, fill="toself", hoveron="points")
+        name = legend[i] if legend is not None and len(legend) > i else None
+        fig.add_scatter(x=x_list, y=y_list, fill="toself", hoveron="points", name=name)
     fig.update_shapes(dict(xref='x', yref='y'))
     # fig['layout']['yaxis1'].update(title='', autorange=False)
     # fig['layout']['xaxis1'].update(title='', autorange=False)

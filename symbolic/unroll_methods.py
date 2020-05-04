@@ -19,6 +19,7 @@ from py4j.java_collections import ListConverter
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
 import mosaic.utils as utils
+import prism.state_storage
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
@@ -125,9 +126,12 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
                 print(f"Adding {len(assigned_intervals)} states to the tree")
                 union_states_total = rtree.tree_intervals()
                 union_states_total.extend(assigned_intervals)
-                merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True], n_workers)]
-                merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False], n_workers)]
-                union_states_total_merged = merged1 + merged2
+                if allow_merge:
+                    merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True], n_workers)]
+                    merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False], n_workers)]
+                    union_states_total_merged = merged1 + merged2
+                else:
+                    union_states_total_merged = union_states_total
                 rtree.load(union_states_total_merged)
             else:
                 raise Exception("Remainings is not 0 but allow_assign_action is False")
@@ -137,6 +141,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     list_assigned_action = []
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
+            # if storage.graph.nodes.get((interval_noaction, None)) is None or len(storage.graph.adj[(interval_noaction, None)]) == 0:  # only leaf nodes
             if allow_merge:
                 merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
                 merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
@@ -223,7 +228,8 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
                     permutations_of_interest = []
                     for j, permutation_idx in enumerate(permutations_indices):
                         permutations_of_interest.append(tuple(
-                            [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in range(dimensions)]))
+                            [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in
+                             range(dimensions)]))
                     for j, permutation in enumerate(permutations_of_interest):
                         if permutation != state:
                             if permutation != examine_interval:
@@ -556,7 +562,7 @@ def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], stor
     return split_performed, to_analyse
 
 
-def get_property_at_timestep(storage: StateStorage, t: int, property: str):
+def get_property_at_timestep(storage: StateStorage, t: int, properties: List[str]):
     path_length = nx.shortest_path_length(storage.graph, source=storage.root)
     candidate_length_dict = defaultdict(list)
     for id in path_length.keys():
@@ -567,5 +573,24 @@ def get_property_at_timestep(storage: StateStorage, t: int, property: str):
     list_to_show = []
     for x in candidate_length_dict[t]:
         attr = storage.graph.nodes[x]
-        list_to_show.append((x, attr.get(property, 0)))
+        single_result = [x]
+        for property in properties:
+            single_result.append(attr.get(property))
+        list_to_show.append(tuple(single_result))
     return list_to_show
+
+
+def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
+    """
+    Returns the number of states up to horizon timesteps
+    :param storage:
+    :param horizon:
+    :return: a list containing the number of states in the graph
+    """
+    shortest_path_abstract = nx.shortest_path(storage.graph, source=storage.root)
+    n_states = []
+    for t in range(1, horizon):
+        leaves_abstract = [(interval, len(shortest_path_abstract[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
+                           interval in shortest_path_abstract and (len(shortest_path_abstract[interval]) - 1) < t * 2 and (len(shortest_path_abstract[interval]) - 1) % 2 == 0]
+        n_states.append(len(leaves_abstract))
+    return n_states
