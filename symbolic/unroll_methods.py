@@ -138,24 +138,53 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
         else:  # if no more remainings exit
             break
     # show_plot(intersected_intervals, intervals_sorted)
+    if allow_merge:
+        intersected_intervals = premerge(intersected_intervals, n_workers)
     list_assigned_action = []
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
-            # if storage.graph.nodes.get((interval_noaction, None)) is None or len(storage.graph.adj[(interval_noaction, None)]) == 0:  # only leaf nodes
-            if allow_merge:
-                merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
-                merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
-                successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
-            else:
-                successors_merged = successors
-            list_assigned_action.extend(successors_merged)
-            storage.store_successor_multi([((interval_noaction, None), x) for x in successors_merged])  # store also the action
+            list_assigned_action.extend(successors)
+            storage.store_successor_multi([((interval_noaction, None), x) for x in successors])  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
     next_to_compute = compute_successors(env, list_assigned_action, n_workers, rounding, storage)
 
     # print(f"Finished")
     return next_to_compute
+
+
+def premerge(intersected_intervals, n_workers, show_bar=True):
+    proc_ids = []
+    merged_list = [(interval_noaction, successors) for interval_noaction, successors in intersected_intervals if len(successors) <= 1]
+    working_list = list(utils.chunks([(interval_noaction, successors) for interval_noaction, successors in intersected_intervals if len(successors) > 1], 200))
+    with StandardProgressBar(prefix="Premerging intervals ", max_value=len(working_list)) if show_bar else nullcontext() as bar:
+        while len(working_list) != 0 or len(proc_ids) != 0:
+            while len(proc_ids) < n_workers and len(working_list) != 0:
+                intervals = working_list.pop(0)
+                proc_ids.append(merge_successors.remote(intervals))
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
+            results = ray.get(ready_ids)
+            for result in results:
+                if result is not None:
+                    merged_list.extend(result)
+            if show_bar:
+                bar.update(bar.value + len(ready_ids))
+
+    return merged_list
+
+
+@ray.remote
+def merge_successors(intersected_intervals):
+    merged_list = []
+    for interval_noaction, successors in intersected_intervals:
+        if len(successors) != 1:
+            merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
+            merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
+            successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            merged_list.append((interval_noaction, successors_merged))
+        else:
+            merged_list.append((interval_noaction, successors))
+    return merged_list
 
 
 def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers, rounding, storage: StateStorage):
@@ -222,14 +251,18 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
                         points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
                         points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
                     points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
-                    point_of_interest_indices = [list(range(len(points_of_interest[dimension]) - 1)) for dimension in
+                    point_of_interest_indices = [list(range(max(1, len(points_of_interest[dimension]) - 1))) for dimension in
                                                  range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
                     permutations_indices = list(itertools.product(*point_of_interest_indices))
                     permutations_of_interest = []
                     for j, permutation_idx in enumerate(permutations_indices):
-                        permutations_of_interest.append(tuple(
-                            [(list(points_of_interest[dimension])[permutation_idx[dimension]], list(points_of_interest[dimension])[permutation_idx[dimension] + 1]) for dimension in
-                             range(dimensions)]))
+                        local_interval = []
+                        for dimension in range(dimensions):
+                            lb = points_of_interest[dimension][permutation_idx[dimension]]
+                            ub = points_of_interest[dimension][min(permutation_idx[dimension] + 1, len(points_of_interest[dimension]) - 1)]
+                            local_interval.append((lb, ub))
+                        permutations_of_interest.append(tuple(local_interval))
+
                     for j, permutation in enumerate(permutations_of_interest):
                         if permutation != state:
                             if permutation != examine_interval:
@@ -332,8 +365,12 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
                 new_boundaries = merge_iteration(boundaries, codes, c, tree, intervals)
                 boundaries = new_boundaries
             # show_plot(intervals, [(boundaries, True)])
-            new_group_tree = utils.create_tree([(boundaries, True)])  # add dummy action
-            remainings, _ = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
+            # new_group_tree = utils.create_tree([(boundaries, True)])  # add dummy action
+            # remainings, _ = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
+            remainings = []
+            for interval in intervals:
+                remaining, _, _ = compute_remaining_intervals3(interval, [(boundaries, True)], debug=False)
+                remainings.extend(remaining)
             merged_list.append(boundaries)
             if len(remainings) == 0:
                 break
@@ -404,7 +441,7 @@ def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]],
     return merge_supremum2(starting_intervals, show_bar)
 
 
-def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, positional_method=False) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
     if len(starting_intervals) <= 1:
         return starting_intervals
     dimensions = len(starting_intervals[0])
@@ -437,8 +474,8 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
     proc_ids = []
-    with StandardProgressBar(prefix="Merging intervals", max_value=len(proc_ids)) as bar:
-        while len(working_list) != 0 and len(proc_ids) != 0:
+    with StandardProgressBar(prefix="Merging intervals", max_value=len(working_list)) if show_bar else nullcontext() as bar:
+        while len(working_list) != 0 or len(proc_ids) != 0:
             while len(proc_ids) < n_workers and len(working_list) != 0:
                 intervals = working_list.pop()
                 proc_ids.append(merge_supremum2_remote.remote(intervals))
@@ -447,7 +484,8 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
             for result in results:
                 if result is not None:
                     merged_list.extend(result)
-            bar.update(bar.value + len(ready_ids))
+            if show_bar:
+                bar.update(bar.value + len(ready_ids))
     new_merged_list = merge_supremum2(merged_list)
     # show_plot(merged_list, new_merged_list)
     return new_merged_list
@@ -478,14 +516,15 @@ def get_layers(graph: nx.DiGraph, root):
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
                           unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True):
     iteration = 0
-    storage.recreate_prism()
+    storage.recreate_prism(horizon * 2)
 
     # terminal_states_dict = storage.get_terminal_states_dict()
     shortest_path = nx.shortest_path(storage.graph, source=storage.root)
-    leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
-              storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in shortest_path and max(
-                  [storage.graph.nodes[x].get('lb') for x in shortest_path[interval]]) < unsafe_threshold]
-    max_path_length = min([x[1] for x in leaves])  # longest path to a leave
+    # leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
+    #           storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in shortest_path and max(
+    #               [storage.graph.nodes[x].get('lb',0) for x in shortest_path[interval]]) < unsafe_threshold]
+    leaves = storage.get_leaves(shortest_path, unsafe_threshold, horizon * 2)
+    max_path_length = min([x[1] for x in leaves if x[1] % 2 == 0]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
     if max_path_length >= horizon * 2:  # REFINE
         candidate_length_dict = defaultdict(list)
         # get the furthest nodes that have a maximum probability less than safe_threshold
@@ -563,20 +602,14 @@ def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], stor
 
 
 def get_property_at_timestep(storage: StateStorage, t: int, properties: List[str]):
-    path_length = nx.shortest_path_length(storage.graph, source=storage.root)
-    candidate_length_dict = defaultdict(list)
-    for id in path_length.keys():
-        # if not terminal_states_dict[id]:  # ignore terminal states
-        if path_length.get(id) is not None:
-            candidate_length = path_length[id]
-            candidate_length_dict[candidate_length].append(id)
+    path_length = nx.single_source_dijkstra_path_length(storage.graph, source=storage.root)
     list_to_show = []
-    for x in candidate_length_dict[t]:
-        attr = storage.graph.nodes[x]
-        single_result = [x]
-        for property in properties:
-            single_result.append(attr.get(property))
-        list_to_show.append(tuple(single_result))
+    for x, attr in storage.graph.nodes.data():
+        if path_length.get(x) is not None and path_length.get(x) == t:
+            single_result = [x]
+            for property in properties:
+                single_result.append(attr.get(property))
+            list_to_show.append(tuple(single_result))
     return list_to_show
 
 

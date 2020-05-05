@@ -19,6 +19,7 @@ import plotly.express as px
 import importlib
 from symbolic.mesh_cube import get_mesh
 from networkx.drawing.nx_pydot import write_dot
+from colour import Color
 
 
 def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
@@ -200,12 +201,13 @@ def show_plot(*args, legend: List = None):
     return fig
 
 
-def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]]):
-    fig = go.Figure()
+def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, title=None, save_to: str = None, rounding=4):
+    fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
         return
-    probabilities = set(map(lambda x: x[1], interval_list))
-    newlist = [(x, [y[0] for y in interval_list if y[1] == x]) for x in sorted(probabilities)]
+    colors = list(Color("red").range_to(Color("blue"), (10 ** rounding) + 1))
+    probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits
+    newlist = [(x, [y[0] for y in interval_list if round(y[1], rounding) == x]) for x in sorted(probabilities)]
     for probability, intervals in newlist:
         x_list = []
         y_list = []
@@ -216,24 +218,25 @@ def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]]):
             x_list.append(None)
             y_list.extend(y)
             y_list.append(None)
-        color = assign_color(probability)
-        fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color, opacity=0.2, name=str(probability), marker=dict(size=1))  # hoveron="points"
+        value_int = int(round(probability, rounding) * (10 ** rounding))
+        color = colors[value_int].get_hex_l()
+        fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color, line={"color": color}, opacity=0.2, name=f"{probability:.{rounding}f}", marker=dict(size=1))  # hoveron="points"
     # for interval, probability in interval_list:
     #     x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
     #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
     #     color = assign_color(probability)
     #     fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color, opacity=0.2, line=dict(color=color), name=str(probability), hovertext=str(probability), marker=dict(size=0))
+    margin = go.layout.Margin(l=0,  # left margin
+                              r=0,  # right margin
+                              b=0,  # bottom margin
+                              # t=0  # top margin
+                              )
+    fig.update_layout(margin=margin)
+    if title is not None:
+        fig.update_layout(title=title, title_x=0.5)
     fig.show()
-
-
-def assign_color(value):
-    mapping = [(0.0, "rgb(165,0,38)"), (0.1111111111111111, "rgb(215,48,39)"), (0.2222222222222222, "rgb(244,109,67)"), (0.3333333333333333, "rgb(253,174,97)"),
-               (0.4444444444444444, "rgb(254,224,144)"), (0.5555555555555556, "rgb(224,243,248)"), (0.6666666666666666, "rgb(171,217,233)"), (0.7777777777777778, "rgb(116,173,209)"),
-               (0.8888888888888888, "rgb(69,117,180)"), (1.0, "rgb(49,54,149)")]
-    for prob, color in mapping:
-        if value <= prob:
-            return color
-    print("something wrong")
+    if save_to is not None:
+        fig.write_image(save_to, width=800, height=800)
 
 
 def count_elements(l):

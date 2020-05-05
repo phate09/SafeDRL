@@ -56,9 +56,16 @@ class StateStorage:
             self.graph.add_node(item)
             self.graph.nodes[item]['fail'] = True
 
-    def get_terminal_states_ids(self):
-        possible_fail_states = self.graph.nodes.data(data='fail', default=False)
-        return list([x[0] for x in possible_fail_states if x[1]])
+    def get_terminal_states_ids(self, dict_filter=None):
+        result = []
+        with StandardProgressBar(prefix="Fetching terminal states ", max_value=self.graph.number_of_nodes()) as bar:
+            for node, attr in self.graph.nodes.items():
+                if attr.get("fail"):
+                    if dict_filter is None or dict_filter[node]:
+                        result.append(node)  # possible_fail_states = self.graph.nodes.data(data='fail', default=False)
+                bar.update(bar.value + 1)
+        # return list([x[0] for x in possible_fail_states if x[1]])
+        return result
 
     def get_terminal_states_dict(self):
         return dict(self.graph.nodes.data(data='fail', default=False))
@@ -77,7 +84,13 @@ class StateStorage:
             print(f"removed {id}")
             self.graph.remove_node(id)
 
-    def recreate_prism(self):  # todo remake after using  networkx.relabel.convert_node_labels_to_integers
+    def get_leaves(self, shortest_path, unsafe_threshold,horizon):
+        leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in self.graph.nodes.data() if
+                  self.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and attributes.get('lb') is not None and interval in shortest_path and len(shortest_path[interval]) - 1<=horizon and max(
+                      [self.graph.nodes[x].get('lb', 0) for x in shortest_path[interval]]) < unsafe_threshold]
+        return leaves
+
+    def recreate_prism(self, max_t: int = None):
         gateway = JavaGateway()
         gateway.entry_point.reset_mdp()
         # mdp = self.gateway.entry_point.getMdpSimple()
@@ -86,14 +99,17 @@ class StateStorage:
         # fail_states_ids = self.get_terminal_states_ids()
         # java_list = ListConverter().convert(fail_states_ids, gateway._gateway_client)
         # gateway.entry_point.update_fail_label_list(java_list)
-        descendants = list(nx.algorithms.descendants(self.graph, self.root))  # descendants from 0
-        descendants.insert(0, self.root)
+        path_length = nx.shortest_path_length(self.graph, source=self.root)
+        # descendants = list(path_length.keys())  # descendants from 0
+        # descendants.insert(0, self.root)
         descendants_dict = defaultdict(bool)
-        for descendant in descendants:
-            descendants_dict[descendant] = True
+        for descendant in path_length.keys():
+            if max_t is None or path_length[descendant] <= max_t * 2:  # limit descendants to depth max_t
+                descendants_dict[descendant] = True
+        descendants_true = list(descendants_dict.keys())
         to_remove = []
         mapping = dict(zip(self.graph.nodes(), range(self.graph.number_of_nodes())))
-        with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants) + 1) as bar:
+        with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants_dict) + 1).start() as bar:
             for parent_id, successors in self.graph.adjacency():  # generate the edges
                 if descendants_dict[parent_id]:
                     if len(successors.items()) != 0:  # filter out non-reachable states
@@ -120,22 +136,18 @@ class StateStorage:
                     else:
                         # zero successors
                         pass
-                    bar.update(bar.value + 1)
-                else:
-                    # print(f"Non descending item found")
-                    to_remove.append(parent_id)
-                    pass
+                    bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
         # for id in to_remove:
         # print(f"removed {id}")
         # self.graph.remove_node(id)
-        terminal_states = [mapping[x] for x in self.get_terminal_states_ids()]
+        terminal_states = [mapping[x] for x in self.get_terminal_states_ids(descendants_dict)]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state
         solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
         solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
         # update the probabilities in the graph
-        with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants)) as bar:
-            for descendant in descendants:
+        with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
+            for descendant in descendants_true:
                 self.graph.nodes[descendant]['ub'] = solution_max[mapping[descendant]]
                 self.graph.nodes[descendant]['lb'] = solution_min[mapping[descendant]]
                 bar.update(bar.value + 1)

@@ -18,7 +18,7 @@ from symbolic.unroll_methods import get_n_states
 def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rounding: int = 3, *, folder_path="/home/edoardo/Development/SafeDRL/save", max_iterations=-1, load_only=False):
     gym.logger.set_level(40)
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-    local_mode = False
+    local_mode = True
     if not ray.is_initialized():
         ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -60,7 +60,7 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
                                                                                                    rounding)  # compute the action in each single state
             storage.graph.add_edges_from([(storage.root, x) for x in assigned_intervals], p=1.0)  # assign single intervals as direct successors of root
             next_to_compute = unroll_methods.compute_successors(env_class, assigned_intervals, n_workers, rounding, storage)  # compute successors and store result in graph
-            storage.save_state(f"{folder_path}/nx_graph_e{rounding}_{env_type}.p")
+            storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
     if not load_only:
         # %%
         iterations = 0
@@ -87,10 +87,10 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
 
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
-    horizon = 9
+    horizon = 6
     precision = 2
     environment_name = "pendulum"
-    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=True, folder_path=folder_path)
+    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
     storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
     shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
     n_states_abstract = get_n_states(storage_abstract, horizon)
