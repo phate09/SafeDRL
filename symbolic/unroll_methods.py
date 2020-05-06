@@ -112,8 +112,11 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
     if len(intervals) == 0:
         return []
     intervals_sorted = [utils.round_tuple(x, rounding) for x in sorted(intervals)]
+    remainings = intervals_sorted
+    intersected_intervals = []
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals_sorted, rtree.tree)  # checks areas not covered by total intervals
+        remainings, intersected_intervals_local = compute_remaining_intervals4_multi(remainings, rtree.tree)  # checks areas not covered by total intervals
+        intersected_intervals.append(intersected_intervals_local)
         remainings = sorted(remainings)
         if len(remainings) != 0:
             if allow_assign_action:
@@ -295,7 +298,7 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[float
     chunk_size = 200
     for i, chunk in enumerate(utils.chunks(intervals_with_relevants, chunk_size)):
         proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
-    with StandardProgressBar(prefix="Computing remaining intervals", max_value=len(proc_ids)) if debug else nullcontext() as bar:
+    with StandardProgressBar(prefix="Computing remaining intervals ", max_value=len(proc_ids)) if debug else nullcontext() as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids)
             results = ray.get(ready_ids[0])

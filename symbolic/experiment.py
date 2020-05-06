@@ -18,7 +18,7 @@ from symbolic.unroll_methods import get_n_states
 def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rounding: int = 3, *, folder_path="/home/edoardo/Development/SafeDRL/save", max_iterations=-1, load_only=False):
     gym.logger.set_level(40)
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-    local_mode = True
+    local_mode = False
     if not ray.is_initialized():
         ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
     n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -68,7 +68,7 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
         while True:
             print(f"Iteration {iterations}")
             split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                                   allow_assign_actions=True, allow_merge=abstract)
+                                                                   allow_assign_actions=True, allow_merge=False)
             if time.time() - time_from_last_save >= 60 * 5:
                 storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
                 rtree.save_to_file(f"{folder_path}/union_states_total_{environment_name}_e{rounding}_{env_type}.p")
@@ -87,11 +87,11 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
 
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
-    horizon = 6
-    precision = 2
-    environment_name = "pendulum"
-    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
+    horizon = 5
+    precision = 4
+    environment_name = "cartpole"
     storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
+    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
     shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
     n_states_abstract = get_n_states(storage_abstract, horizon)
     n_states_concrete = get_n_states(storage_concrete, horizon)
@@ -108,5 +108,5 @@ if __name__ == '__main__':
     plt.legend()
     plt.xticks(np.arange(1, horizon, step=1))  # Set x label locations.
     # Display a figure.
-    plt.show()
     plt.savefig(f"{folder_path}/plot_states_{environment_name}_e{precision}_h{horizon}_{time.time()}.png")
+    plt.show()
