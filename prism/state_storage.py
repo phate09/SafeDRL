@@ -84,15 +84,15 @@ class StateStorage:
             print(f"removed {id}")
             self.graph.remove_node(id)
 
-    def get_leaves(self, shortest_path, unsafe_threshold,horizon):
-        leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in self.graph.nodes.data() if
-                  self.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and attributes.get('lb') is not None and interval in shortest_path and len(shortest_path[interval]) - 1<=horizon and max(
-                      [self.graph.nodes[x].get('lb', 0) for x in shortest_path[interval]]) < unsafe_threshold]
+    def get_leaves(self, shortest_path, unsafe_threshold, horizon):
+        leaves = [((interval,action), len(shortest_path[(interval,action)]) - 1, attributes.get('lb'), attributes.get('ub')) for (interval,action), attributes in self.graph.nodes.data() if
+                  self.graph.out_degree((interval,action)) == 0 and not attributes.get('fail') and action is None and not attributes.get('ignore') and attributes.get('ub') is not None and (interval,action) in shortest_path and len(
+                      shortest_path[(interval,action)]) - 1 <= horizon]
         return leaves
 
     def recreate_prism(self, max_t: int = None):
         gateway = JavaGateway()
-        gateway.entry_point.reset_mdp()
+        # gateway.entry_point.reset_mdp()
         # mdp = self.gateway.entry_point.getMdpSimple()
         mdp = gateway.entry_point.reset_mdp()
         gateway.entry_point.add_states(self.graph.number_of_nodes())
@@ -143,8 +143,8 @@ class StateStorage:
         terminal_states = [mapping[x] for x in self.get_terminal_states_ids(descendants_dict)]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state
-        solution_min = gateway.entry_point.check_state_list(terminal_states_java, True)
-        solution_max = gateway.entry_point.check_state_list(terminal_states_java, False)
+        solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
+        solution_max = list(gateway.entry_point.check_state_list(terminal_states_java, False))
         # update the probabilities in the graph
         with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
             for descendant in descendants_true:

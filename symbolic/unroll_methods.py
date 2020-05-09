@@ -111,12 +111,11 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
                        allow_assign_action=True, allow_merge=True) -> List[Tuple[Tuple[float, float]]]:
     if len(intervals) == 0:
         return []
-    intervals_sorted = [utils.round_tuple(x, rounding) for x in sorted(intervals)]
-    remainings = intervals_sorted
-    intersected_intervals = []
+    intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
+    # remainings = intervals_sorted
+    # intersected_intervals = []
     while True:
-        remainings, intersected_intervals_local = compute_remaining_intervals4_multi(remainings, rtree.tree)  # checks areas not covered by total intervals
-        intersected_intervals.append(intersected_intervals_local)
+        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals_sorted, rtree.tree)  # checks areas not covered by total intervals
         remainings = sorted(remainings)
         if len(remainings) != 0:
             if allow_assign_action:
@@ -334,18 +333,12 @@ def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]
     return sorted(total)
 
 
-def filter_relevant_intervals_action(tree, current_interval: Tuple[Tuple[Tuple[float, float]], bool]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    action = current_interval[1]
-    relevants = filter_relevant_intervals3(tree, current_interval[0])
-    relevants = [x for x in relevants if x[1] == action]  # filter only intervals with matching action
-    return relevants
-
-
 def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_bar=True) -> List[Tuple[Tuple[float, float]]]:
     """merge all the intervals provided, assumes they all have the same action"""
     if len(starting_intervals) <= 1:
         return starting_intervals
-    intervals: List[Tuple[Tuple[float, float]]] = [x for x in starting_intervals if not is_negligible(x)]  # remove size 0 intervals
+    # intervals: List[Tuple[Tuple[float, float]]] = [x for x in starting_intervals if not is_negligible(x)]  # remove size 0 intervals
+    intervals = starting_intervals
     if len(intervals) <= 1:
         return intervals
     state_size = len(intervals[0])
@@ -367,6 +360,8 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
             for c, code in enumerate(codes):
                 new_boundaries = merge_iteration(boundaries, codes, c, tree, intervals)
                 boundaries = new_boundaries
+            if len(merged_list) != 0 and merged_list[len(merged_list) - 1] == boundaries:
+                print("endless loop")
             # show_plot(intervals, [(boundaries, True)])
             # new_group_tree = utils.create_tree([(boundaries, True)])  # add dummy action
             # remainings, _ = compute_remaining_intervals4_multi(intervals, new_group_tree, debug=False)
@@ -374,6 +369,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
             for interval in intervals:
                 remaining, _, _ = compute_remaining_intervals3(interval, [(boundaries, True)], debug=False)
                 remainings.extend(remaining)
+
             merged_list.append(boundaries)
             if len(remainings) == 0:
                 break
@@ -405,14 +401,23 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
             flattened_bounds.append(bounds[d])  # starting_coordinate.append(float(bounds[d][int(previous_codes[len(previous_codes)-1][d])]))#len(previous_codes)-1
 
     relevant_intervals = filter_relevant_intervals3(tree, tuple(flattened_bounds))
+    # filtered = relevant_intervals
     # filter_not in bounds
     filtered = []
     for x, action in relevant_intervals:
-        suitable = all(x[d][1] > bounds[d][0] and x[d][0] < bounds[d][1] for d in range(len(x)))
+        suitable = True  # all(x[d][1] > bounds[d][0] and x[d][0] < bounds[d][1] for d in range(len(x)))
+        for d in range(len(x)):
+            accept = x[d][1] == x[d][0] or (x[d][1] > bounds[d][0] and x[d][0] < bounds[d][1])
+            if not accept:
+                suitable = False
+                break
         if suitable:
             filtered.append((x, action))
         else:
             pass
+    if len(filtered) == 0:
+        relevant_intervals = filter_relevant_intervals3(tree, tuple(flattened_bounds))
+        return bounds
     for d in range(dimensions):
 
         direction = int(previous_codes[1][d])  # determine upper or lower bound
@@ -473,7 +478,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
                 local_working_list.append((resized, action))
             working_list.append(local_working_list)
     else:
-        working_list = list(utils.chunks(starting_intervals, 1000))
+        working_list = list(utils.chunks(starting_intervals, min(1000, max(int(len(starting_intervals) / n_workers), 1))))
     # intervals = starting_intervals
     merged_list: List[Tuple[Tuple[float, float]]] = []
     proc_ids = []
@@ -517,50 +522,41 @@ def get_layers(graph: nx.DiGraph, root):
 
 
 def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
-                          unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True):
+                          unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True, allow_refine=True):
     iteration = 0
     storage.recreate_prism(horizon * 2)
-
-    # terminal_states_dict = storage.get_terminal_states_dict()
     shortest_path = nx.shortest_path(storage.graph, source=storage.root)
-    # leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
-    #           storage.graph.out_degree(interval) == 0 and not attributes.get('fail') and not attributes.get('ignore') and interval in shortest_path and max(
-    #               [storage.graph.nodes[x].get('lb',0) for x in shortest_path[interval]]) < unsafe_threshold]
     leaves = storage.get_leaves(shortest_path, unsafe_threshold, horizon * 2)
-    max_path_length = min([x[1] for x in leaves if x[1] % 2 == 0]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
+    leaves = [x for x in leaves if x[1] % 2 == 0]
+    max_path_length = min([x[1] for x in leaves]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
     if max_path_length >= horizon * 2:  # REFINE
-        candidate_length_dict = defaultdict(list)
-        # get the furthest nodes that have a maximum probability less than safe_threshold
-        candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
-                attributes.get('lb') is not None and attributes.get('lb') < unsafe_threshold and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get(
-            'fail') and not is_small(interval[0], precision, rounding))]
-        for id, lb, ub in candidates_ids:
-            if shortest_path.get(id) is not None:
-                candidate_length = len(shortest_path[id])
-                candidate_length_dict[candidate_length].append((id, lb, ub))
-        odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1]
-        if len(odd_layers) == 0:
+        if allow_refine:
+            candidate_length_dict = defaultdict(list)
+            # get the furthest nodes that have a maximum probability less than safe_threshold
+            candidates_ids = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if (
+                    attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('fail') and action is not None and not is_small(
+                interval, precision, rounding))]
+            for id, lb, ub in candidates_ids:
+                if shortest_path.get(id) is not None:
+                    candidate_length = len(shortest_path[id]) - 1
+                    candidate_length_dict[candidate_length].append((id, lb, ub))
+            odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1 and x < horizon * 2]
+            if len(odd_layers) == 0:
+                return False
+            max_length = min(odd_layers)  # get only odd numbers
+            t_ids = [x[0] for x in candidate_length_dict[max_length]]
+            split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
+            next_states = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+        else:
             return False
-        max_length = min(odd_layers)  # get only odd numbers
-        t_ids = [x[0] for x in candidate_length_dict[max_length]]
-        split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
-        to_analyse = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
-        to_analyse = [x for x in to_analyse if not storage.graph.nodes[(x, None)].get('fail')]  # filter out the terminal states
-        iterations_needed = horizon - 1 - max_length // 2
-        allow_assign_action = allow_assign_actions or False
     else:  # EXPLORE
         to_analyse = []
-        for interval, length, lb, ub in leaves:
-            # path = nx.shortest_path(storage.graph, source=storage.root, target=interval)
-            # worst_probability = max([storage.graph.nodes[x].get('lb') for x in path])
+        for (interval, action), length, lb, ub in leaves:
             if length == max_path_length:
-                to_analyse.append(interval[0])  # just interval no action
-        # to_analyse = [x[0][0] for x in get_layers(storage.graph, storage.root)[max_path_length]]
-        # max_length = max_path_length
-        # iterations_needed = horizon - max_length // 2
+                to_analyse.append(interval)  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        to_analyse = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
-                                        allow_merge=allow_merge)
+        next_states = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
+                                         allow_merge=allow_merge)
     iteration += 1
     return True
 
@@ -575,10 +571,10 @@ def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], stor
     for interval in ids_split:
 
         interval_probability = (storage.graph.nodes[interval]['lb'], storage.graph.nodes[interval]['ub'])
-        if interval_probability[0] >= unsafe_threshold:  # high probability of encountering a terminal state
-            unsafe_count += 1
-            intervals_unsafe.append(interval)
-        elif interval_probability[1] <= safe_threshold:  # low probability of not encountering a terminal state
+        # if interval_probability[0] >= unsafe_threshold:  # high probability of encountering a terminal state
+        #     unsafe_count += 1
+        #     intervals_unsafe.append(interval)
+        if interval_probability[1] <= safe_threshold:  # low probability of not encountering a terminal state
             safe_count += 1
             intervals_safe.append(interval)
         elif is_small(interval[0], precision, rounding):

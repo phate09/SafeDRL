@@ -201,11 +201,56 @@ def show_plot(*args, legend: List = None):
     return fig
 
 
+def p_chart(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, title=None, save_to: str = None, rounding=4):
+    fig: go.Figure = go.Figure()
+    if len(interval_list) == 0:
+        return
+    colors = list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
+    probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits
+    newlist = [(x, [y[0] for y in interval_list if round(y[1], rounding) == x]) for x in sorted(probabilities)]
+    areas = []
+    probabilities = []
+    total_area = sum([area_tuple(y[0]) for y in interval_list])
+    for probability, intervals in newlist:
+        x_list = []
+        y_list = []
+        for interval in intervals:
+            x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
+            y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
+            x_list.extend(x)
+            x_list.append(None)
+            y_list.extend(y)
+            y_list.append(None)
+        value_int = int(round(probability, rounding) * (10 ** rounding))
+        color = colors[value_int].get_hex_l()
+        # fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color, line={"color": color}, opacity=0.2, name=f"{probability:.{rounding}f}", marker=dict(size=1))  # hoveron="points"
+        area = sum([area_tuple(x) for x in intervals])
+        areas.append(area)
+        probabilities.append(str(probability))
+        fig.add_bar(x=[probability], y=[area/total_area], marker_color=color,name=f"{probability:.{rounding}f}")
+    # for interval, probability in interval_list:
+    #     x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
+    #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
+    #     color = assign_color(probability)
+    #     fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color, opacity=0.2, line=dict(color=color), name=str(probability), hovertext=str(probability), marker=dict(size=0))
+    margin = go.layout.Margin(l=0,  # left margin
+                              r=0,  # right margin
+                              b=0,  # bottom margin
+                              # t=0  # top margin
+                              )
+    fig.update_layout(margin=margin,xaxis_type="category")#,yaxis_type="log"
+    if title is not None:
+        fig.update_layout(title=title, title_x=0.5)
+    fig.show()
+    if save_to is not None:
+        fig.write_image(save_to, width=800, height=800)
+
+
 def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, title=None, save_to: str = None, rounding=4):
     fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
         return
-    colors = list(Color("red").range_to(Color("blue"), (10 ** rounding) + 1))
+    colors = list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
     probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits
     newlist = [(x, [y[0] for y in interval_list if round(y[1], rounding) == x]) for x in sorted(probabilities)]
     for probability, intervals in newlist:

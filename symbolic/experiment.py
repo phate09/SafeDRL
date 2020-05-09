@@ -11,6 +11,7 @@ import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import verification_runs.domain_explorers_load
 import networkx as nx
+from datetime import datetime
 
 from symbolic.unroll_methods import get_n_states
 
@@ -63,13 +64,14 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
             storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
     if not load_only:
         # %%
+        print(f"Start time: {datetime.now():%d/%m/%Y %H:%M:%S}")
         iterations = 0
         time_from_last_save = time.time()
         while True:
             print(f"Iteration {iterations}")
             split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                                   allow_assign_actions=True, allow_merge=False)
-            if time.time() - time_from_last_save >= 60 * 5:
+                                                                   allow_assign_actions=True, allow_merge=abstract,allow_refine = False)
+            if time.time() - time_from_last_save >= 60 * 2:
                 storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
                 rtree.save_to_file(f"{folder_path}/union_states_total_{environment_name}_e{rounding}_{env_type}.p")
                 print("Graph Saved - Checkpoint")
@@ -82,25 +84,26 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
         # %%
         storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
         rtree.save_to_file(f"{folder_path}/union_states_total_{environment_name}_e{rounding}_{env_type}.p")
+        print(f"End time: {datetime.now():%d/%m/%Y %H:%M:%S}")
     return storage, rtree
 
 
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
-    horizon = 5
-    precision = 4
-    environment_name = "cartpole"
+    horizon = 7
+    precision = 2
+    environment_name = "pendulum"
     storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
-    storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
-    shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
     n_states_abstract = get_n_states(storage_abstract, horizon)
-    n_states_concrete = get_n_states(storage_concrete, horizon)
+    # storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
+    # shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
+    # n_states_concrete = get_n_states(storage_concrete, horizon)
     import matplotlib.pyplot as plt
 
     # line 1 points
     time_steps = list(range(1, horizon))
     plt.plot(time_steps, n_states_abstract, label="abstract")
-    plt.plot(time_steps, n_states_concrete, label="concrete")
+    # plt.plot(time_steps, n_states_concrete, label="concrete")
     plt.xlabel('timesteps')
     plt.ylabel('# states')
     plt.title(f'Comparison of # of states in {environment_name} environment')

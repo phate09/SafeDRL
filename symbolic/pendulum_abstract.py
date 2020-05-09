@@ -135,7 +135,8 @@ class PendulumEnv(gym.Env):
 
         self.state = np.array([newth, newthdot])
         done = not -self.max_angle < newth < self.max_angle
-        return self.state, -costs, done, {}
+        reward = 1 if not done else -100
+        return self.state, reward, done, {}
 
     def reset(self):
         high = np.array([np.pi / 4, 1])

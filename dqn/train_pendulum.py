@@ -50,9 +50,9 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             action = agent.act(state, eps.get(i_episode))
             next_state, reward, done, _ = env.step(action)  # send the action to the environment
             agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
-            if np.random.rand() > 0.8 and not done:
-                next_state, reward, done, _ = env.step(action)
-                agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+            # if np.random.rand() > 0.8 and not done:
+            #     next_state, reward, done, _ = env.step(action)
+            #     agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
             state = next_state
             score += reward
             if done:
