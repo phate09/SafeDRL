@@ -93,15 +93,17 @@ if __name__ == '__main__':
     horizon = 7
     precision = 2
     environment_name = "pendulum"
-    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
+    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=True, folder_path=folder_path)
     n_states_abstract = get_n_states(storage_abstract, horizon)
+    print(f"Number of states at different timesteps:")
+    print(n_states_abstract)
     # storage_concrete, tree_concrete = experiment(environment_name, horizon, False, precision, load_only=False, folder_path=folder_path)
     # shortest_path_concrete = nx.shortest_path(storage_concrete.graph, source=storage_concrete.root)
     # n_states_concrete = get_n_states(storage_concrete, horizon)
     import matplotlib.pyplot as plt
 
     # line 1 points
-    time_steps = list(range(1, horizon))
+    time_steps = list(range(1, horizon+1))
     plt.plot(time_steps, n_states_abstract, label="abstract")
     # plt.plot(time_steps, n_states_concrete, label="concrete")
     plt.xlabel('timesteps')
@@ -109,7 +111,7 @@ if __name__ == '__main__':
     plt.title(f'Comparison of # of states in {environment_name} environment')
     # show a legend on the plot
     plt.legend()
-    plt.xticks(np.arange(1, horizon, step=1))  # Set x label locations.
+    plt.xticks(np.arange(1, horizon+1, step=1))  # Set x label locations.
     # Display a figure.
     plt.savefig(f"{folder_path}/plot_states_{environment_name}_e{precision}_h{horizon}_{time.time()}.png")
     plt.show()

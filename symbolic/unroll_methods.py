@@ -621,7 +621,7 @@ def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
     """
     shortest_path_abstract = nx.shortest_path(storage.graph, source=storage.root)
     n_states = []
-    for t in range(1, horizon):
+    for t in range(1, horizon+1):
         leaves_abstract = [(interval, len(shortest_path_abstract[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
                            interval in shortest_path_abstract and (len(shortest_path_abstract[interval]) - 1) < t * 2 and (len(shortest_path_abstract[interval]) - 1) % 2 == 0]
         n_states.append(len(leaves_abstract))

@@ -1,7 +1,5 @@
-import networkx as nx
-
 import prism.state_storage
-from prism.shared_rtree import SharedRtree
+from mosaic.utils import pca_map
 import mosaic.utils as utils
 import symbolic.unroll_methods as unroll_methods
 
@@ -15,18 +13,18 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
     if plot_type == "lb":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["lb"])]
         # if state_size > 2:
-            # results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
-        utils.show_heatmap(results, title="Heatmap of the lower bound measured at the initial state", save_to=save_path, rounding=3)
+        # results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
+        utils.show_heatmap(results, save_to=save_path, rounding=3)  # , title="Heatmap of the lower bound measured at the initial state"
     elif plot_type == "ub":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
         if state_size > 2:
             results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
-        utils.show_heatmap(results, title="Heatmap of the upper bound measured at the initial state", save_to=save_path, rounding=2)
+        utils.show_heatmap(results, save_to=save_path, rounding=2)  # , title="Heatmap of the upper bound measured at the initial state"
     elif plot_type == "error":
         results = [(x, ub - lb) for (x, action), lb, ub in unroll_methods.get_property_at_timestep(storage, 1, ["lb", "ub"])]  # difference between boundaries
         # if state_size > 2:
         #     results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
-        utils.show_heatmap(results, title="Heatmap of the probability error measured at the initial state", save_to=save_path, rounding=3)
+        utils.show_heatmap(results, save_to=save_path, rounding=3)  # title="Heatmap of the probability error measured at the initial state"
     elif plot_type == "safe_unsafe":
         results = [(x, lb, ub) for (x, action), lb, ub in unroll_methods.get_property_at_timestep(storage, 1, ["lb", "ub"])]
         safe = []
@@ -40,9 +38,12 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
             else:
                 undecidable.append(x)
         utils.show_plot(safe, unsafe, undecidable, legend=["Safe", "Unsafe", "Undecidable"])
-    elif plot_type=="p_chart":
+    elif plot_type == "p_chart":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
-        utils.p_chart(results, title="Barchart of volumes in the initial state grouped by the upper bound probability ", save_to=save_path, rounding=2)
+        utils.p_chart(results, save_to=save_path, rounding=2)#, title="Barchart of volumes in the initial state grouped by the upper bound probability "
+    elif plot_type == "pca":
+        results = [(x, utils.centre_tuple(x), utils.area_tuple(x), action, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
+        pca_map(results, save_path, state_size)
     else:
         raise Exception("Option for plot_type not recognised")
 
@@ -50,8 +51,8 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
     horizon = 7
-    rounding = 2
-    environment_name = "pendulum"
+    rounding = 3
+    environment_name = "cartpole"
     abstract = True
     env_type = "concrete" if not abstract else "abstract"
     storage = prism.state_storage.StateStorage()
@@ -62,11 +63,5 @@ if __name__ == '__main__':
         storage.root = x
         break
     storage.recreate_prism(horizon)
-    # shortest_path = nx.shortest_path(storage.graph, source=storage.root)
-    # leaves = storage.get_leaves(shortest_path, 0.8, horizon)
-    # max_path_length = min([x[1] for x in leaves]) if len(leaves) != 0 else horizon * 2  # longest path to a leave
-    # horizon = int(min(horizon, max_path_length / 2))
-    # storage.recreate_prism(horizon)
-    plot(environment_name, storage, folder_path=folder_path, plot_type="ub", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_ub.svg")
+    plot(environment_name, storage, folder_path=folder_path, plot_type="pca", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_pca.svg")
     plot(environment_name, storage, folder_path=folder_path, plot_type="p_chart", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_p_chart.svg")
-    # plot(environment_name, storage, folder_path=folder_path, plot_type="error", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_error.svg")

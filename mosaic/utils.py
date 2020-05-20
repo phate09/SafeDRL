@@ -7,6 +7,7 @@ from functools import reduce
 from typing import Tuple, List
 
 import networkx as nx
+import pandas as pd
 import plotly.graph_objects as go
 import intervals as I
 import numpy as np
@@ -14,9 +15,14 @@ import ray
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from plotly import express as px
 from rtree import index
 import plotly.express as px
 import importlib
+
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 from symbolic.mesh_cube import get_mesh
 from networkx.drawing.nx_pydot import write_dot
 from colour import Color
@@ -51,6 +57,11 @@ def area_tuple(domain: Tuple[Tuple[float, float]]):
     dimensions = [abs(x[1] - x[0]) for x in domain]
     area = reduce(operator.mul, dimensions, 1)
     return area
+
+
+def centre_tuple(domain: Tuple[Tuple[float, float]]) -> Tuple[float]:
+    centre = tuple([(x[1] + x[0]) / 2 for x in domain])
+    return centre
 
 
 @ray.remote
@@ -227,7 +238,7 @@ def p_chart(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, ti
         area = sum([area_tuple(x) for x in intervals])
         areas.append(area)
         probabilities.append(str(probability))
-        fig.add_bar(x=[probability], y=[area/total_area], marker_color=color,name=f"{probability:.{rounding}f}")
+        fig.add_bar(x=[probability], y=[area / total_area], marker_color=color, name=f"{probability:.{rounding}f}")
     # for interval, probability in interval_list:
     #     x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
     #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
@@ -236,9 +247,9 @@ def p_chart(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, ti
     margin = go.layout.Margin(l=0,  # left margin
                               r=0,  # right margin
                               b=0,  # bottom margin
-                              # t=0  # top margin
+                              t=0  # top margin
                               )
-    fig.update_layout(margin=margin,xaxis_type="category")#,yaxis_type="log"
+    fig.update_layout(margin=margin, xaxis_type="category")  # ,yaxis_type="log"
     if title is not None:
         fig.update_layout(title=title, title_x=0.5)
     fig.show()
@@ -274,7 +285,7 @@ def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], 
     margin = go.layout.Margin(l=0,  # left margin
                               r=0,  # right margin
                               b=0,  # bottom margin
-                              # t=0  # top margin
+                              t=0  # top margin
                               )
     fig.update_layout(margin=margin)
     if title is not None:
@@ -336,3 +347,25 @@ def inplace_change(filename, replace_list: List[Tuple[str, str]]):
         for old, new in replace_list:
             s = s.replace(old, new)
         f.write(s)
+
+
+def pca_map(results, save_path, state_size):
+    data = [tuple([x for x in centre]) + (area, action, prob) for (interval, centre, area, action, prob) in results]
+    main_frame: pd.DataFrame = pd.DataFrame(data)
+    x = StandardScaler().fit_transform(main_frame.iloc[:, 0:state_size])
+    pca = PCA(n_components=2)
+    pca.fit(x)
+    principalComponents = pca.transform(x)
+    pca_pd = pd.DataFrame(principalComponents, columns=["A", "B"])
+    pca_pd.insert(2, "area", main_frame.iloc[:, state_size])
+    pca_pd.insert(3, "prob", main_frame.iloc[:, state_size + 2])
+    fig = px.scatter(pca_pd, x="A", y="B", size="area", color="prob", size_max=100, height=1200)  # ,animation_frame="t"
+    margin = go.layout.Margin(l=0,  # left margin
+                              r=0,  # right margin
+                              # b=0,  # bottom margin
+                              t=0  # top margin
+                              )
+    fig.update_layout(margin=margin)
+    fig.write_image(save_path, width=800, height=800)
+    fig.show()
+    return fig
