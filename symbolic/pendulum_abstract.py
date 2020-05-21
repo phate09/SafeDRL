@@ -52,8 +52,16 @@ class PendulumEnv_abstract(gym.Env):
         newthdot = clip_interval(newthdot, -self.max_speed, self.max_speed)  # pylint: disable=E1111
 
         self.state = (newth, newthdot)
-        done = not (-self.max_angle < newth[0][0] or newth[0][1] > self.max_angle)
-        return tuple([make_tuple(x) for x in self.state]), -costs, done, {}
+        done = newth[0][1] < -self.max_angle or newth[0][0] > self.max_angle
+        half_done = done or newth[0][0] < -self.max_angle or newth[0][1] > self.max_angle
+        return tuple([make_tuple(x) for x in self.state]), -costs, done, half_done
+
+    def is_terminal(self, interval, half=False):
+        done = interval[0][1] < -self.max_angle or interval[0][0] > self.max_angle
+        if half:
+            return done or interval[0][0] < -self.max_angle or interval[0][1] > self.max_angle
+        else:
+            return done
 
     def reset(self):
         # high = np.array([np.pi, 1])

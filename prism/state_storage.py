@@ -51,6 +51,11 @@ class StateStorage:
             print(f"{folder_path} does not exist")
             return False
 
+    def mark_as_half_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
+        for item in fail_states:
+            self.graph.add_node(item)
+            self.graph.nodes[item]['half_fail'] = True
+
     def mark_as_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
         for item in fail_states:
             self.graph.add_node(item)
@@ -67,9 +72,6 @@ class StateStorage:
         # return list([x[0] for x in possible_fail_states if x[1]])
         return result
 
-    def get_terminal_states_dict(self):
-        return dict(self.graph.nodes.data(data='fail', default=False))
-
     def remove_unreachable(self):
         descendants = list(nx.algorithms.descendants(self.graph, self.root))  # descendants from 0
         descendants.insert(0, self.root)
@@ -85,9 +87,9 @@ class StateStorage:
             self.graph.remove_node(id)
 
     def get_leaves(self, shortest_path, unsafe_threshold, horizon):
-        leaves = [((interval,action), len(shortest_path[(interval,action)]) - 1, attributes.get('lb'), attributes.get('ub')) for (interval,action), attributes in self.graph.nodes.data() if
-                  self.graph.out_degree((interval,action)) == 0 and not attributes.get('fail') and action is None and not attributes.get('ignore') and attributes.get('ub') is not None and (interval,action) in shortest_path and len(
-                      shortest_path[(interval,action)]) - 1 <= horizon]
+        leaves = [((interval, action), len(shortest_path[(interval, action)]) - 1, attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in self.graph.nodes.data() if
+                  self.graph.out_degree((interval, action)) == 0 and not attributes.get('half_fail') and not attributes.get('fail') and action is None and not attributes.get(
+                      'ignore') and attributes.get('ub') is not None and (interval, action) in shortest_path and len(shortest_path[(interval, action)]) - 1 <= horizon]
         return leaves
 
     def recreate_prism(self, max_t: int = None):

@@ -37,6 +37,7 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
     """
     next_states = []
     terminal_states = []
+    half_terminal_states = []
     chunk_size = 1000
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
     workers = cycle([AbstractStepWorker.remote(rounding, env_class) for _ in range(min(n_workers, n_chunks))])
@@ -51,12 +52,14 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
             results: List[Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], List[
                 Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]]]] = ray.get(ready_ids)
             bar.update(bar.value + len(results))
-            for next_states_local, terminal_states_local in results:
+            for next_states_local, half_terminal_states_local, terminal_states_local in results:
                 for next_state_many in next_states_local:
                     next_states.append(next_state_many)
                 for terminal_states_many in terminal_states_local:
                     terminal_states.append(terminal_states_many)
-    return sorted(next_states), terminal_states
+                for half_terminal_states_many in half_terminal_states_local:
+                    half_terminal_states.append(half_terminal_states_many)
+    return sorted(next_states), half_terminal_states, terminal_states
 
 
 def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
@@ -98,13 +101,13 @@ def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
     return max(sizes) <= min_size
 
 
-def remove_spurious_nodes(graph: nx.DiGraph):
-    candidates_ids = [id for id, x in graph.nodes.data() if (x.get('fail') is not None and x.get('fail'))]
-    for node_id in candidates_ids:
-        edges = list(graph.edges(node_id))
-        if len(edges) != 0:
-            print(f"removed edges from {node_id}")
-            graph.remove_edges_from(edges)
+# def remove_spurious_nodes(graph: nx.DiGraph):
+#     candidates_ids = [id for id, x in graph.nodes.data() if (x.get('fail') is not None and x.get('fail'))]
+#     for node_id in candidates_ids:
+#         edges = list(graph.edges(node_id))
+#         if len(edges) != 0:
+#             print(f"removed edges from {node_id}")
+#             graph.remove_edges_from(edges)
 
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
@@ -190,12 +193,18 @@ def merge_successors(intersected_intervals):
 
 
 def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers, rounding, storage: StateStorage):
-    next_states, terminal_states = abstract_step(list_assigned_action, env_class, n_workers, rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    next_states, half_terminal_states, terminal_states = abstract_step(list_assigned_action, env_class, n_workers,
+                                                                       rounding)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states_dict = defaultdict(bool)
+    half_terminal_states_dict = defaultdict(bool)
     terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))
+    half_terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in half_terminal_states]))
     storage.mark_as_fail([(x, None) for x in terminal_states_list])
+    storage.mark_as_half_fail([(x, None) for x in half_terminal_states_list])
     for terminal in terminal_states_list:
         terminal_states_dict[terminal] = True
+    for half_terminal in half_terminal_states_list:
+        half_terminal_states_dict[half_terminal] = True
     next_to_compute = []
     n_successors = 0
     with StandardProgressBar(prefix="Storing successors ", max_value=len(next_states)) as bar:
@@ -203,9 +212,9 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
             for successor1, successor2 in successors:
                 n_successors += 2
                 storage.store_sticky_successors((successor1, None), (successor2, None), interval)  # interval with action
-                if not terminal_states_dict[successor1]:
+                if not terminal_states_dict[successor1] and not half_terminal_states_dict[successor1]:
                     next_to_compute.append(successor1)
-                if not terminal_states_dict[successor2]:
+                if not terminal_states_dict[successor2] and not half_terminal_states_dict[successor2]:
                     next_to_compute.append(successor2)
             bar.update(bar.value + 1)
     # store terminal states
@@ -531,11 +540,15 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     max_path_length = min([x[1] for x in leaves]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
     if max_path_length >= horizon * 2:  # REFINE
         if allow_refine:
+            # find terminal states and split them
+            half_terminal = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if attributes.get('half_fail')]
+
+            # refine states which are undecided
             candidate_length_dict = defaultdict(list)
             # get the furthest nodes that have a maximum probability less than safe_threshold
             candidates_ids = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if (
-                    attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('fail') and action is not None and not is_small(
-                interval, precision, rounding))]
+                    attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('half_fail') and not attributes.get(
+                'fail') and action is not None and not is_small(interval, precision, rounding))]
             for id, lb, ub in candidates_ids:
                 if shortest_path.get(id) is not None:
                     candidate_length = len(shortest_path[id]) - 1
@@ -621,7 +634,7 @@ def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
     """
     shortest_path_abstract = nx.shortest_path(storage.graph, source=storage.root)
     n_states = []
-    for t in range(1, horizon+1):
+    for t in range(1, horizon + 1):
         leaves_abstract = [(interval, len(shortest_path_abstract[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if
                            interval in shortest_path_abstract and (len(shortest_path_abstract[interval]) - 1) < t * 2 and (len(shortest_path_abstract[interval]) - 1) % 2 == 0]
         n_states.append(len(leaves_abstract))

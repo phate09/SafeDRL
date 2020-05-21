@@ -107,11 +107,12 @@ class CartPoleEnv_abstract(gym.Env):
             theta = theta + self.tau * theta_dot
         self.state = (x, x_dot, theta, theta_dot)
         state_closed = to_close_interval(self.state)
-        done = state_closed[0] < -self.x_threshold or state_closed[0] > self.x_threshold or -self.x_threshold in state_closed[0] or self.x_threshold in state_closed[0] or state_closed[
-            2] < -self.theta_threshold_radians or state_closed[2] > self.theta_threshold_radians or -self.theta_threshold_radians in state_closed[2] or self.theta_threshold_radians in state_closed[2]
-        # done = done or not -0.015 < x_dot < 0.015 or not -0.015 < theta_dot < 0.015
-        done = bool(done)
 
+        done = state_closed[0] < -self.x_threshold or state_closed[0] > self.x_threshold or state_closed[2] < -self.theta_threshold_radians or state_closed[2] > self.theta_threshold_radians
+        done = bool(done)
+        half_done = done or self.x_threshold in state_closed[0] or -self.x_threshold in state_closed[0] or -self.theta_threshold_radians in state_closed[2] or self.theta_threshold_radians in \
+                    state_closed[2]
+        half_done = bool(half_done)
         if not done:
             reward = 1.0
         elif self.steps_beyond_done is None:
@@ -125,7 +126,14 @@ class CartPoleEnv_abstract(gym.Env):
             self.steps_beyond_done += 1
             reward = 0.0
 
-        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))]), reward, done, {thetaacc, xacc}
+        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))]), reward, done, half_done
+
+    def is_terminal(self, interval, half=False):
+        done = interval[0][1] < -self.x_threshold or interval[0][0] > self.x_threshold or interval[2][0] < -self.theta_threshold_radians or interval[2][1] > self.theta_threshold_radians
+        if half:
+            return done or interval[0][0] < -self.x_threshold or interval[0][1] > self.x_threshold or interval[2][1] < -self.theta_threshold_radians or interval[2][0] > self.theta_threshold_radians
+        else:
+            return done
 
     def inverse_step(self, action):
 
