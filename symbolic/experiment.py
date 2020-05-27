@@ -70,7 +70,7 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
         while True:
             print(f"Iteration {iterations}")
             split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                                   allow_assign_actions=True, allow_merge=abstract,allow_refine = False)
+                                                                   allow_assign_actions=True, allow_merge=abstract)
             if time.time() - time_from_last_save >= 60 * 2:
                 storage.save_state(f"{folder_path}/nx_graph_{environment_name}_e{rounding}_{env_type}.p")
                 rtree.save_to_file(f"{folder_path}/union_states_total_{environment_name}_e{rounding}_{env_type}.p")
@@ -90,10 +90,10 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
 
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
-    horizon = 7
+    horizon = 5
     precision = 2
     environment_name = "pendulum"
-    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=True, folder_path=folder_path)
+    storage_abstract, tree_abstract = experiment(environment_name, horizon, True, precision, load_only=False, folder_path=folder_path)
     n_states_abstract = get_n_states(storage_abstract, horizon)
     print(f"Number of states at different timesteps:")
     print(n_states_abstract)

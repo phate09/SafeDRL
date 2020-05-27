@@ -61,13 +61,19 @@ class StateStorage:
             self.graph.add_node(item)
             self.graph.nodes[item]['fail'] = True
 
-    def get_terminal_states_ids(self, dict_filter=None):
+    def get_terminal_states_ids(self, half=False, dict_filter=None):
         result = []
-        with StandardProgressBar(prefix="Fetching terminal states ", max_value=self.graph.number_of_nodes()) as bar:
+        is_half_str= "half " if half else " "
+        with StandardProgressBar(prefix=f"Fetching {is_half_str}terminal states ", max_value=self.graph.number_of_nodes()) as bar:
             for node, attr in self.graph.nodes.items():
-                if attr.get("fail"):
-                    if dict_filter is None or dict_filter[node]:
-                        result.append(node)  # possible_fail_states = self.graph.nodes.data(data='fail', default=False)
+                if not half:
+                    if attr.get("fail"):
+                        if dict_filter is None or dict_filter[node]:
+                            result.append(node)  # possible_fail_states = self.graph.nodes.data(data='fail', default=False)
+                else:
+                    if attr.get("half_fail"):
+                        if dict_filter is None or dict_filter[node]:
+                            result.append(node)
                 bar.update(bar.value + 1)
         # return list([x[0] for x in possible_fail_states if x[1]])
         return result
@@ -105,10 +111,11 @@ class StateStorage:
         # descendants = list(path_length.keys())  # descendants from 0
         # descendants.insert(0, self.root)
         descendants_dict = defaultdict(bool)
+        descendants_true = []# = list(descendants_dict.keys())
         for descendant in path_length.keys():
             if max_t is None or path_length[descendant] <= max_t * 2:  # limit descendants to depth max_t
                 descendants_dict[descendant] = True
-        descendants_true = list(descendants_dict.keys())
+                descendants_true.append(descendant)
         to_remove = []
         mapping = dict(zip(self.graph.nodes(), range(self.graph.number_of_nodes())))
         with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants_dict) + 1).start() as bar:
@@ -142,11 +149,13 @@ class StateStorage:
         # for id in to_remove:
         # print(f"removed {id}")
         # self.graph.remove_node(id)
-        terminal_states = [mapping[x] for x in self.get_terminal_states_ids(descendants_dict)]
+        terminal_states = [mapping[x] for x in self.get_terminal_states_ids(dict_filter=descendants_dict)]
+        half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True,dict_filter=descendants_dict)]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
+        half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state
         solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
-        solution_max = list(gateway.entry_point.check_state_list(terminal_states_java, False))
+        solution_max = list(gateway.entry_point.check_state_list(half_terminal_states_java, False))
         # update the probabilities in the graph
         with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
             for descendant in descendants_true:

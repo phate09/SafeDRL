@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import importlib
 import networkx as nx
 import numpy as np
@@ -36,8 +36,8 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
     :return: the next abstract states after taking the action (array)
     """
     next_states = []
-    terminal_states = []
-    half_terminal_states = []
+    terminal_states = defaultdict(bool)
+    half_terminal_states = defaultdict(bool)
     chunk_size = 1000
     n_chunks = ceil(len(abstract_states_normalised) / chunk_size)
     workers = cycle([AbstractStepWorker.remote(rounding, env_class) for _ in range(min(n_workers, n_chunks))])
@@ -49,16 +49,13 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
     with StandardProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids)) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
-            results: List[Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], List[
-                Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]]]] = ray.get(ready_ids)
+            results: Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], dict, dict] = ray.get(ready_ids)
             bar.update(bar.value + len(results))
             for next_states_local, half_terminal_states_local, terminal_states_local in results:
-                for next_state_many in next_states_local:
-                    next_states.append(next_state_many)
-                for terminal_states_many in terminal_states_local:
-                    terminal_states.append(terminal_states_many)
-                for half_terminal_states_many in half_terminal_states_local:
-                    half_terminal_states.append(half_terminal_states_many)
+                for next_state_key in next_states_local:
+                    next_states.append((next_state_key, next_states_local[next_state_key]))
+                terminal_states.update(terminal_states_local)
+                half_terminal_states.update(half_terminal_states_local)
     return sorted(next_states), half_terminal_states, terminal_states
 
 
@@ -111,7 +108,7 @@ def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
 
 
 def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
-                       allow_assign_action=True, allow_merge=True) -> List[Tuple[Tuple[float, float]]]:
+                       allow_assign_action=True, allow_merge=True):
     if len(intervals) == 0:
         return []
     intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
@@ -152,10 +149,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
             storage.store_successor_multi([((interval_noaction, None), x) for x in successors])  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
-    next_to_compute = compute_successors(env, list_assigned_action, n_workers, rounding, storage)
-
-    # print(f"Finished")
-    return next_to_compute
+    compute_successors(env, list_assigned_action, n_workers, rounding, storage)
 
 
 def premerge(intersected_intervals, n_workers, show_bar=True):
@@ -193,18 +187,18 @@ def merge_successors(intersected_intervals):
 
 
 def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers, rounding, storage: StateStorage):
-    next_states, half_terminal_states, terminal_states = abstract_step(list_assigned_action, env_class, n_workers,
-                                                                       rounding)  # performs a step in the environment with the assigned action and retrieve the result
-    terminal_states_dict = defaultdict(bool)
-    half_terminal_states_dict = defaultdict(bool)
-    terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in terminal_states]))
-    half_terminal_states_list = list(itertools.chain.from_iterable([interval_terminal_states for interval, interval_terminal_states in half_terminal_states]))
-    storage.mark_as_fail([(x, None) for x in terminal_states_list])
-    storage.mark_as_half_fail([(x, None) for x in half_terminal_states_list])
-    for terminal in terminal_states_list:
-        terminal_states_dict[terminal] = True
-    for half_terminal in half_terminal_states_list:
-        half_terminal_states_dict[half_terminal] = True
+    next_states, half_terminal_states_dict, terminal_states_dict = abstract_step(list_assigned_action, env_class, n_workers,
+                                                                                 rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    terminal_states_list = []
+    half_terminal_states_list = []
+    for key in terminal_states_dict:
+        if terminal_states_dict[key]:
+            terminal_states_list.append((key,None))
+    for key in half_terminal_states_dict:
+        if half_terminal_states_dict[key]:
+            half_terminal_states_list.append((key,None))
+    storage.mark_as_fail(terminal_states_list)
+    storage.mark_as_half_fail(half_terminal_states_list)
     next_to_compute = []
     n_successors = 0
     with StandardProgressBar(prefix="Storing successors ", max_value=len(next_states)) as bar:
@@ -213,13 +207,13 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
                 n_successors += 2
                 storage.store_sticky_successors((successor1, None), (successor2, None), interval)  # interval with action
                 if not terminal_states_dict[successor1] and not half_terminal_states_dict[successor1]:
-                    next_to_compute.append(successor1)
+                    next_to_compute.append((successor1, None))
                 if not terminal_states_dict[successor2] and not half_terminal_states_dict[successor2]:
-                    next_to_compute.append(successor2)
+                    next_to_compute.append((successor2, None))
             bar.update(bar.value + 1)
     # store terminal states
-    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Next States :{len(next_to_compute)}")
-    return next_to_compute
+    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{half_terminal_states_list} Next States :{len(next_to_compute)}")
+    # return next_to_compute
 
 
 def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
@@ -540,35 +534,41 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     max_path_length = min([x[1] for x in leaves]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
     if max_path_length >= horizon * 2:  # REFINE
         if allow_refine:
+            print("Refine process")
             # find terminal states and split them
-            half_terminal = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if attributes.get('half_fail')]
+            # half_terminal = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if attributes.get('half_fail')]
 
             # refine states which are undecided
             candidate_length_dict = defaultdict(list)
             # get the furthest nodes that have a maximum probability less than safe_threshold
             candidates_ids = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if (
                     attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('half_fail') and not attributes.get(
-                'fail') and action is not None and not is_small(interval, precision, rounding))]
+                'fail') and action is not None and not is_small(interval, precision, rounding))]  # and attributes.get('lb') < unsafe_threshold
             for id, lb, ub in candidates_ids:
                 if shortest_path.get(id) is not None:
-                    candidate_length = len(shortest_path[id]) - 1
-                    candidate_length_dict[candidate_length].append((id, lb, ub))
+                    if lb < unsafe_threshold:
+                        candidate_length = len(shortest_path[id]) - 1
+                        candidate_length_dict[candidate_length].append((id, lb, ub))
+                    else:
+                        lower_bound_exceeded = True
             odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1 and x < horizon * 2]
             if len(odd_layers) == 0:
                 return False
             max_length = min(odd_layers)  # get only odd numbers
+            print(f"Refining layer {max_length}")
             t_ids = [x[0] for x in candidate_length_dict[max_length]]
             split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
             next_states = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
         else:
             return False
     else:  # EXPLORE
+        print(f"Exploring at timestep {max_path_length}")
         to_analyse = []
         for (interval, action), length, lb, ub in leaves:
             if length == max_path_length:
                 to_analyse.append(interval)  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        next_states = analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
+        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
                                          allow_merge=allow_merge)
     iteration += 1
     return True

@@ -9,12 +9,12 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
     # states = unroll_methods.get_n_states(storage,horizon)
     # shortest_path_abstract = nx.shortest_path(storage.graph, source=storage.root)
     # layers = unroll_methods.get_layers(storage.graph,storage.root)
-    save_path = f"{folder_path}/{file_name_save}" if file_name_save is not None else None
+    save_path = f"{folder_path}/{file_name_save}_{plot_type}.svg" if file_name_save is not None else None
     if plot_type == "lb":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["lb"])]
         # if state_size > 2:
         # results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
-        utils.show_heatmap(results, save_to=save_path, rounding=3)  # , title="Heatmap of the lower bound measured at the initial state"
+        utils.show_heatmap(results, save_to=save_path, rounding=2)  # , title="Heatmap of the lower bound measured at the initial state"
     elif plot_type == "ub":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
         if state_size > 2:
@@ -24,7 +24,7 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
         results = [(x, ub - lb) for (x, action), lb, ub in unroll_methods.get_property_at_timestep(storage, 1, ["lb", "ub"])]  # difference between boundaries
         # if state_size > 2:
         #     results = [(x, prob) for x, prob in results if x[3][0] <= 0 <= x[3][1] and x[2][0] <= 0 <= x[2][1]]
-        utils.show_heatmap(results, save_to=save_path, rounding=3)  # title="Heatmap of the probability error measured at the initial state"
+        utils.show_heatmap(results, save_to=save_path, rounding=2)  # title="Heatmap of the probability error measured at the initial state"
     elif plot_type == "safe_unsafe":
         results = [(x, lb, ub) for (x, action), lb, ub in unroll_methods.get_property_at_timestep(storage, 1, ["lb", "ub"])]
         safe = []
@@ -50,9 +50,9 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
 
 if __name__ == '__main__':
     folder_path = "/home/edoardo/Development/SafeDRL/save"
-    horizon = 7
-    rounding = 3
-    environment_name = "cartpole"
+    horizon = 5
+    rounding = 2
+    environment_name = "pendulum"
     abstract = True
     env_type = "concrete" if not abstract else "abstract"
     storage = prism.state_storage.StateStorage()
@@ -63,5 +63,7 @@ if __name__ == '__main__':
         storage.root = x
         break
     storage.recreate_prism(horizon)
-    plot(environment_name, storage, folder_path=folder_path, plot_type="pca", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_pca.svg")
-    plot(environment_name, storage, folder_path=folder_path, plot_type="p_chart", file_name_save=f"{environment_name}_e{rounding}_h{horizon}_p_chart.svg")
+    plot(environment_name, storage, folder_path=folder_path, plot_type="ub", file_name_save=f"{environment_name}_e{rounding}_h{horizon}")
+    plot(environment_name, storage, folder_path=folder_path, plot_type="lb", file_name_save=f"{environment_name}_e{rounding}_h{horizon}")
+    plot(environment_name, storage, folder_path=folder_path, plot_type="error", file_name_save=f"{environment_name}_e{rounding}_h{horizon}")
+    plot(environment_name, storage, folder_path=folder_path, plot_type="p_chart", file_name_save=f"{environment_name}_e{rounding}_h{horizon}")
