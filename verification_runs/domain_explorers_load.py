@@ -4,8 +4,8 @@ import torch
 from dqn.dqn_agent import Agent
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
-from symbolic.cartpole_abstract import CartPoleEnv_abstract
-from symbolic.pendulum_abstract import PendulumEnv_abstract
+from environment.cartpole_abstract import CartPoleEnv_abstract
+from environment.pendulum_abstract import PendulumEnv_abstract
 
 
 def generateCartpoleDomainExplorer(precision=1e-2, rounding=6):

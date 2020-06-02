@@ -317,7 +317,7 @@ class SymbolicDomainExplorer:
 def bab_remote(normed_domains, safe_property_index, net):
     result = []
     for normed_domain in normed_domains:
-        dom_ub, dom_lb = net.get_boundaries(normed_domain, safe_property_index, False)
+        dom_ub, dom_lb = net.sget_boundaries(normed_domain, safe_property_index, False)
         assert dom_lb <= dom_ub, "lb must be lower than ub"
         if dom_ub < 0:
             # discard
