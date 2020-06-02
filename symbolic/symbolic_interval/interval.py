@@ -184,9 +184,9 @@ class Symbolic_interval(Interval):
         self.epsilon = epsilon
         self.norm = norm
         if (self.use_cuda):
-            self.idep = torch.eye(self.n, device=self.c.get_device()).unsqueeze(0)
+            self.idep = torch.eye(self.n, device=self.c.get_device(),dtype=self.c.dtype).unsqueeze(0)
         else:
-            self.idep = torch.eye(self.n).unsqueeze(0)
+            self.idep = torch.eye(self.n,dtype=self.c.dtype).unsqueeze(0)
         self.edep = []
         self.edep_ind = []
 

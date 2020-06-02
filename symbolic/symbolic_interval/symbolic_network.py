@@ -431,9 +431,9 @@ class Interval_ReLU(nn.Module):
             if (m != 0):
 
                 if (ix.use_cuda):
-                    error_row = torch.zeros((m, ix.n), device=lower.get_device())
+                    error_row = torch.zeros((m, ix.n), dtype=ix.c.dtype, device=lower.get_device())
                 else:
-                    error_row = torch.zeros((m, ix.n))
+                    error_row = torch.zeros((m, ix.n), dtype=ix.c.dtype)
 
                 error_row = error_row.scatter_(1, appr_ind[:, 1, None], appr_err[appr_condition][:, None])
 
@@ -565,19 +565,12 @@ class Interval_Flatten(nn.Module):
 
 
 class Interval_Bound(nn.Module):
-    def __init__(self, net, epsilon, method="sym", proj=None, use_cuda=True, norm="linf", worst_case=True):
+    def __init__(self, net, epsilon, method="sym", use_cuda=True, norm="linf", worst_case=True):
         nn.Module.__init__(self)
         self.net = net
         self.epsilon = epsilon
         self.use_cuda = use_cuda
-        self.proj = proj
-        if (proj is not None):
-            assert proj > 0, "project dimension has to be larger than 0," \
-                             " please use naive bound propagation (proj=0)!"
-            assert (isinstance(proj, int)), "project dimension has to" \
-                                            " be integer!"
-
-        assert method in ["sym", "naive", "inverse", "center_sym", "new", "gen", "mix"], "No such interval methods!"
+        assert method in ["sym", "naive", "inverse", "center_sym", "new", "mix"], "No such interval methods!"
         self.method = method
         self.norm = norm
         # assert self.norm in ["linf", "l2", "l1"], "norm" + norm + "not supported"
@@ -596,8 +589,8 @@ class Interval_Bound(nn.Module):
         # Transfer original model to interval models
         inet = Interval_network(self.net, c)
 
-        minimum = X.min().item()
-        maximum = X.max().item()
+        minimum = (X - self.epsilon).min().item()
+        maximum = (X + self.epsilon).max().item()
 
         # Create symbolic inteval classes from X
         if (self.method == "naive"):
@@ -607,76 +600,17 @@ class Interval_Bound(nn.Module):
         if (self.method == "center_sym"):
             ix = Center_symbolic_interval(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), self.use_cuda)
 
-        if self.method == "gen":
-            if self.norm[0] == "linf":
-                ix = gen_sym(torch.clamp(X - self.epsilon[0], minimum, maximum), torch.clamp(X + self.epsilon[0], minimum, maximum), epsilon=self.epsilon, norm=self.norm, use_cuda=self.use_cuda)
-            else:
-                ix = gen_sym(X, X, self.epsilon, norm=self.norm, use_cuda=self.use_cuda)
-
         if self.method == "mix":
             assert self.norm == "linf", "only support linf for now"
             ix = mix_interval(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), use_cuda=self.use_cuda)
 
         if (self.method == "sym"):
-            # proj is the feature that allows to control the tightness.
-            # For mnist, input size is 784. Thus, all 784 input deps
-            # is kept in symbolic interal analysis and provides tightest
-            # linear estimation. However, due to the cost limitation, we
-            # might want to sacrifice certain tightness to make training
-            # faster. The fastest one is to throw away all of the
-            # dependency (proj=0) which is the same as naive interval
-            # propagation.
-            if (self.proj is None):
-                if self.norm == "linf":
-                    ix = Symbolic_interval(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), use_cuda=self.use_cuda)
-                elif self.norm == "l2":
-                    ix = Symbolic_interval(X, X, self.epsilon, norm="l2", use_cuda=self.use_cuda)
-                elif self.norm == "l1":
-                    ix = Symbolic_interval(X, X, self.epsilon, norm="l1", use_cuda=self.use_cuda)
-            else:
-                input_size = list(X[0].reshape(-1).size())[0]
-                batch_size = list(X.size())[0]
-                # symbolic_interval_proj1 uses symbolic linear relaxation
-                # proposed in Neurify paper. It provides tight approximation
-                # when dependency are mostly kept. However, if over a half
-                # of the dependency is thrown away, the bound estimated might
-                # be worse than naive interval propagation. Therefore, we
-                # have symbolic_interval_proj2. It just concretized when
-                # the hidden node is cross-0. When the number of dependency
-                # kept is close to 0, it will approach naive interval
-                # propagation.
-
-                if (self.proj > input_size):
-                    warnings.warn("proj is larger than input size")
-                    self.proj = input_size
-
-                # grad ind could be the largest absolute value of gradients
-
-                X_var = Variable(X, requires_grad=True)
-                if self.norm == "l2":
-                    loss = nn.CrossEntropyLoss()(self.net[1:](X_var), y)
-                if self.norm == "linf":
-                    loss = nn.CrossEntropyLoss()(self.net(X_var), y)
-                loss.backward()
-                x_grad = X_var.grad.view(-1, input_size)
-                grad_ind = (x_grad.abs().topk(self.proj, dim=1)[1])
-
-                # We can set grad_ind as None to save the sort time
-                # As the tradeoff, the tightness will be worse
-                '''
-                grad_ind = None
-                '''
-
-                # grad_ind can also be random perturbed index
-                '''
-                grad_ind = torch.randperm(input_size).type_as(y)
-                grad_ind = grad_ind[:self.proj].unsqueeze(0).repeat(batch_size,1)
-                '''
-
-                if (self.proj > (input_size / 2)):
-                    ix = Symbolic_interval_proj1(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), self.proj, grad_ind, self.use_cuda)
-                else:
-                    ix = Symbolic_interval_proj2(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), self.proj, grad_ind, self.use_cuda)
+            if self.norm == "linf":
+                ix = Symbolic_interval(torch.clamp(X - self.epsilon, minimum, maximum), torch.clamp(X + self.epsilon, minimum, maximum), use_cuda=self.use_cuda)
+            elif self.norm == "l2":
+                ix = Symbolic_interval(X, X, self.epsilon, norm="l2", use_cuda=self.use_cuda)
+            elif self.norm == "l1":
+                ix = Symbolic_interval(X, X, self.epsilon, norm="l1", use_cuda=self.use_cuda)
 
         # Propagate symbolic interval through interval networks
         ix = inet(ix)
