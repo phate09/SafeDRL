@@ -4,6 +4,7 @@ import numpy as np
 from dqn.dqn_agent import Agent
 from environment.cartpole_abstract import CartPoleEnv_abstract
 from models.model_critic_sequential import TestNetwork
+from plnn.verification_network import VerificationNetwork
 from plnn.verification_network_sym import SymVerificationNetwork
 from symbolic.symbolic_interval import Symbolic_interval
 from symbolic.symbolic_interval.symbolic_network import Interval_Bound, Interval_network
@@ -67,8 +68,15 @@ def try3():
     state_size = 4
     agent = Agent(state_size, 2)
     agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Sep19_12-42-51_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_5223.pth")
-    symnet = SymVerificationNetwork(agent.qnetwork_local.sequential)
-    symnet.attach_property_layers(1)
-
+    symnet = SymVerificationNetwork(agent.qnetwork_local.sequential.cpu().double())
+    ix = Symbolic_interval(lower=torch.tensor([[-0.05, -0.05, -0.05, -0.05], [-0.01, -0.01, -0.01, -0.01]], dtype=torch.float64),
+                           upper=torch.tensor([[0.05, 0.05, 0.05, 0.05], [0.01, 0.01, 0.01, 0.01]], dtype=torch.float64), use_cuda=use_cuda)
+    u,l = symnet.get_boundaries(ix, 1)
+    print(f"u:{u}")
+    print(f"l:{l}")
+    net = VerificationNetwork(agent.qnetwork_local.cpu().double())
+    dom_ub, dom_lb = net.get_boundaries(torch.tensor([[-0.05, -0.05, -0.05, -0.05], [0.05, 0.05, 0.05, 0.05]], dtype=torch.float64).t(), 1, False)
+    dom_ub, dom_lb = net.get_boundaries(torch.tensor([[-0.01, -0.01, -0.01, -0.01], [0.01, 0.01, 0.01, 0.01]], dtype=torch.float64).t(), 1, False)
+    print(dom_lb)
 
 try3()

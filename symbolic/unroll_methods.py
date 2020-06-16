@@ -212,7 +212,7 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
                     next_to_compute.append((successor2, None))
             bar.update(bar.value + 1)
     # store terminal states
-    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{half_terminal_states_list} Next States :{len(next_to_compute)}")
+    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")
     # return next_to_compute
 
 

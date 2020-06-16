@@ -1037,24 +1037,24 @@ class VerificationNetwork(nn.Module):
         layer_idx = 1
         for layer in layers:
 
-            file_name = hashlib.sha224(domain.numpy().view(np.uint8)).hexdigest()
-            if os.path.isfile(f'./data/{file_name}-{layer_idx}.mps'):
-                # print(f'opening {file_name}-{layer_idx}')
-                with open(f'./data/{file_name}-{layer_idx}.lb', 'rb') as f_lb:
-                    new_layer_lb = pickle.load(f_lb)
-                with open(f'./data/{file_name}-{layer_idx}.ub', 'rb') as f_ub:
-                    new_layer_ub = pickle.load(f_ub)
-                gurobi_model = grb.read(f'./data/{file_name}-{layer_idx}.mps')
-                gurobi_model.setParam('OutputFlag', False)
-                gurobi_model.setParam('Threads', 1)
-                gurobi_model.update()
-                new_layer_gurobi_vars = np.asarray([x for x in gurobi_model.getVars() if x.VarName.startswith(f'lay{layer_idx}')], dtype=grb.Var)
-                new_layer_gurobi_vars = new_layer_gurobi_vars.reshape(new_layer_lb.shape)
-                lower_bounds.append(new_layer_lb)
-                upper_bounds.append(new_layer_ub)
-                gurobi_vars.append(new_layer_gurobi_vars)
-                layer_idx += 1
-                continue
+            # file_name = hashlib.sha224(domain.numpy().view(np.uint8)).hexdigest()
+            # if os.path.isfile(f'./data/{file_name}-{layer_idx}.mps'):
+            #     # print(f'opening {file_name}-{layer_idx}')
+            #     with open(f'./data/{file_name}-{layer_idx}.lb', 'rb') as f_lb:
+            #         new_layer_lb = pickle.load(f_lb)
+            #     with open(f'./data/{file_name}-{layer_idx}.ub', 'rb') as f_ub:
+            #         new_layer_ub = pickle.load(f_ub)
+            #     gurobi_model = grb.read(f'./data/{file_name}-{layer_idx}.mps')
+            #     gurobi_model.setParam('OutputFlag', False)
+            #     gurobi_model.setParam('Threads', 1)
+            #     gurobi_model.update()
+            #     new_layer_gurobi_vars = np.asarray([x for x in gurobi_model.getVars() if x.VarName.startswith(f'lay{layer_idx}')], dtype=grb.Var)
+            #     new_layer_gurobi_vars = new_layer_gurobi_vars.reshape(new_layer_lb.shape)
+            #     lower_bounds.append(new_layer_lb)
+            #     upper_bounds.append(new_layer_ub)
+            #     gurobi_vars.append(new_layer_gurobi_vars)
+            #     layer_idx += 1
+            #     continue
 
             if type(layer) is nn.Linear:
                 weight = layer.weight

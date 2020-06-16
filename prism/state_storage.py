@@ -12,7 +12,7 @@ from bidict import bidict
 from py4j.java_collections import ListConverter
 from utility.bidict_multi import bidict_multi
 import networkx as nx
-import Pyro5.api
+# import Pyro5.api
 
 from utility.standard_progressbar import StandardProgressBar
 

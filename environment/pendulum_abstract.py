@@ -66,7 +66,7 @@ class PendulumEnv_abstract(gym.Env):
     def reset(self):
         # high = np.array([np.pi, 1])
         # self.state = self.np_random.uniform(low=-high, high=high)
-        self.state = (interval([-self.max_angle, self.max_angle]), interval([-1, 1]))
+        self.state = (interval([-self.max_angle, self.max_angle]), interval([-2, 2]))
         self.last_u = None
         return tuple([make_tuple(x) for x in self.state])
 

@@ -69,7 +69,7 @@ class SymVerificationNetwork(nn.Module):
         '''
         verif_network = []
         verif_network.extend(self.base_network)
-        # verif_network.append(self.attach_property_layers(true_class_index))
+        verif_network.append(self.attach_property_layers(true_class_index))
         net = torch.nn.Sequential(*verif_network)
         inet = Interval_network(net, None)
         result_interval = inet(interval)

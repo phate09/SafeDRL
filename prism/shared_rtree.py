@@ -2,15 +2,15 @@ import os
 import pickle
 from typing import List, Tuple
 
-import Pyro5.api
+# import Pyro5.api
 import progressbar
 from rtree import index
 
 from mosaic.utils import round_tuples, flatten_interval
 
 
-@Pyro5.api.expose
-@Pyro5.api.behavior(instance_mode="single")
+# @Pyro5.api.expose
+# @Pyro5.api.behavior(instance_mode="single")
 class SharedRtree:
     def __init__(self):
         self.tree: index.Index = None
@@ -100,17 +100,10 @@ class SharedRtree:
         # with self.lock:
         self.tree.flush()
 
-    def get_rtree_temp(self):
-        Pyro5.api.config.SERIALIZER = "marshal"
-        thing = SharedRtree()
-        self._pyroDaemon.register(thing)
-        return thing  # just return it, no need to return a proxy
-
-
-def get_rtree() -> SharedRtree:
-    Pyro5.api.config.SERIALIZER = "marshal"
-    storage = Pyro5.api.Proxy("PYRONAME:prism.rtree")
-    return storage
+# def get_rtree() -> SharedRtree:
+#     Pyro5.api.config.SERIALIZER = "marshal"
+#     storage = Pyro5.api.Proxy("PYRONAME:prism.rtree")
+#     return storage
 
 
 def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
@@ -119,7 +112,7 @@ def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
         yield (i, flatten_interval(interval), obj)
 
 
-if __name__ == '__main__':
-    Pyro5.api.config.SERIALIZER = "marshal"
-    Pyro5.api.config.SERVERTYPE = "multiplex"
-    Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)
+# if __name__ == '__main__':
+#     Pyro5.api.config.SERIALIZER = "marshal"
+#     Pyro5.api.config.SERVERTYPE = "multiplex"
+#     Pyro5.api.Daemon.serveSimple({SharedRtree: "prism.rtree"}, ns=True)

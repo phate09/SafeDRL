@@ -8,6 +8,7 @@ import ray
 import torch
 
 import mosaic.utils
+from symbolic.symbolic_interval import Symbolic_interval
 
 
 class SymbolicDomainExplorer:
@@ -27,9 +28,6 @@ class SymbolicDomainExplorer:
         self.unsafe_area = 0
         self.ignore_domains = []
         self.ignore_area = 0
-        # self.nb_input_var = domain.size()[0]  # size of the domain, second dimension is [lb,ub]
-        # self.domain_lb = domain.select(-1, 0)
-        # self.domain_width = domain.select(-1, 1) - domain.select(-1, 0)
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
@@ -38,32 +36,42 @@ class SymbolicDomainExplorer:
         queue = []  # queue of domains to explore
         total_area = 0
         self.reset()  # reset statistics
-        for domain in domains:
-            tensor = torch.tensor(domain, dtype=torch.float64)
-            queue.append(tensor)
-            total_area += mosaic.utils.area_tensor(tensor)
-        total_area = max(total_area, 1e-16)
-        # last_save = time.time()
-        while len(queue) > 0 or len(message_queue) > 0:
-            to_process = self.split_and_queue(queue, net)
+        tensor = torch.tensor(domains, dtype=torch.float64)
+        lbs = tensor[:, :, 0]
+        ubs = tensor[:, :, 1]
+        deltas = ubs - lbs
+        total_area = sum([x.prod().item() for x in deltas])
+        while tensor is not None:
+            u, l = self.get_boundaries(net, tensor)
+            result = []
+            for i, (dom_ub, dom_lb) in enumerate(zip(u, l)):
+                assert dom_lb <= dom_ub, "lb must be lower than ub"
+                normed_domain = tensor[i]
+                if dom_ub < 0:
+                    # discard
+                    result.append((None, None, normed_domain))
+                if dom_lb > 0:
+                    # keep
+                    result.append((None, normed_domain, None))
+                if dom_lb <= 0 <= dom_ub:
+                    # explore
+                    result.append((normed_domain, None, None))
             queue = []
-            while len(message_queue) < n_workers and len(to_process) != 0:
-                max_chunk_size = min(30, len(to_process))  # chunks of size 10
-                chunk = to_process[:max_chunk_size]
-                to_process = to_process[(max_chunk_size + 1):]
-                message_queue.insert(0, bab_remote.remote(chunk, self.safe_property_index, net))
-            message_ready, message_queue = ray.wait(message_queue, len(message_queue), 0.5)  # retrieve the next ready item, wait at max 0.5 secs
-            results = ray.get(message_ready)
-            for result in results:
-                for explore, safe, unsafe in result:
-                    if safe is not None:
-                        self.safe_domains.append(safe)
-                        self.safe_area += mosaic.utils.area_tensor(safe)
-                    if unsafe is not None:
-                        self.unsafe_domains.append(unsafe)
-                        self.unsafe_area += mosaic.utils.area_tensor(unsafe)
-                    if explore is not None:
-                        queue.insert(0, explore)
+            for explore, safe, unsafe in result:
+                if safe is not None:
+                    self.safe_domains.append(safe)
+                    self.safe_area += mosaic.utils.area_tensor(safe)
+                if unsafe is not None:
+                    self.unsafe_domains.append(unsafe)
+                    self.unsafe_area += mosaic.utils.area_tensor(unsafe)
+                if explore is not None:
+                    to_process = self.split_and_queue([explore], net)
+                    for x in to_process:
+                        queue.insert(0, x)
+            if len(queue) != 0:
+                tensor = torch.stack(queue, 0)
+            else:
+                tensor = None
             if debug:
                 print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
                       f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
@@ -93,34 +101,14 @@ class SymbolicDomainExplorer:
         stats["n_ignore"] = len(self.ignore_domains)
         return stats
 
-    hasIgnored = False
+    def get_boundaries(self, net, tensor):
+        lbs = tensor[:, :, 0]
+        ubs = tensor[:, :, 1]
+        ix = Symbolic_interval(lower=lbs, upper=ubs, use_cuda=False)
+        u, l = net.get_boundaries(ix, 1)
+        return u, l
 
-    # def start_explore_one_domain(self, global_min_area, message_queue, net, queue, shortest_dimension):
-    #     normed_domain = queue.pop(0)
-    #     # check max length
-    #     length, dim = self.max_length(normed_domain)
-    #     length = round(length, self.rounding)
-    #     if length <= self.precision_constraints[dim]:
-    #         self.store_approximation(normed_domain, net)
-    #     else:
-    #         # Genearate new, smaller (normalized) domains using box split.
-    #         ndoms = self.box_split(normed_domain, self.rounding)
-    #         for i, ndom_i in enumerate(ndoms):
-    #             area = mosaic.utils.area_tensor(ndom_i)
-    #             length, dim = self.max_length(ndom_i)
-    #             length = round(length, self.rounding)
-    #             min_length, dim = self.min_length(ndom_i)
-    #             min_length = round(min_length, self.rounding)
-    #             global_min_area = min(area, global_min_area)
-    #             shortest_dimension = min(length, shortest_dimension)
-    #             if length <= self.precision_constraints[dim]:  # or area < min_area:
-    #                 # too short or too small
-    #                 # approximate the interval to the closest datapoint and determine if it is safe or not
-    #                 self.store_approximation(ndom_i, net)
-    #             else:
-    #                 # queue up the next split at the beginning of the list
-    #                 message_queue.insert(0, bab_remote.remote(ndom_i, self.safe_property_index, net))
-    #     return global_min_area, shortest_dimension
+    hasIgnored = False
 
     def split_and_queue(self, queue, net):
         message_queue = []
@@ -161,38 +149,23 @@ class SymbolicDomainExplorer:
             # print("The value has been ignored succesfully")
             self.hasIgnored = True
 
-    # def process_n_queue_element(self, n, message_queue, queue):
-    #     message_ready, message_queue = ray.wait(message_queue, min(len(message_queue), n), 0.5)  # retrieve the next ready item, wait at max 0.5 secs
-    #     results = ray.get(message_ready)
-    #     for result in results:
-    #         for explore, safe, unsafe in result:
-    #             if safe is not None:
-    #                 self.safe_domains.append(safe)
-    #                 self.safe_area += mosaic.utils.area_tensor(safe)
-    #             if unsafe is not None:
-    #                 self.unsafe_domains.append(unsafe)
-    #                 self.unsafe_area += mosaic.utils.area_tensor(unsafe)
-    #             if explore is not None:
-    #                 queue.insert(0, explore)
-    #     return message_queue
-
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:
         """Used for assigning an action value to an interval that is so small it gets approximated to the closest single datapoint according to #precision field"""
-        approximate_domain = DomainExplorer.approximate_to_single_datapoint(normed_domain, self.precision_constraints)
+        approximate_domain = torch.mean(normed_domain, dim=1,dtype=normed_domain.dtype)
         approximate_domain = approximate_domain.to(self.device)
         outcome = net(approximate_domain)
         return outcome
 
-    @staticmethod
-    def approximate_to_single_datapoint(normed_domain: torch.Tensor, precisions: List[float]) -> torch.Tensor:
-        # dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
-        mean_dom = torch.mean(normed_domain, dim=1)
-        results = []
-        for i, value in enumerate(mean_dom):
-            # result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
-            result = float(value.item())
-            results.append(result)
-        return torch.tensor(results)
+    # @staticmethod
+    # def approximate_to_single_datapoint(normed_domain: torch.Tensor, precisions: List[float]) -> torch.Tensor:
+    #     # dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
+    #     mean_dom = torch.mean(normed_domain, dim=1,dtype=normed_domain.dtype)
+    #     results = []
+    #     for i, value in enumerate(mean_dom):
+    #         # result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
+    #         result = float(value.item())
+    #         results.append(result)
+    #     return torch.tensor(results)
 
     def reset(self):
         self.safe_domains = []
@@ -211,7 +184,7 @@ class SymbolicDomainExplorer:
     def load(path):
         f = open(path)
         json_str = f.read()
-        thawed: DomainExplorer = jsonpickle.decode(json_str)
+        thawed: SymbolicDomainExplorer = jsonpickle.decode(json_str)
         return thawed
 
     @staticmethod
@@ -317,7 +290,7 @@ class SymbolicDomainExplorer:
 def bab_remote(normed_domains, safe_property_index, net):
     result = []
     for normed_domain in normed_domains:
-        dom_ub, dom_lb = net.sget_boundaries(normed_domain, safe_property_index, False)
+        dom_ub, dom_lb = net.get_boundaries(normed_domain, safe_property_index, False)
         assert dom_lb <= dom_ub, "lb must be lower than ub"
         if dom_ub < 0:
             # discard

@@ -5,10 +5,8 @@ conda activate safedrl
 pip install torch gym
 conda config --add channels http://conda.anaconda.org/gurobi
 conda install gurobi=8
-pip install ray
-pip install py4j
-pip install Pyro5
-pip install bidict
+pip install ray py4j bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
-pip install mpmath progressbar2 jsonpickle networkx python-intervals simpy
+#local install mpmath
+pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matplotlib plotly scikit-learn colour contexttimer pyinterval
