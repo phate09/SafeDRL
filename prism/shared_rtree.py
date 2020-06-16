@@ -82,7 +82,7 @@ class SharedRtree:
         pickle.dump(self.union_states_total, open(file_name, "wb+"))
         print("Saved RTree")
 
-    def filter_relevant_intervals_multi(self, current_intervals: List[Tuple[Tuple[float, float]]], rounding: int) -> List[List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+    def filter_relevant_intervals_multi(self, current_intervals: List[Tuple[Tuple[float, float]]]) -> List[List[Tuple[Tuple[Tuple[float, float]], bool]]]:
         """Filter the intervals relevant to the current_interval"""
         # current_interval = inflate(current_interval, rounding)
         result_return: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = []

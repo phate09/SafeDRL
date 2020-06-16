@@ -131,6 +131,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
                 if allow_merge:
                     merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True], n_workers)]
                     merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False], n_workers)]
+                    print("Merged")
                     union_states_total_merged = merged1 + merged2
                 else:
                     union_states_total_merged = union_states_total
@@ -452,7 +453,7 @@ def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]],
     return merge_supremum2(starting_intervals, show_bar)
 
 
-def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int,precision:int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
     if len(starting_intervals) <= 1:
         return starting_intervals
     dimensions = len(starting_intervals[0])
@@ -467,7 +468,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
         n_splits = 10
         for i in range(n_splits):
             domain = split_list.pop(0)
-            splitted_domains = DomainExplorer.box_split_tuple(domain, 0)
+            splitted_domains = DomainExplorer.box_split_tuple(domain, precision)
             split_list.extend(splitted_domains)
 
         # find relevant intervals
