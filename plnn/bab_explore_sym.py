@@ -42,40 +42,37 @@ class SymbolicDomainExplorer:
         deltas = ubs - lbs
         total_area = sum([x.prod().item() for x in deltas])
         while tensor is not None:
-            u, l = self.get_boundaries(net, tensor)
-            result = []
-            for i, (dom_ub, dom_lb) in enumerate(zip(u, l)):
-                assert dom_lb <= dom_ub, "lb must be lower than ub"
-                normed_domain = tensor[i]
-                if dom_ub < 0:
-                    # discard
-                    result.append((None, None, normed_domain))
-                if dom_lb > 0:
-                    # keep
-                    result.append((None, normed_domain, None))
-                if dom_lb <= 0 <= dom_ub:
-                    # explore
-                    result.append((normed_domain, None, None))
-            queue = []
-            for explore, safe, unsafe in result:
-                if safe is not None:
-                    self.safe_domains.append(safe)
-                    self.safe_area += mosaic.utils.area_tensor(safe)
-                if unsafe is not None:
-                    self.unsafe_domains.append(unsafe)
-                    self.unsafe_area += mosaic.utils.area_tensor(unsafe)
-                if explore is not None:
-                    to_process = self.split_and_queue([explore], net)
-                    for x in to_process:
-                        queue.insert(0, x)
-            if len(queue) != 0:
-                tensor = torch.stack(queue, 0)
+            sub_tensors = torch.split(tensor, 50000, dim=0)
+            new_tensor_list = []
+            for sub_tensor in sub_tensors:
+                u, l = self.get_boundaries(net, sub_tensor)
+                queue = []
+                for i, (dom_ub, dom_lb) in enumerate(zip(u, l)):
+                    assert dom_lb <= dom_ub, "lb must be lower than ub"
+                    normed_domain = sub_tensor[i]
+                    if dom_ub < 0:
+                        # unsafe
+                        self.unsafe_domains.append(normed_domain)
+                        self.unsafe_area += mosaic.utils.area_tensor(normed_domain)
+                    if dom_lb > 0:
+                        # safe
+                        self.safe_domains.append(normed_domain)
+                        self.safe_area += mosaic.utils.area_tensor(normed_domain)
+                    if dom_lb <= 0 <= dom_ub:
+                        # explore
+                        to_process = self.split_and_queue([normed_domain], net)
+                        for x in to_process:
+                            queue.insert(0, x)
+                if len(queue) != 0:
+                    new_tensor_list.extend(queue)
+                if debug:
+                    print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
+                          f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
+                          end="")
+            if len(new_tensor_list) != 0:
+                tensor = torch.stack(new_tensor_list, 0)
             else:
                 tensor = None
-            if debug:
-                print(f"\rqueue length : {len(queue)}, # safe domains: {len(self.safe_domains)}, # unsafe domains: {len(self.unsafe_domains)}, abstract areas: [unknown:"
-                      f"{1 - (self.safe_area + self.unsafe_area + self.ignore_area) / total_area:.3%} --> safe:{self.safe_area / total_area:.3%}, unsafe:{self.unsafe_area / total_area:.3%}, ignore:{self.ignore_area / total_area:.3%}]",
-                      end="")
         if debug:
             print("\n")
         if save:
@@ -150,7 +147,7 @@ class SymbolicDomainExplorer:
 
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:
         """Used for assigning an action value to an interval that is so small it gets approximated to the closest single datapoint according to #precision field"""
-        approximate_domain = torch.mean(normed_domain, dim=1,dtype=normed_domain.dtype)
+        approximate_domain = torch.mean(normed_domain, dim=1, dtype=normed_domain.dtype)
         approximate_domain = approximate_domain.to(self.device)
         outcome = net(approximate_domain)
         return outcome
