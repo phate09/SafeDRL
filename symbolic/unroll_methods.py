@@ -502,7 +502,35 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
     # show_plot(merged_list, new_merged_list)
     return new_merged_list
 
-
+def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int,precision:int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+    intervals_dummy_action = [(x, True) for x in starting_intervals]
+    rtree = SharedRtree()
+    state_size = len(starting_intervals[0])
+    rtree.reset(state_size)
+    rtree.load(intervals_dummy_action)
+    merged_list = []
+    window = rtree.tree.get_bounds()#((-0.785, 0.785), (-2.0, 2.0))
+    subwindows = DomainExplorer.box_split_tuple(window, precision)
+    while len(subwindows) != 0:
+        sub = subwindows.pop()
+        filtered = rtree.filter_relevant_intervals_multi([sub])[0]
+        if len(filtered) != 0:
+            area_filtered = sum([utils.area_tuple(x[0]) for x in filtered])
+            area_sub = utils.area_tuple(sub)
+            # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
+            if not math.isclose(area_filtered, area_sub):
+                all_same = False
+            else:
+                first_action = filtered[0][1]
+                all_same = all([x[1] == first_action for x in filtered])
+            if all_same:
+                merged_list.append((sub, first_action))
+            else:
+                subwindows.extend(DomainExplorer.box_split_tuple(sub, precision))
+    # safe = [x for x in merged_list if x[1] == True]
+    # unsafe = [x for x in merged_list if x[1] == False]
+    # utils.show_plot(safe, unsafe, merged_list)
+    return merged_list
 def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
     dimensions = len(starting_intervals[0][0])
     boundaries = [(float("inf"), float("-inf")) for _ in range(dimensions)]

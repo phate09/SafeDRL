@@ -124,7 +124,6 @@ class SymbolicDomainExplorer:
                 for i, ndom_i in enumerate(ndoms):
                     length, dim = self.max_length(ndom_i)
                     length = round(length, self.rounding)
-                    min_length, dim = self.min_length(ndom_i)
                     if length <= self.precision_constraints[dim]:  # or area < min_area:
                         # too short or too small
                         # approximate the interval to the closest datapoint and determine if it is safe or not
