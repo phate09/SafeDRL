@@ -14,7 +14,7 @@ import verification_runs.domain_explorers_load
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = False
+local_mode = True
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -22,7 +22,7 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding,sym=False)
+explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding,sym=True)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)

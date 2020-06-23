@@ -26,7 +26,7 @@ class HyperRectangle:
         :param boundtype: bound type for all bounds
         :return: A hyperrectangle <left_bound, right_bound>^dimension (with adequate bounds)
         """
-        return cls(*[Interval(left_bound, boundtype, right_bound, boundtype) for _ in range(dimension)])
+        return cls(*[Interval(left_bound, right_bound, boundtype, boundtype) for _ in range(dimension)])
 
     @classmethod
     def from_extremal_points(cls, point1, point2, boundtype):
@@ -38,7 +38,7 @@ class HyperRectangle:
         :return: HyperRectangle.
         """
 
-        return cls(*[Interval(min(l, r), boundtype, max(l, r), boundtype) for l, r in zip(point1, point2)])
+        return cls(*[Interval(min(l, r), max(l, r), boundtype, boundtype) for l, r in zip(point1, point2)])
 
     def dimension(self):
         return len(self.intervals)
@@ -162,8 +162,7 @@ class HyperRectangle:
             hrect_list.append(HyperRectangle(*changed_interval_list))
 
             # middle part which is cut away
-            middle_interval = Interval(new_interval_list[0].right_bound(), new_interval_list[0].right_bound_type(),
-                                       new_interval_list[1].left_bound(), new_interval_list[1].left_bound_type())
+            middle_interval = Interval(new_interval_list[0].right_bound(), new_interval_list[1].left_bound(), new_interval_list[0].right_bound_type(), new_interval_list[1].left_bound_type())
             changed_interval_list = list(self.intervals)
             changed_interval_list[dimension] = middle_interval
             hrect_list.append(HyperRectangle(*changed_interval_list))
@@ -238,38 +237,3 @@ class HyperRectangle:
             rightboundstr = "<=" if interval.right_bound_type() == BoundType.closed else "<"
             var_strings.append("{}{}{}{}{}".format(interval.left_bound(), leftboundstr, variable.name, rightboundstr, interval.right_bound()))
         return ",".join(var_strings)
-
-    # @classmethod
-    # def from_region_string(cls, input_string, variables):
-    #     """Constructs a hyperrectangle with dimensions according to the variable order.
-    #
-    #     :return: A HyperRectangle
-    #     """
-    #     interval_strings = input_string.split(",")
-    #     variables_to_intervals = dict()
-    #     for int_str in interval_strings:
-    #         components = int_str.split("<")
-    #         if len(components) != 3:
-    #             raise ValueError("Expected string in the form Number{<=,<}Variable{<=,<}Number, got {}".format(int_str))
-    #
-    #         if components[1][0] == "=":
-    #             left_bt = BoundType.closed
-    #             components[1] = components[1][1:]
-    #         else:
-    #             left_bt = BoundType.open
-    #
-    #         if components[2][0] == "=":
-    #             right_bt = BoundType.closed
-    #             components[2] = components[2][1:]
-    #         else:
-    #             right_bt = BoundType.open
-    #
-    #         variables_to_intervals[components[1]] = Interval(pc.Rational(components[0]), left_bt,
-    #                                                          pc.Rational(components[2]), right_bt)
-    #     ordered_intervals = []
-    #     for variable in variables:
-    #         if variable.name not in variables_to_intervals:
-    #             raise RuntimeError("Parameter {} not found in region string".format(variable.name))
-    #         ordered_intervals.append(variables_to_intervals[variable.name])
-    #     # TODO checks.
-    #     return cls(*ordered_intervals)

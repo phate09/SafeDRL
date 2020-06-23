@@ -121,7 +121,7 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
             if allow_assign_action:
                 print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
                 if allow_merge:
-                    remainings_merged = merge_supremum3(remainings, n_workers)  # no need to assign a dummy action
+                    remainings_merged = merge4(remainings,rounding)  # no need to assign a dummy action
                 else:
                     remainings_merged = remainings
                 assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
@@ -129,8 +129,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
                 union_states_total = rtree.tree_intervals()
                 union_states_total.extend(assigned_intervals)
                 if allow_merge:
-                    merged1 = [(x, True) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == True], n_workers)]
-                    merged2 = [(x, False) for x in merge_supremum3([x[0] for x in union_states_total if x[1] == False], n_workers)]
+                    merged1 = [(x, True) for x in merge4([x[0] for x in union_states_total if x[1] == True],rounding)]
+                    merged2 = [(x, False) for x in merge4([x[0] for x in union_states_total if x[1] == False],rounding)]
                     print("Merged")
                     union_states_total_merged = merged1 + merged2
                 else:
@@ -194,10 +194,10 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
     half_terminal_states_list = []
     for key in terminal_states_dict:
         if terminal_states_dict[key]:
-            terminal_states_list.append((key,None))
+            terminal_states_list.append((key, None))
     for key in half_terminal_states_dict:
         if half_terminal_states_dict[key]:
-            half_terminal_states_list.append((key,None))
+            half_terminal_states_list.append((key, None))
     storage.mark_as_fail(terminal_states_list)
     storage.mark_as_half_fail(half_terminal_states_list)
     next_to_compute = []
@@ -213,8 +213,7 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
                     next_to_compute.append((successor2, None))
             bar.update(bar.value + 1)
     # store terminal states
-    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")
-    # return next_to_compute
+    print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")  # return next_to_compute
 
 
 def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
@@ -453,7 +452,7 @@ def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]],
     return merge_supremum2(starting_intervals, show_bar)
 
 
-def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int,precision:int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, precision: int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
     if len(starting_intervals) <= 1:
         return starting_intervals
     dimensions = len(starting_intervals[0])
@@ -502,35 +501,44 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
     # show_plot(merged_list, new_merged_list)
     return new_merged_list
 
-def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int,precision:int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+
+def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], precision: int) -> List[Tuple[Tuple[float, float]]]:
     intervals_dummy_action = [(x, True) for x in starting_intervals]
     rtree = SharedRtree()
     state_size = len(starting_intervals[0])
     rtree.reset(state_size)
     rtree.load(intervals_dummy_action)
     merged_list = []
-    window = rtree.tree.get_bounds()#((-0.785, 0.785), (-2.0, 2.0))
-    subwindows = DomainExplorer.box_split_tuple(window, precision)
-    while len(subwindows) != 0:
-        sub = subwindows.pop()
-        filtered = rtree.filter_relevant_intervals_multi([sub])[0]
-        if len(filtered) != 0:
-            area_filtered = sum([utils.area_tuple(x[0]) for x in filtered])
-            area_sub = utils.area_tuple(sub)
-            # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
-            if not math.isclose(area_filtered, area_sub):
-                all_same = False
-            else:
+    window_tuple = []
+    window = rtree.tree.get_bounds()
+    while len(window)!=0:
+        window_tuple.append((window.pop(0),window.pop(0)))
+    window = tuple(window_tuple)
+    # subwindows = DomainExplorer.box_split_tuple(window, precision)
+    subwindows = [window]
+    with progressbar.ProgressBar(prefix="Merging intervals",max_value=progressbar.UnknownLength) as bar:
+        while len(subwindows) != 0:
+            bar.update()
+            sub = subwindows.pop()
+            filtered = rtree.filter_relevant_intervals_multi([sub])[0]
+            if len(filtered) != 0:
+                area_filtered = sum([utils.area_tuple(x[0]) for x in filtered])
+                area_sub = utils.area_tuple(sub)
+                # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
                 first_action = filtered[0][1]
                 all_same = all([x[1] == first_action for x in filtered])
-            if all_same:
-                merged_list.append((sub, first_action))
-            else:
-                subwindows.extend(DomainExplorer.box_split_tuple(sub, precision))
+                if all_same and area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10):  # check for empty areas
+                    all_same = False
+                if all_same:
+                    merged_list.append((sub, first_action))
+                else:
+                    subwindows.extend(DomainExplorer.box_split_tuple(sub, precision))
     # safe = [x for x in merged_list if x[1] == True]
     # unsafe = [x for x in merged_list if x[1] == False]
     # utils.show_plot(safe, unsafe, merged_list)
-    return merged_list
+    return [x[0] for x in merged_list]
+
+
 def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
     dimensions = len(starting_intervals[0][0])
     boundaries = [(float("inf"), float("-inf")) for _ in range(dimensions)]
@@ -597,8 +605,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
             if length == max_path_length:
                 to_analyse.append(interval)  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action,
-                                         allow_merge=allow_merge)
+        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
     iteration += 1
     return True
 
