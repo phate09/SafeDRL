@@ -5,13 +5,15 @@ import numpy as np
 from sympy.combinatorics import GrayCode
 import plotly.express as px
 
+from mosaic.hyperrectangle import HyperRectangle
 
-def get_mesh(domain: Tuple[Tuple[float, float]], color: str):
+
+def get_mesh(domain: HyperRectangle, color: str):
     x, y, z = get_coordinates(domain)
     return go.Mesh3d(x=x, y=y, z=z, alphahull=1, opacity=0.1, color=color)
 
 
-def get_coordinates(domain: Tuple[Tuple[float, float]]):
+def get_coordinates(domain: HyperRectangle):
     state_size = len(domain)
     a = GrayCode(state_size)
     codes = list(a.generate_gray())

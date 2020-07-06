@@ -10,6 +10,8 @@ import zmq
 from py4j.java_gateway import JavaGateway
 from bidict import bidict
 from py4j.java_collections import ListConverter
+
+from mosaic.hyperrectangle import HyperRectangle
 from utility.bidict_multi import bidict_multi
 import networkx as nx
 # import Pyro5.api
@@ -29,11 +31,11 @@ class StateStorage:
         self.graph = nx.DiGraph()
         self.root = None
 
-    def store_successor_multi(self, items: List[Tuple[Tuple[Tuple[float, float]], Tuple[Tuple[float, float]]]]):
+    def store_successor_multi(self, items: List[Tuple[HyperRectangle, HyperRectangle]]):
         # first element is parent
         self.graph.add_edges_from(items, p=1.0)
 
-    def store_sticky_successors(self, successor: Tuple[Tuple[float, float]], sticky_successor: Tuple[Tuple[float, float]], parent: Tuple[Tuple[float, float]]):
+    def store_sticky_successors(self, successor: HyperRectangle, sticky_successor: HyperRectangle, parent: HyperRectangle):
         action_name = max([action_n for parent, successor, action_n in self.graph.edges(self.root, data='a', default=0)]) + 1
         self.graph.add_edge(parent, successor, p=0.8, a=action_name)
         self.graph.add_edge(parent, sticky_successor, p=0.2, a=action_name)  # same action
@@ -51,12 +53,12 @@ class StateStorage:
             print(f"{folder_path} does not exist")
             return False
 
-    def mark_as_half_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
+    def mark_as_half_fail(self, fail_states: List[HyperRectangle]):
         for item in fail_states:
             self.graph.add_node(item)
             self.graph.nodes[item]['half_fail'] = True
 
-    def mark_as_fail(self, fail_states: List[Tuple[Tuple[float, float]]]):
+    def mark_as_fail(self, fail_states: List[HyperRectangle]):
         for item in fail_states:
             self.graph.add_node(item)
             self.graph.nodes[item]['fail'] = True

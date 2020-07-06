@@ -9,6 +9,8 @@ from mpmath import iv, pi
 from interval import interval
 import interval.imath as imath
 
+from mosaic.hyperrectangle import HyperRectangle
+
 
 class PendulumEnv_abstract(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 30}
@@ -28,7 +30,7 @@ class PendulumEnv_abstract(gym.Env):
 
         self.seed()
 
-    def set_state(self, state: Tuple[Tuple[float, float]]):
+    def set_state(self, state: HyperRectangle):
         self.state = tuple([interval([x[0], x[1]]) for x in state])
 
     def seed(self, seed=None):
@@ -54,7 +56,7 @@ class PendulumEnv_abstract(gym.Env):
         self.state = (newth, newthdot)
         done = newth[0][1] < -self.max_angle or newth[0][0] > self.max_angle
         half_done = done or newth[0][0] < -self.max_angle or newth[0][1] > self.max_angle
-        return tuple([make_tuple(x) for x in self.state]), -costs, done, half_done
+        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state]))), -costs, done, half_done
 
     def is_terminal(self, interval, half=False):
         done = interval[0][1] < -self.max_angle or interval[0][0] > self.max_angle
@@ -68,7 +70,7 @@ class PendulumEnv_abstract(gym.Env):
         # self.state = self.np_random.uniform(low=-high, high=high)
         self.state = (interval([-self.max_angle, self.max_angle]), interval([-2, 2]))
         self.last_u = None
-        return tuple([make_tuple(x) for x in self.state])
+        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state])))
 
     def render(self, mode='human'):
 

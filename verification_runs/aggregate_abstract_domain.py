@@ -4,10 +4,11 @@ from typing import Tuple, List
 
 import numpy as np
 
+from mosaic.hyperrectangle import HyperRectangle
 from mosaic.utils import partially_contained, contained, flatten_interval, create_tree
 
 
-def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]) -> Tuple[Tuple[float, float]] or None:
+def merge_if_adjacent(first: HyperRectangle, second: HyperRectangle) -> HyperRectangle or None:
     """
     Check every dimension, if d-1 dimensions are the same and the last one is adjacent returns the merged interval
     :param first: the first interval
@@ -44,11 +45,11 @@ def merge_if_adjacent(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[flo
         return None
 
 
-def completely_inside(first: Tuple[Tuple[float, float]], second: Tuple[Tuple[float, float]]):
+def completely_inside(first: HyperRectangle, second: HyperRectangle):
     n_dim = len(first)
     return all([contained(first[k], second[k]) for k in range(n_dim)])
 
-def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, float]], bool]], coordinate: Tuple[float] = None) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def filter_only_connected(intervals_to_filter: List[Tuple[HyperRectangle, bool]], coordinate: Tuple[float] = None) -> List[Tuple[HyperRectangle, bool]]:
     if len(intervals_to_filter) == 0:
         return intervals_to_filter
     connected_dict = defaultdict(bool)
@@ -78,7 +79,7 @@ def filter_only_connected(intervals_to_filter: List[Tuple[Tuple[Tuple[float, flo
     return connected_list[1:]  # remove the first element
 
 
-def is_connected(interval: Tuple[Tuple[Tuple[float, float]], bool], intervals_to_connect: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> bool:
+def is_connected(interval: Tuple[HyperRectangle, bool], intervals_to_connect: List[Tuple[HyperRectangle, bool]]) -> bool:
     if len(intervals_to_connect) == 0:
         return False
     tree = create_tree(intervals_to_connect)

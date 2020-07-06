@@ -10,6 +10,8 @@ from gym.utils import seeding
 import numpy as np
 import intervals as I
 
+from mosaic.hyperrectangle import HyperRectangle
+
 
 class CartPoleEnv_abstract(gym.Env):
     """
@@ -78,7 +80,7 @@ class CartPoleEnv_abstract(gym.Env):
 
         self.steps_beyond_done = None
 
-    def set_state(self, state: Tuple[Tuple[float, float]]):
+    def set_state(self, state: HyperRectangle):
         self.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
 
     def seed(self, seed=None):
@@ -87,7 +89,7 @@ class CartPoleEnv_abstract(gym.Env):
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
-        state = self.state
+        state = self.state.transpose()
         x, x_dot, theta, theta_dot = state
         force = self.force_mag if action == 1 else -self.force_mag
         costheta = iv.cos(theta)
@@ -126,7 +128,7 @@ class CartPoleEnv_abstract(gym.Env):
             self.steps_beyond_done += 1
             reward = 0.0
 
-        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))]), reward, done, half_done
+        return HyperRectangle.from_numpy(np.array(tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))])).transpose()), reward, done, half_done
 
     def is_terminal(self, interval, half=False):
         done = interval[0][1] < -self.x_threshold or interval[0][0] > self.x_threshold or interval[2][0] < -self.theta_threshold_radians or interval[2][1] > self.theta_threshold_radians
@@ -161,7 +163,7 @@ class CartPoleEnv_abstract(gym.Env):
     def reset(self):
         self.state = tuple([iv.mpf([-0.005, 0.005]) for x in range(4)])
         self.steps_beyond_done = None
-        return tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))])
+        return HyperRectangle.from_numpy(np.array(tuple([(float(x.a), float(x.b)) for i, x in enumerate(np.array(self.state))])).transpose())
 
     def render(self, mode='human'):
         screen_width = 600

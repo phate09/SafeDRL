@@ -17,8 +17,8 @@ if __name__ == '__main__':
         t_states = jsonpickle.decode(f.read())
     safe_states = t_states[0][0]
     unsafe_states = t_states[0][1]
-    safe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), True) for k in safe_states]
-    unsafe_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), False) for k in unsafe_states]
+    safe_states_total: List[Tuple[HyperRectangle, bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), True) for k in safe_states]
+    unsafe_states_total: List[Tuple[HyperRectangle, bool]] = [(tuple([(float(x[0]), float(x[1])) for x in k]), False) for k in unsafe_states]
     union_states_total = safe_states_total + unsafe_states_total
     union_states_total = union_states_total[0:10]
     # previous_total_area = 0

@@ -1,5 +1,7 @@
-from mosaic.interval import Interval,BoundType
+from mosaic.interval import Interval, BoundType
 from mosaic.point import Point
+
+
 # from prophesy.adapter.pycarl import inf
 
 
@@ -40,6 +42,17 @@ class HyperRectangle:
 
         return cls(*[Interval(min(l, r), max(l, r), boundtype, boundtype) for l, r in zip(point1, point2)])
 
+    @classmethod
+    def from_numpys(cls, array):
+        new_items = []
+        for item in array:
+            new_items.append(cls.from_numpy(item))
+        return new_items
+
+    @classmethod
+    def from_numpy(cls, array):
+        return cls(*[Interval(array[0][i], array[1][i]) for i in range(array.shape[-1])])
+
     def dimension(self):
         return len(self.intervals)
 
@@ -54,9 +67,7 @@ class HyperRectangle:
         for i in range(0, pow(2, self.dimension()), 1):
             num_bits = self.dimension()
             bits = [(i >> bit) & 1 for bit in range(num_bits - 1, -1, -1)]
-            result.append(Point(
-                *[(self.intervals[i].left_bound() if x == 0 else self.intervals[i].right_bound()) for i, x in
-                  zip(range(0, self.dimension()), bits)]))
+            result.append(Point(*[(self.intervals[i].left_bound() if x == 0 else self.intervals[i].right_bound()) for i, x in zip(range(0, self.dimension()), bits)]))
         return result
 
     def center(self):
@@ -117,14 +128,6 @@ class HyperRectangle:
         :return:
         """
         return HyperRectangle(*[i1.intersect(i2) for i1, i2 in zip(self.intervals, other.intervals)])
-
-    def non_empty_intersection(self, other):
-        """
-        
-        :return: 
-        """
-        # TODO can be made more efficient.
-        return not self.intersect(other).empty()
 
     def is_closed(self):
         """
@@ -201,6 +204,12 @@ class HyperRectangle:
             hrect_list.extend(current_rect_list[1].setminus(other, dimension + 1))
         return hrect_list
 
+    def round(self, rounding: int):
+        HyperRectangle(*[i.round(rounding) for i in self.intervals])
+
+    def to_tuple(self):
+        return tuple([(interval.left_bound(), interval.right_bound()) for interval in self.intervals])
+
     def __str__(self):
         return " x ".join([str(i) for i in self.intervals])
 
@@ -224,16 +233,21 @@ class HyperRectangle:
     def __getitem__(self, key):
         return self.intervals[key]
 
-    def to_region_string(self, variables):
+
+class HyperRectangle_action(HyperRectangle):
+    def __init__(self, *intervals, action=None):
         """
-        Constructs a region string, as e.g. used by storm-pars
-        :param variables: An ordered list of the variables
-        :type variables: List[pycarl.Variable]
-        :return: 
+        :param intervals: Multiple Intervals as arguments
         """
-        var_strings = []
-        for variable, interval in zip(variables, self.intervals):
-            leftboundstr = "<=" if interval.left_bound_type() == BoundType.closed else "<"
-            rightboundstr = "<=" if interval.right_bound_type() == BoundType.closed else "<"
-            var_strings.append("{}{}{}{}{}".format(interval.left_bound(), leftboundstr, variable.name, rightboundstr, interval.right_bound()))
-        return ",".join(var_strings)
+        super().__init__(*intervals)
+        self.action = action
+
+    @classmethod
+    def from_hyperrectangle(cls, hyperrectangle, action):
+        return cls(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in hyperrectangle.intervals], action=action)
+
+    def to_tuple(self):
+        return super().to_tuple(), self.action
+
+    def __repr__(self):
+        return f"({repr(super())}, {self.action})"

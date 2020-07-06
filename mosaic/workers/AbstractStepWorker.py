@@ -5,6 +5,7 @@ import numpy as np
 import ray
 from mpmath import iv
 
+from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from mosaic.utils import round_tuple
 
 
@@ -14,7 +15,7 @@ class AbstractStepWorker:
         self.env = env_init()
         self.rounding = rounding
 
-    def work(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    def work(self, intervals: List[HyperRectangle_action]):
         successors_dict = defaultdict(list)
         terminals_dict = defaultdict(bool)
         half_terminals_dict = defaultdict(bool)
@@ -46,7 +47,7 @@ class AbstractStepWorker:
         return successors_dict, half_terminals_dict, terminals_dict
 
 
-def step_state(state: Tuple[Tuple[float, float]], action, env, rounding: int) -> Tuple[Tuple[Tuple[float, float]], bool, bool]:
+def step_state(state: HyperRectangle, action, env, rounding: int) -> Tuple[HyperRectangle, bool, bool]:
     # given a state and an action, calculate next state
     env.reset()
     state = round_tuple(state, rounding)  # round the state

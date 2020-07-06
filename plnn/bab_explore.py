@@ -33,7 +33,7 @@ class DomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains: List[Tuple[Tuple[float, float]]], n_workers: int, debug=True, save=False):
+    def explore(self, net, domains, n_workers: int, debug=True, save=False):
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
@@ -288,7 +288,7 @@ class DomainExplorer:
         return sub_domains
 
     @staticmethod
-    def box_split_tuple(domain: Tuple[Tuple[float, float]], rounding: int) -> List[Tuple[Tuple[float, float]]]:
+    def box_split_tuple(domain, rounding: int):
         domain_array = np.array(domain)
         diff = domain_array[:, 1] - domain_array[:, 0]
         edgelength = np.max(diff, 0).item()

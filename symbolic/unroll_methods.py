@@ -20,6 +20,7 @@ from rtree import index
 from sympy.combinatorics.graycode import GrayCode
 import mosaic.utils as utils
 import prism.state_storage
+from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
 from prism.shared_rtree import SharedRtree
@@ -28,7 +29,7 @@ from utility.standard_progressbar import StandardProgressBar
 import verification_runs.aggregate_abstract_domain
 
 
-def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, float]], bool]], env_class, n_workers: int, rounding: int):
+def abstract_step(abstract_states_normalised: List[HyperRectangle_action], env_class, n_workers: int, rounding: int):
     """
     Given some abstract states, compute the next abstract states taking the action passed as parameter
     :param env:
@@ -49,7 +50,7 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
     with StandardProgressBar(prefix="Performing abstract step ", max_value=len(proc_ids)) as bar:
         while len(proc_ids) != 0:
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=min(10, len(proc_ids)), timeout=0.5)
-            results: Tuple[List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[float, float]]]]], dict, dict] = ray.get(ready_ids)
+            results: Tuple[List[Tuple[HyperRectangle_action, List[HyperRectangle]]], dict, dict] = ray.get(ready_ids)
             bar.update(bar.value + len(results))
             for next_states_local, half_terminal_states_local, terminal_states_local in results:
                 for next_state_key in next_states_local:
@@ -59,8 +60,8 @@ def abstract_step(abstract_states_normalised: List[Tuple[Tuple[Tuple[float, floa
     return sorted(next_states), half_terminal_states, terminal_states
 
 
-def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
-    List[Tuple[Tuple[Tuple[float, float]], bool]], List[Tuple[Tuple[float, float]]]]:
+def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
+    List[HyperRectangle_action], List[HyperRectangle]]:
     """
     Given a list of intervals, calculate the intervals where the agent will take a given action
     :param n_workers: number of worker processes
@@ -69,6 +70,7 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     """
     # total_area_before = sum([area_tuple(remaining) for remaining in s_array])
     # given the initial states calculate which intervals go left or right
+    #todo convert HyperRectangle to np.ndarray
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
     safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
@@ -83,17 +85,17 @@ def assign_action_to_blank_intervals(s_array: List[Tuple[Tuple[float, float]]], 
     return t_states
 
 
-def discard_negligibles(intervals: List[Tuple[Tuple[float, float]]]) -> List[Tuple[Tuple[float, float]]]:
+def discard_negligibles(intervals: List[HyperRectangle]) -> List[HyperRectangle]:
     """discards the intervals with area 0"""
     return [x for x in intervals if not is_negligible(x)]
 
 
-def is_negligible(interval: Tuple[Tuple[float, float]]):
+def is_negligible(interval: HyperRectangle):
     sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
     return any([math.isclose(x, 0) for x in sizes])
 
 
-def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
+def is_small(interval: HyperRectangle, min_size: float, rounding):
     sizes = [round(abs(interval[dimension][1] - interval[dimension][0]), rounding) for dimension in range(len(interval))]
     return max(sizes) <= min_size
 
@@ -107,21 +109,21 @@ def is_small(interval: Tuple[Tuple[float, float]], min_size: float, rounding):
 #             graph.remove_edges_from(edges)
 
 
-def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
-                       allow_assign_action=True, allow_merge=True):
+def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage, allow_assign_action=True,
+                       allow_merge=True):
     if len(intervals) == 0:
         return []
-    intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
+    # intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
     # remainings = intervals_sorted
     # intersected_intervals = []
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals_sorted, rtree.tree)  # checks areas not covered by total intervals
-        remainings = sorted(remainings)
+        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals, rtree.tree)  # checks areas not covered by total intervals
+        # remainings = sorted(remainings)
         if len(remainings) != 0:
             if allow_assign_action:
                 print(f"Found {len(remainings)} remaining intervals, updating the rtree to cover them")
                 if allow_merge:
-                    remainings_merged = merge4(remainings,rounding)  # no need to assign a dummy action
+                    remainings_merged = merge4(remainings, rounding)  # no need to assign a dummy action
                 else:
                     remainings_merged = remainings
                 assigned_intervals, ignore_intervals = assign_action_to_blank_intervals(remainings_merged, explorer, verification_model, n_workers, rounding)
@@ -129,8 +131,8 @@ def analysis_iteration(intervals: List[Tuple[Tuple[float, float]]], n_workers: i
                 union_states_total = rtree.tree_intervals()
                 union_states_total.extend(assigned_intervals)
                 if allow_merge:
-                    merged1 = [(x, True) for x in merge4([x[0] for x in union_states_total if x[1] == True],rounding)]
-                    merged2 = [(x, False) for x in merge4([x[0] for x in union_states_total if x[1] == False],rounding)]
+                    merged1 = [(x, True) for x in merge4([x[0] for x in union_states_total if x[1] == True], rounding)]
+                    merged2 = [(x, False) for x in merge4([x[0] for x in union_states_total if x[1] == False], rounding)]
                     print("Merged")
                     union_states_total_merged = merged1 + merged2
                 else:
@@ -180,14 +182,14 @@ def merge_successors(intersected_intervals):
         if len(successors) != 1:
             merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
             merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
-            successors_merged: List[Tuple[Tuple[Tuple[float, float]], bool]] = merged1 + merged2
+            successors_merged: List[HyperRectangle_action] = merged1 + merged2
             merged_list.append((interval_noaction, successors_merged))
         else:
             merged_list.append((interval_noaction, successors))
     return merged_list
 
 
-def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[float, float]], bool]], n_workers, rounding, storage: StateStorage):
+def compute_successors(env_class, list_assigned_action: List[HyperRectangle_action], n_workers, rounding, storage: StateStorage):
     next_states, half_terminal_states_dict, terminal_states_dict = abstract_step(list_assigned_action, env_class, n_workers,
                                                                                  rounding)  # performs a step in the environment with the assigned action and retrieve the result
     terminal_states_list = []
@@ -216,7 +218,7 @@ def compute_successors(env_class, list_assigned_action: List[Tuple[Tuple[Tuple[f
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")  # return next_to_compute
 
 
-def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], intervals_to_fill: List[Tuple[Tuple[Tuple[float, float]], bool]], debug=True):
+def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_fill: List[HyperRectangle_action], debug=True):
     """
     Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
     :param debug:
@@ -225,11 +227,12 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     :return: the blank intervals and the union intervals
     """
     "Optimised version of compute_remaining_intervals"
-    examine_intervals: List[Tuple[Tuple[float, float]]] = []
+
+    examine_intervals: List[HyperRectangle] = []
     remaining_intervals = [current_interval]
     union_safe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
     union_unsafe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
-    dimensions = len(current_interval)
+    dimensions = current_interval.shape[-1]
     if len(intervals_to_fill) == 0:
         return remaining_intervals, [], []
     if debug:
@@ -239,7 +242,7 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
         examine_intervals.extend(remaining_intervals)
         remaining_intervals = []
         while len(examine_intervals) != 0:
-            examine_interval = examine_intervals.pop(0)
+            examine_interval:HyperRectangle = examine_intervals.pop(0)
             # if not is_negligible(examine_interval):
             state = utils.shrink(interval, examine_interval)
             contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
@@ -288,16 +291,15 @@ def compute_remaining_intervals3(current_interval: Tuple[Tuple[float, float]], i
     return remaining_intervals, union_safe_intervals, union_unsafe_intervals
 
 
-def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[float, float]]], tree: index.Index, debug=True) -> Tuple[
-    List[Tuple[Tuple[float, float]]], List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]]]:
+def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], tree: index.Index, debug=True) -> Tuple[HyperRectangle, List[HyperRectangle]]:
     intervals_with_relevants = []
-    dict_intervals = defaultdict(list)
     for i, interval in enumerate(current_intervals):
-        relevant_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]] = filter_relevant_intervals3(tree, interval)
+        relevant_intervals = filter_relevant_intervals3(tree, interval)
         intervals_with_relevants.append((interval, relevant_intervals))
-    remain_list: List[Tuple[Tuple[float, float]]] = []
+    remain_list: List[HyperRectangle] = []
     proc_ids = []
     chunk_size = 200
+    intersection_list: List[Tuple[HyperRectangle, HyperRectangle]] = []  # list with intervals and associated intervals with action assigned
     for i, chunk in enumerate(utils.chunks(intervals_with_relevants, chunk_size)):
         proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
     with StandardProgressBar(prefix="Computing remaining intervals ", max_value=len(proc_ids)) if debug else nullcontext() as bar:
@@ -308,23 +310,22 @@ def compute_remaining_intervals4_multi(current_intervals: List[Tuple[Tuple[float
                 if result is not None:
                     (remain, safe, unsafe), previous_interval = result
                     remain_list.extend(remain)
-                    dict_intervals[previous_interval].extend([(x, True) for x in safe])
-                    dict_intervals[previous_interval].extend([(x, False) for x in unsafe])
+                    df = utils.create_dataframe()
+                    df.append([[x, True] for x in safe])
+                    df.append([[x, False] for x in unsafe])
+                    intersection_list.append((previous_interval, df))
             if debug:
                 bar.update(bar.value + 1)
-    intersection_list: List[Tuple[Tuple[Tuple[Tuple[float, float]], bool], List[Tuple[Tuple[Tuple[float, float]], bool]]]] = []  # list with intervals and associated intervals with action assigned
-    for key in dict_intervals.keys():
-        if len(dict_intervals[key]) != 0:
-            intersection_list.append((key, dict_intervals[key]))
+
     return remain_list, intersection_list
 
 
 @ray.remote
-def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Tuple[Tuple[float, float]], List[Tuple[Tuple[Tuple[float, float]], bool]]]], debug=True):
+def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[HyperRectangle, HyperRectangle_action]], debug=True):
     return [(compute_remaining_intervals3(current_interval, intervals_to_fill, debug), current_interval) for current_interval, intervals_to_fill in intervals_with_relevants]
 
 
-def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]]) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+def filter_relevant_intervals3(tree, current_interval: HyperRectangle) -> HyperRectangle_action:
     """Filter the intervals relevant to the current_interval"""
     # current_interval = inflate(current_interval, rounding)
     results = list(tree.intersection(utils.flatten_interval(current_interval), objects='raw'))
@@ -333,14 +334,14 @@ def filter_relevant_intervals3(tree, current_interval: Tuple[Tuple[float, float]
         suitable = all([x[1] != y[0] and x[0] != y[1] if y[0] != y[1] else True for x, y in zip(result[0], current_interval)])
         if suitable:
             total.append(result)
-    return sorted(total)
+    return total
 
 
-def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum2(starting_intervals: List[HyperRectangle], show_bar=True) -> List[HyperRectangle]:
     """merge all the intervals provided, assumes they all have the same action"""
     if len(starting_intervals) <= 1:
         return starting_intervals
-    # intervals: List[Tuple[Tuple[float, float]]] = [x for x in starting_intervals if not is_negligible(x)]  # remove size 0 intervals
+    # intervals: List[HyperRectangle] = [x for x in starting_intervals if not is_negligible(x)]  # remove size 0 intervals
     intervals = starting_intervals
     if len(intervals) <= 1:
         return intervals
@@ -381,7 +382,7 @@ def merge_supremum2(starting_intervals: List[Tuple[Tuple[float, float]]], show_b
     return merged_list
 
 
-def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree, intervals) -> Tuple[Tuple[float, float]]:
+def merge_iteration(bounds: HyperRectangle, codes, iteration_n, tree, intervals) -> HyperRectangle:
     flattened_bounds = []
     starting_coordinate = []
     dimensions = len(bounds)
@@ -448,11 +449,11 @@ def merge_iteration(bounds: Tuple[Tuple[float, float]], codes, iteration_n, tree
 
 
 @ray.remote
-def merge_supremum2_remote(starting_intervals: List[Tuple[Tuple[float, float]]], show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum2_remote(starting_intervals: List[HyperRectangle], show_bar=True) -> List[HyperRectangle]:
     return merge_supremum2(starting_intervals, show_bar)
 
 
-def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_workers: int, precision: int, positional_method=False, show_bar=True) -> List[Tuple[Tuple[float, float]]]:
+def merge_supremum3(starting_intervals: List[HyperRectangle], n_workers: int, precision: int, positional_method=False, show_bar=True) -> List[HyperRectangle]:
     if len(starting_intervals) <= 1:
         return starting_intervals
     dimensions = len(starting_intervals[0])
@@ -483,7 +484,7 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
     else:
         working_list = list(utils.chunks(starting_intervals, min(1000, max(int(len(starting_intervals) / n_workers), 1))))
     # intervals = starting_intervals
-    merged_list: List[Tuple[Tuple[float, float]]] = []
+    merged_list: List[HyperRectangle] = []
     proc_ids = []
     with StandardProgressBar(prefix="Merging intervals", max_value=len(working_list)) if show_bar else nullcontext() as bar:
         while len(working_list) != 0 or len(proc_ids) != 0:
@@ -502,8 +503,9 @@ def merge_supremum3(starting_intervals: List[Tuple[Tuple[float, float]]], n_work
     return new_merged_list
 
 
-def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], precision: int) -> List[Tuple[Tuple[float, float]]]:
-    intervals_dummy_action = [(x, True) for x in starting_intervals]
+def merge4(starting_intervals: HyperRectangle, precision: int) -> List[HyperRectangle]:
+    df = utils.create_dataframe()
+    intervals_dummy_action = [(x, None) for x in starting_intervals]
     rtree = SharedRtree()
     state_size = len(starting_intervals[0])
     rtree.reset(state_size)
@@ -511,12 +513,12 @@ def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], precision: int)
     merged_list = []
     window_tuple = []
     window = rtree.tree.get_bounds()
-    while len(window)!=0:
-        window_tuple.append((window.pop(0),window.pop(0)))
-    window = tuple(window_tuple)
+    while len(window) != 0:
+        window_tuple.append((window.pop(0), window.pop(0)))
+    window = np.ndarray(tuple(window_tuple)).transpose()
     # subwindows = DomainExplorer.box_split_tuple(window, precision)
     subwindows = [window]
-    with progressbar.ProgressBar(prefix="Merging intervals",max_value=progressbar.UnknownLength) as bar:
+    with progressbar.ProgressBar(prefix="Merging intervals", max_value=progressbar.UnknownLength) as bar:
         while len(subwindows) != 0:
             bar.update()
             sub = subwindows.pop()
@@ -539,7 +541,7 @@ def merge4(starting_intervals: List[Tuple[Tuple[float, float]]], precision: int)
     return [x[0] for x in merged_list]
 
 
-def compute_boundaries(starting_intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+def compute_boundaries(starting_intervals: List[HyperRectangle_action]):
     dimensions = len(starting_intervals[0][0])
     boundaries = [(float("inf"), float("-inf")) for _ in range(dimensions)]
     for interval, action in starting_intervals:
@@ -605,12 +607,13 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
             if length == max_path_length:
                 to_analyse.append(interval)  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
+        to_analyse_array = np.array(to_analyse)
+        analysis_iteration(to_analyse_array, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
     iteration += 1
     return True
 
 
-def perform_split(ids_split: List[Tuple[Tuple[Tuple[float, float]], bool]], storage: StateStorage, safe_threshold: float, unsafe_threshold: float, precision: float, rounding: int):
+def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage, safe_threshold: float, unsafe_threshold: float, precision: float, rounding: int):
     split_performed = False
     to_analyse = []
     safe_count = 0

@@ -28,9 +28,9 @@ s = env.reset()
 explorer, verification_model = generateCartpoleDomainExplorer(precision=1e-1)
 theta_threshold_radians = 12 * 2 * math.pi / 360  # maximum angle allowed
 x_threshold = 2.4  # maximum distance allowed
-current_interval: Tuple[Tuple[float, float]] = tuple(
+current_interval: HyperRectangle = tuple(
     [(-x_threshold, x_threshold), (-3 * x_threshold, 3 * x_threshold), (-theta_threshold_radians, theta_threshold_radians), (-3 * theta_threshold_radians, 3 * theta_threshold_radians)])
-remainings: List[Tuple[Tuple[float, float]]] = [current_interval]
+remainings: List[HyperRectangle] = [current_interval]
 local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)

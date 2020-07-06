@@ -4,13 +4,14 @@ import operator
 import shelve
 from collections import defaultdict
 from functools import reduce
-from typing import Tuple, List
+from typing import Tuple, List, Any
 
 import networkx as nx
 import pandas as pd
 import plotly.graph_objects as go
 import intervals as I
 import numpy as np
+import pandas as pd
 import ray
 import torch
 import matplotlib.pyplot as plt
@@ -23,12 +24,16 @@ import importlib
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+from mosaic.hyperrectangle import HyperRectangle
 from symbolic.mesh_cube import get_mesh
 from networkx.drawing.nx_pydot import write_dot
 from colour import Color
 
+DATA = "data"
+ACTION = "action"
 
-def array_to_tuple(array: np.ndarray) -> Tuple[Tuple[float, float]]:
+
+def array_to_tuple(array: np.ndarray) -> HyperRectangle:
     array_of_tuples = map(tuple, array)
     tuple_of_tuples = tuple(array_of_tuples)
     return tuple_of_tuples
@@ -53,13 +58,13 @@ def area_numpy(domain: np.ndarray) -> float:
     return abs(float(dom_area.item()))
 
 
-def area_tuple(domain: Tuple[Tuple[float, float]]):
+def area_tuple(domain: HyperRectangle):
     dimensions = [abs(x[1] - x[0]) for x in domain]
     area = reduce(operator.mul, dimensions, 1)
     return area
 
 
-def centre_tuple(domain: Tuple[Tuple[float, float]]) -> Tuple[float]:
+def centre_tuple(domain: HyperRectangle) -> Tuple[float]:
     centre = tuple([(x[1] + x[0]) / 2 for x in domain])
     return centre
 
@@ -144,8 +149,9 @@ def chunker_list(seq, size):
     return (seq[i::size] for i in range(size))
 
 
-def round_tuples(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
-    return [(round_tuple(interval, rounding), action) for interval, action in intervals]
+def round_tuples(intervals: pd.DataFrame, rounding: int) -> pd.DataFrame:
+    intervals[DATA] = intervals[DATA].round(rounding)
+    return intervals
 
 
 def truncate(n, decimals=0):
@@ -153,19 +159,25 @@ def truncate(n, decimals=0):
     return int(n * multiplier) / multiplier
 
 
-def round_tuple(interval: Tuple[Tuple[float, float]], rounding: int) -> Tuple[Tuple[float, float]]:
-    return tuple([(float(round(x[0], rounding)), float(round(x[1], rounding))) for x in interval])
+def round_tuple(interval: np.ndarray, rounding: int) -> np.ndarray:
+    return interval.round(decimals=rounding)
 
 
-# def inflate(current_interval: Tuple[Tuple[float, float]], rounding: int, eps=1e-6, ) -> Tuple[Tuple[float, float]]:
+def create_dataframe():
+    """Creates a standard dataframe with default columns"""
+    df = pd.DataFrame(columns=[DATA, ACTION])
+    return df
+
+
+# def inflate(current_interval: HyperRectangle, rounding: int, eps=1e-6, ) -> HyperRectangle:
 #     current_interval = round_tuple(tuple([(x[0] - eps, x[1] + eps) for x in current_interval]), rounding)  # rounding
 #     return current_interval
 
 
-def flatten_interval(current_interval: Tuple[Tuple[float, float]]) -> Tuple:
+def flatten_interval(current_interval: np.ndarray) -> Tuple:
     result = []
-    for d in range(len(current_interval)):
-        result.extend([current_interval[d][0], current_interval[d][1]])
+    for d in range(current_interval.shape[-1]):
+        result.extend([current_interval[0][d], current_interval[1][d]])
     return tuple(result)
 
 
@@ -212,7 +224,7 @@ def show_plot(*args, legend: List = None):
     return fig
 
 
-def p_chart(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, title=None, save_to: str = None, rounding=4):
+def p_chart(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, save_to: str = None, rounding=4):
     fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
         return
@@ -257,7 +269,7 @@ def p_chart(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, ti
         fig.write_image(save_to, width=800, height=800)
 
 
-def show_heatmap(interval_list: List[Tuple[Tuple[Tuple[float, float]], float]], *, title=None, save_to: str = None, rounding=4):
+def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, save_to: str = None, rounding=4):
     fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
         return
@@ -304,10 +316,10 @@ def count_elements(l):
             count += 1
     return count
 
-    # def show_plot(intervals_action: List[Tuple[Tuple[Tuple[float, float]], bool]] = None, intervals: List[Tuple[Tuple[float, float]]] = None, aggregate=True):  #     fig = go.Figure()  #     x_y_dict = defaultdict(list)  #     if intervals_action is None:  #         intervals_action = []  #     if intervals is None:  #         intervals = []  #     intervals_with_action = [(x, None) for x in intervals]  #     for interval in intervals_with_action + intervals_action:  #         if interval[1] is True:  #             color = 'Red'  #         elif interval[1] is False:  #             color = 'Blue'  #         elif interval[1] is None:  #             color = 'Green'  #         else:  #             color = interval[1]  #         x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]  #         y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]  #         x_y_dict[color].append((x, y))  #     if not aggregate:  #         for color in x_y_dict.keys():  #             for x, y in x_y_dict[color]:  #                 fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color)  #     else:  #         for color in x_y_dict.keys():  #             x_list = []  #             y_list = []  #             for x, y in x_y_dict[color]:  #                 x_list.extend(x)  #                 x_list.append(None)  #                 y_list.extend(y)  #                 y_list.append(None)  #             fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)  #     fig.update_shapes(dict(xref='x', yref='y'))  #     fig.show()
+    # def show_plot(intervals_action: List[Tuple[HyperRectangle, bool]] = None, intervals: List[HyperRectangle] = None, aggregate=True):  #     fig = go.Figure()  #     x_y_dict = defaultdict(list)  #     if intervals_action is None:  #         intervals_action = []  #     if intervals is None:  #         intervals = []  #     intervals_with_action = [(x, None) for x in intervals]  #     for interval in intervals_with_action + intervals_action:  #         if interval[1] is True:  #             color = 'Red'  #         elif interval[1] is False:  #             color = 'Blue'  #         elif interval[1] is None:  #             color = 'Green'  #         else:  #             color = interval[1]  #         x = [interval[0][0][0], interval[0][0][1], interval[0][0][1], interval[0][0][0], interval[0][0][0]]  #         y = [interval[0][1][0], interval[0][1][0], interval[0][1][1], interval[0][1][1], interval[0][1][0]]  #         x_y_dict[color].append((x, y))  #     if not aggregate:  #         for color in x_y_dict.keys():  #             for x, y in x_y_dict[color]:  #                 fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color)  #     else:  #         for color in x_y_dict.keys():  #             x_list = []  #             y_list = []  #             for x, y in x_y_dict[color]:  #                 x_list.extend(x)  #                 x_list.append(None)  #                 y_list.extend(y)  #                 y_list.append(None)  #             fig.add_scatter(x=x_list, y=y_list, fill="toself", fillcolor=color)  #     fig.update_shapes(dict(xref='x', yref='y'))  #     fig.show()
 
 
-def create_tree(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> index.Index:
+def create_tree(intervals: List[Tuple[HyperRectangle, bool]]) -> index.Index:
     if len(intervals) != 0:
         state_size = len(intervals[0][0])
         p = index.Property(dimension=state_size)
@@ -318,7 +330,7 @@ def create_tree(intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]) -> ind
         raise Exception("len(intervals) cannot be 0")
 
 
-def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+def bulk_load_rtree_helper(data: List[Tuple[HyperRectangle, bool]]):
     for i, obj in enumerate(data):
         interval = obj[0]
         yield (i, flatten_interval(interval), obj)

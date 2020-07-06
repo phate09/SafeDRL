@@ -1,3 +1,4 @@
+import pandas as pd
 import os
 import pickle
 from typing import List, Tuple
@@ -6,6 +7,8 @@ from typing import List, Tuple
 import progressbar
 from rtree import index
 
+from mosaic import utils
+from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from mosaic.utils import round_tuples, flatten_interval
 
 
@@ -14,16 +17,16 @@ from mosaic.utils import round_tuples, flatten_interval
 class SharedRtree:
     def __init__(self):
         self.tree: index.Index = None
-        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
+        self.union_states_total: List[HyperRectangle_action] = []  # a list representing the content of the tree
 
     def reset(self, dimension):
         print("Resetting the tree")
         self.dimension = dimension
         self.p = index.Property(dimension=self.dimension)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.union_states_total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []  # a list representing the content of the tree
+        self.union_states_total: List[HyperRectangle_action] = []  # a list representing the content of the tree
 
-    def add_single(self, interval: Tuple[Tuple[Tuple[float, float]], bool], rounding: int):
+    def add_single(self, interval: HyperRectangle_action, rounding: int):
         id = len(self.union_states_total)
         # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
         relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
@@ -35,23 +38,10 @@ class SharedRtree:
         action = interval[1]
         self.tree.insert(id, coordinates, (interval[0], action))
 
-    def tree_intervals(self) -> List[Tuple[Tuple[Tuple[float, float]], bool]]:
+    def tree_intervals(self) -> List[HyperRectangle_action]:
         return self.union_states_total
 
-    def add_many(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
-        """
-        Store all the intervals in the tree with the same action, assumes no overlap between input intervals
-        :param intervals: the intervals to add, assumes no overlap
-        :param action: the action to be assigned to all the intervals
-        :return:
-        """
-        self.add_many_rebuild(intervals, rounding)
-
-    def add_many_rebuild(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]], rounding: int):
-        self.union_states_total.extend(intervals)
-        self.load(self.union_states_total)
-
-    def load(self, intervals: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+    def load(self, intervals: pd.DataFrame):
 
         # with self.lock:
         print("Building the tree")
@@ -82,13 +72,13 @@ class SharedRtree:
         pickle.dump(self.union_states_total, open(file_name, "wb+"))
         print("Saved RTree")
 
-    def filter_relevant_intervals_multi(self, current_intervals: List[Tuple[Tuple[float, float]]]) -> List[List[Tuple[Tuple[Tuple[float, float]], bool]]]:
+    def filter_relevant_intervals_multi(self, current_intervals: List[HyperRectangle]) -> List[List[HyperRectangle_action]]:
         """Filter the intervals relevant to the current_interval"""
         # current_interval = inflate(current_interval, rounding)
-        result_return: List[List[Tuple[Tuple[Tuple[float, float]], bool]]] = []
+        result_return: List[List[HyperRectangle_action]] = []
         for current_interval in current_intervals:
             results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
-            total: List[Tuple[Tuple[Tuple[float, float]], bool]] = []
+            total: List[HyperRectangle_action] = []
             for result in results:
                 suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
                 if suitable:
@@ -106,9 +96,9 @@ class SharedRtree:
 #     return storage
 
 
-def bulk_load_rtree_helper(data: List[Tuple[Tuple[Tuple[float, float]], bool]]):
+def bulk_load_rtree_helper(data: pd.DataFrame):
     for i, obj in enumerate(data):
-        interval = obj[0]
+        interval = obj[utils.DATA]
         yield (i, flatten_interval(interval), obj)
 
 

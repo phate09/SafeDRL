@@ -289,6 +289,9 @@ class Interval:
             return 0
         return hash(self._left_value) ^ hash(self._right_value) + int(self._left_bound_type) + int(self._right_bound_type)
 
+    def round(self, rounding: int):
+        return Interval(round(self._left_value, rounding), round(self._right_value, rounding), BoundType.closed, BoundType.closed)
+
     def setminus(self, other):
         """
         Compute the setminus of two rectangles
