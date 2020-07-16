@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Set
 import importlib
 import networkx as nx
 import numpy as np
@@ -57,11 +57,10 @@ def abstract_step(abstract_states_normalised: List[HyperRectangle_action], env_c
                     next_states.append((next_state_key, next_states_local[next_state_key]))
                 terminal_states.update(terminal_states_local)
                 half_terminal_states.update(half_terminal_states_local)
-    return sorted(next_states), half_terminal_states, terminal_states
+    return next_states, half_terminal_states, terminal_states
 
 
-def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[
-    List[HyperRectangle_action], List[HyperRectangle]]:
+def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, verification_model, n_workers: int, rounding: int) -> Tuple[List[HyperRectangle_action], List[HyperRectangle]]:
     """
     Given a list of intervals, calculate the intervals where the agent will take a given action
     :param n_workers: number of worker processes
@@ -70,7 +69,6 @@ def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, ve
     """
     # total_area_before = sum([area_tuple(remaining) for remaining in s_array])
     # given the initial states calculate which intervals go left or right
-    #todo convert HyperRectangle to np.ndarray
     stats = explorer.explore(verification_model, s_array, n_workers, debug=True)
     print(f"#states: {stats['n_states']} [safe:{stats['safe_relative_percentage']:.3%}, unsafe:{stats['unsafe_relative_percentage']:.3%}, ignore:{stats['ignore_relative_percentage']:.3%}]")
     safe_next = [i.cpu().numpy() for i in explorer.safe_domains]
@@ -79,10 +77,16 @@ def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, ve
     safe_next = np.stack(safe_next).tolist() if len(safe_next) != 0 else []
     unsafe_next = np.stack(unsafe_next).tolist() if len(unsafe_next) != 0 else []
     ignore_next = np.stack(ignore_next).tolist() if len(ignore_next) != 0 else []
-    t_states = ([(tuple([tuple(x) for x in k]), True) for k in safe_next] + [(tuple([tuple(x) for x in k]), False) for k in unsafe_next], ignore_next)  # round_tuples
-    # total_area_after = sum([area_tuple(remaining) for remaining, action in t_states[0]])
-    # assert math.isclose(total_area_before, total_area_after), f"The areas do not match: {total_area_before} vs {total_area_after}"
-    return t_states
+    t_states = []
+    for k in safe_next:
+        box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box.action = True
+        t_states.append(box)
+    for k in unsafe_next:
+        box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box.action = False
+        t_states.append(box)
+    return t_states, ignore_next
 
 
 def discard_negligibles(intervals: List[HyperRectangle]) -> List[HyperRectangle]:
@@ -109,15 +113,15 @@ def is_small(interval: HyperRectangle, min_size: float, rounding):
 #             graph.remove_edges_from(edges)
 
 
-def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage, allow_assign_action=True,
-                       allow_merge=True):
+def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
+                       allow_assign_action=True, allow_merge=True):
     if len(intervals) == 0:
         return []
     # intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
-    # remainings = intervals_sorted
+    remainings = intervals
     # intersected_intervals = []
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals, rtree.tree)  # checks areas not covered by total intervals
+        remainings, intersected_intervals = compute_remaining_intervals4_multi(remainings, rtree.tree)  # checks areas not covered by total intervals
         # remainings = sorted(remainings)
         if len(remainings) != 0:
             if allow_assign_action:
@@ -131,8 +135,8 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
                 union_states_total = rtree.tree_intervals()
                 union_states_total.extend(assigned_intervals)
                 if allow_merge:
-                    merged1 = [(x, True) for x in merge4([x[0] for x in union_states_total if x[1] == True], rounding)]
-                    merged2 = [(x, False) for x in merge4([x[0] for x in union_states_total if x[1] == False], rounding)]
+                    merged1 = [x.assign(True) for x in merge4([x for x in union_states_total if x.action == True], rounding)]
+                    merged2 = [x.assign(False) for x in merge4([x for x in union_states_total if x.action == False], rounding)]
                     print("Merged")
                     union_states_total_merged = merged1 + merged2
                 else:
@@ -149,7 +153,8 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
             list_assigned_action.extend(successors)
-            storage.store_successor_multi([((interval_noaction, None), x) for x in successors])  # store also the action
+            parent = HyperRectangle_action.from_hyperrectangle(interval_noaction, None)
+            storage.store_successor_multi([(parent, x) for x in successors])  # store also the action
             bar.update(bar.value + 1)
     # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
     compute_successors(env, list_assigned_action, n_workers, rounding, storage)
@@ -218,7 +223,7 @@ def compute_successors(env_class, list_assigned_action: List[HyperRectangle_acti
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")  # return next_to_compute
 
 
-def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_fill: List[HyperRectangle_action], debug=True):
+def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_fill: List[HyperRectangle_action], debug=True)->Tuple[List[HyperRectangle],List[HyperRectangle_action]]:
     """
     Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
     :param debug:
@@ -228,78 +233,85 @@ def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_
     """
     "Optimised version of compute_remaining_intervals"
 
-    examine_intervals: List[HyperRectangle] = []
+    examine_intervals: Set[HyperRectangle] = set()
     remaining_intervals = [current_interval]
-    union_safe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
-    union_unsafe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
-    dimensions = current_interval.shape[-1]
+    union_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
+    # union_unsafe_intervals = []  # this list will contains the union between intervals_to_fill and current_interval
+    dimensions = current_interval.dimension()
     if len(intervals_to_fill) == 0:
-        return remaining_intervals, [], []
+        return remaining_intervals, []
     if debug:
         bar = StandardProgressBar(prefix="Computing remaining intervals...", max_value=len(intervals_to_fill)).start()
-    for i, (interval, action) in enumerate(intervals_to_fill):
-
-        examine_intervals.extend(remaining_intervals)
+    for i, interval_action in enumerate(intervals_to_fill):
+        examine_intervals = examine_intervals.union(remaining_intervals)
         remaining_intervals = []
         while len(examine_intervals) != 0:
-            examine_interval:HyperRectangle = examine_intervals.pop(0)
-            # if not is_negligible(examine_interval):
-            state = utils.shrink(interval, examine_interval)
-            contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
-            if contains:
-                if state == examine_interval:
-                    if action:
-                        union_safe_intervals.append(state)
-                    else:
-                        union_unsafe_intervals.append(state)
-                else:
-                    points_of_interest = []
-                    for dimension in range(dimensions):
-                        points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
-                        points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
-                        points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
-                    points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
-                    point_of_interest_indices = [list(range(max(1, len(points_of_interest[dimension]) - 1))) for dimension in
-                                                 range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
-                    permutations_indices = list(itertools.product(*point_of_interest_indices))
-                    permutations_of_interest = []
-                    for j, permutation_idx in enumerate(permutations_indices):
-                        local_interval = []
-                        for dimension in range(dimensions):
-                            lb = points_of_interest[dimension][permutation_idx[dimension]]
-                            ub = points_of_interest[dimension][min(permutation_idx[dimension] + 1, len(points_of_interest[dimension]) - 1)]
-                            local_interval.append((lb, ub))
-                        permutations_of_interest.append(tuple(local_interval))
-
-                    for j, permutation in enumerate(permutations_of_interest):
-                        if permutation != state:
-                            if permutation != examine_interval:
-                                examine_intervals.append(permutation)
-                            else:
-                                remaining_intervals.append(permutation)
-                        else:
-                            if action:
-                                union_safe_intervals.append(permutation)
-                            else:
-                                union_unsafe_intervals.append(permutation)
+            examine_interval: HyperRectangle = examine_intervals.pop()
+            intersection = examine_interval.intersect(interval_action)
+            if not intersection.empty():
+                set_minus = examine_interval.setminus(interval_action)
+                # set_minus = [x.closed_open() for x in set_minus]
+                examine_intervals = examine_intervals.union(set_minus)
+                union_intervals.append(intersection.assign(interval_action.action))
             else:
-                remaining_intervals.append(examine_interval)  # else:  #     print("Discarded negligible in compute_remaining_intervals3")
+                remaining_intervals.append(examine_interval)
+            # # if not is_negligible(examine_interval):
+            # state = utils.shrink(interval, examine_interval)
+            # contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
+            # if contains:
+            #     if state == examine_interval:
+            #         if action:
+            #             union_safe_intervals.append(state)
+            #         else:
+            #             union_unsafe_intervals.append(state)
+            #     else:
+            #         points_of_interest = []
+            #         for dimension in range(dimensions):
+            #             points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
+            #             points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
+            #             points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
+            #         points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
+            #         point_of_interest_indices = [list(range(max(1, len(points_of_interest[dimension]) - 1))) for dimension in
+            #                                      range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
+            #         permutations_indices = list(itertools.product(*point_of_interest_indices))
+            #         permutations_of_interest = []
+            #         for j, permutation_idx in enumerate(permutations_indices):
+            #             local_interval = []
+            #             for dimension in range(dimensions):
+            #                 lb = points_of_interest[dimension][permutation_idx[dimension]]
+            #                 ub = points_of_interest[dimension][min(permutation_idx[dimension] + 1, len(points_of_interest[dimension]) - 1)]
+            #                 local_interval.append((lb, ub))
+            #             permutations_of_interest.append(tuple(local_interval))
+            #
+            #         for j, permutation in enumerate(permutations_of_interest):
+            #             if permutation != state:
+            #                 if permutation != examine_interval:
+            #                     examine_intervals.append(permutation)
+            #                 else:
+            #                     remaining_intervals.append(permutation)
+            #             else:
+            #                 if action:
+            #                     union_safe_intervals.append(permutation)
+            #                 else:
+            #                     union_unsafe_intervals.append(permutation)
+            # else:
+            #     remaining_intervals.append(examine_interval)  # else:  #     print("Discarded negligible in compute_remaining_intervals3")
         if debug:
             bar.update(i)
     if debug:
         bar.finish()
-    return remaining_intervals, union_safe_intervals, union_unsafe_intervals
+    return remaining_intervals, union_intervals
 
 
-def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], tree: index.Index, debug=True) -> Tuple[HyperRectangle, List[HyperRectangle]]:
-    intervals_with_relevants = []
+def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], tree: index.Index, debug=True) -> Tuple[List[HyperRectangle], List[Tuple[HyperRectangle, List[HyperRectangle]]]]:
+    intervals_with_relevants: List[Tuple[HyperRectangle, HyperRectangle_action]] = []
     for i, interval in enumerate(current_intervals):
         relevant_intervals = filter_relevant_intervals3(tree, interval)
         intervals_with_relevants.append((interval, relevant_intervals))
     remain_list: List[HyperRectangle] = []
     proc_ids = []
     chunk_size = 200
-    intersection_list: List[Tuple[HyperRectangle, HyperRectangle]] = []  # list with intervals and associated intervals with action assigned
+    intersection_list: List[Tuple[HyperRectangle, List[HyperRectangle]]] = []  # list with intervals and associated intervals with action assigned
     for i, chunk in enumerate(utils.chunks(intervals_with_relevants, chunk_size)):
         proc_ids.append(compute_remaining_intervals_remote.remote(chunk, False))  # if debug:  #     bar.update(i)
     with StandardProgressBar(prefix="Computing remaining intervals ", max_value=len(proc_ids)) if debug else nullcontext() as bar:
@@ -308,12 +320,11 @@ def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], 
             results = ray.get(ready_ids[0])
             for result in results:
                 if result is not None:
-                    (remain, safe, unsafe), previous_interval = result
+                    (remain, intersection), previous_interval = result
                     remain_list.extend(remain)
-                    df = utils.create_dataframe()
-                    df.append([[x, True] for x in safe])
-                    df.append([[x, False] for x in unsafe])
-                    intersection_list.append((previous_interval, df))
+                    assigned: List[HyperRectangle] = []
+                    assigned.extend(intersection)
+                    intersection_list.append((previous_interval, assigned))
             if debug:
                 bar.update(bar.value + 1)
 
@@ -325,13 +336,13 @@ def compute_remaining_intervals_remote(intervals_with_relevants: List[Tuple[Hype
     return [(compute_remaining_intervals3(current_interval, intervals_to_fill, debug), current_interval) for current_interval, intervals_to_fill in intervals_with_relevants]
 
 
-def filter_relevant_intervals3(tree, current_interval: HyperRectangle) -> HyperRectangle_action:
+def filter_relevant_intervals3(tree, current_interval: HyperRectangle) -> List[HyperRectangle_action]:
     """Filter the intervals relevant to the current_interval"""
     # current_interval = inflate(current_interval, rounding)
-    results = list(tree.intersection(utils.flatten_interval(current_interval), objects='raw'))
-    total = []
+    results: List[HyperRectangle_action] = list(tree.intersection(current_interval.to_coordinates(), objects='raw'))
+    total: List[HyperRectangle_action] = []
     for result in results:  # turn the intersection in an intersection with intervals which are closed only on the left
-        suitable = all([x[1] != y[0] and x[0] != y[1] if y[0] != y[1] else True for x, y in zip(result[0], current_interval)])
+        suitable = not result.intersect(current_interval).empty()  # all([x[1] != y[0] and x[0] != y[1] if y[0] != y[1] else True for x, y in zip(result[0], current_interval)])
         if suitable:
             total.append(result)
     return total
@@ -503,19 +514,17 @@ def merge_supremum3(starting_intervals: List[HyperRectangle], n_workers: int, pr
     return new_merged_list
 
 
-def merge4(starting_intervals: HyperRectangle, precision: int) -> List[HyperRectangle]:
-    df = utils.create_dataframe()
-    intervals_dummy_action = [(x, None) for x in starting_intervals]
+def merge4(starting_intervals: List[HyperRectangle], precision: int) -> List[HyperRectangle]:
     rtree = SharedRtree()
-    state_size = len(starting_intervals[0])
+    state_size = starting_intervals[0].dimension()
     rtree.reset(state_size)
-    rtree.load(intervals_dummy_action)
+    rtree.load(starting_intervals)
     merged_list = []
     window_tuple = []
     window = rtree.tree.get_bounds()
     while len(window) != 0:
         window_tuple.append((window.pop(0), window.pop(0)))
-    window = np.ndarray(tuple(window_tuple)).transpose()
+    window = HyperRectangle.from_tuple(window_tuple)
     # subwindows = DomainExplorer.box_split_tuple(window, precision)
     subwindows = [window]
     with progressbar.ProgressBar(prefix="Merging intervals", max_value=progressbar.UnknownLength) as bar:
@@ -524,21 +533,17 @@ def merge4(starting_intervals: HyperRectangle, precision: int) -> List[HyperRect
             sub = subwindows.pop()
             filtered = rtree.filter_relevant_intervals_multi([sub])[0]
             if len(filtered) != 0:
-                area_filtered = sum([utils.area_tuple(x[0]) for x in filtered])
-                area_sub = utils.area_tuple(sub)
+                area_filtered = sum([x.size() for x in filtered])
+                area_sub = sub.size()
                 # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
-                first_action = filtered[0][1]
-                all_same = all([x[1] == first_action for x in filtered])
-                if all_same and area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10):  # check for empty areas
-                    all_same = False
-                if all_same:
-                    merged_list.append((sub, first_action))
+                if not (area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10)):  # check for empty areas
+                    merged_list.append(sub)
                 else:
-                    subwindows.extend(DomainExplorer.box_split_tuple(sub, precision))
+                    subwindows.extend(sub.split(precision))
     # safe = [x for x in merged_list if x[1] == True]
     # unsafe = [x for x in merged_list if x[1] == False]
     # utils.show_plot(safe, unsafe, merged_list)
-    return [x[0] for x in merged_list]
+    return merged_list
 
 
 def compute_boundaries(starting_intervals: List[HyperRectangle_action]):
@@ -603,12 +608,12 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     else:  # EXPLORE
         print(f"Exploring at timestep {max_path_length}")
         to_analyse = []
-        for (interval, action), length, lb, ub in leaves:
+        for interval_action, length, lb, ub in leaves:
             if length == max_path_length:
-                to_analyse.append(interval)  # just interval no action
+                to_analyse.append(interval_action.remove_action())  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        to_analyse_array = np.array(to_analyse)
-        analysis_iteration(to_analyse_array, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
+        # to_analyse_array = np.array(to_analyse)
+        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
     iteration += 1
     return True
 

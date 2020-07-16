@@ -202,7 +202,7 @@ class Interval:
         """
         return (self._right_value + self._left_value) / 2
 
-    def split(self):
+    def split(self, precision: int):
         """
         Split the interval in two equally large halfs. Can only be called on bounded intervals
         
@@ -210,7 +210,7 @@ class Interval:
                                 the second from the middle point (including) till the former right bound
         """
         assert self._left_value != float('-inf') and self._right_value != float('inf')
-        mid = self._left_value + self.width() / 2
+        mid = round(self._left_value + self.width() / 2, precision)
         return Interval(self._left_value, mid, self._left_bound_type, BoundType.open), Interval(mid, self._right_value, BoundType.closed, self._right_bound_type)
 
     def close(self):
@@ -225,10 +225,26 @@ class Interval:
     def open(self):
         """
         Create an interval with all bounds open. 
-        
+
         :return: A new interval which has open bounds instead
         """
         return Interval(self._left_value, self._right_value, BoundType.open, BoundType.open)
+
+    def open_closed(self):
+        """
+        Create an interval with all bounds open.
+
+        :return: A new interval which has open closed bounds instead
+        """
+        return Interval(self._left_value, self._right_value, BoundType.open, BoundType.closed)
+
+    def closed_open(self):
+        """
+        Create an interval with all bounds open.
+
+        :return: A new interval which has closed open bounds instead
+        """
+        return Interval(self._left_value, self._right_value, BoundType.closed, BoundType.open)
 
     def intersect(self, other):
         """
@@ -290,7 +306,7 @@ class Interval:
         return hash(self._left_value) ^ hash(self._right_value) + int(self._left_bound_type) + int(self._right_bound_type)
 
     def round(self, rounding: int):
-        return Interval(round(self._left_value, rounding), round(self._right_value, rounding), BoundType.closed, BoundType.closed)
+        return Interval(round(self._left_value, rounding), round(self._right_value, rounding), self._left_bound_type, self._right_bound_type)
 
     def setminus(self, other):
         """
@@ -326,3 +342,6 @@ class Interval:
             else:
                 return [Interval(self._left_value, intersectionInterval._left_value, self._left_bound_type, BoundType.negated(intersectionInterval._left_bound_type)),
                         Interval(intersectionInterval._right_value, self._right_value, BoundType.negated(intersectionInterval._right_bound_type), self._right_bound_type)]
+
+    def copy(self):
+        return Interval(self._left_value, self._right_value, self._left_bound_type, self._right_bound_type)

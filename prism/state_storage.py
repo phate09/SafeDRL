@@ -11,7 +11,7 @@ from py4j.java_gateway import JavaGateway
 from bidict import bidict
 from py4j.java_collections import ListConverter
 
-from mosaic.hyperrectangle import HyperRectangle
+from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from utility.bidict_multi import bidict_multi
 import networkx as nx
 # import Pyro5.api
@@ -95,9 +95,9 @@ class StateStorage:
             self.graph.remove_node(id)
 
     def get_leaves(self, shortest_path, unsafe_threshold, horizon):
-        leaves = [((interval, action), len(shortest_path[(interval, action)]) - 1, attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in self.graph.nodes.data() if
-                  self.graph.out_degree((interval, action)) == 0 and not attributes.get('half_fail') and not attributes.get('fail') and action is None and not attributes.get(
-                      'ignore') and attributes.get('ub') is not None and (interval, action) in shortest_path and len(shortest_path[(interval, action)]) - 1 <= horizon]
+        leaves = [(interval, len(shortest_path[interval]) - 1, attributes.get('lb'), attributes.get('ub')) for interval, attributes in self.graph.nodes.data() if
+                  self.graph.out_degree(interval) == 0 and not attributes.get('half_fail') and not attributes.get('fail') and interval.action is None and not attributes.get(
+                      'ignore') and attributes.get('ub') is not None and interval in shortest_path and len(shortest_path[interval]) - 1 <= horizon]
         return leaves
 
     def recreate_prism(self, max_t: int = None):

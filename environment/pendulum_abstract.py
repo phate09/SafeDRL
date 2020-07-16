@@ -56,7 +56,7 @@ class PendulumEnv_abstract(gym.Env):
         self.state = (newth, newthdot)
         done = newth[0][1] < -self.max_angle or newth[0][0] > self.max_angle
         half_done = done or newth[0][0] < -self.max_angle or newth[0][1] > self.max_angle
-        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state]))), -costs, done, half_done
+        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state])).transpose()), -costs, done, half_done
 
     def is_terminal(self, interval, half=False):
         done = interval[0][1] < -self.max_angle or interval[0][0] > self.max_angle
@@ -70,7 +70,7 @@ class PendulumEnv_abstract(gym.Env):
         # self.state = self.np_random.uniform(low=-high, high=high)
         self.state = (interval([-self.max_angle, self.max_angle]), interval([-2, 2]))
         self.last_u = None
-        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state])))
+        return HyperRectangle.from_numpy(np.array(tuple([make_tuple(x) for x in self.state])).transpose())
 
     def render(self, mode='human'):
 

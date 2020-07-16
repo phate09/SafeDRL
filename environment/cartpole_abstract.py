@@ -80,7 +80,7 @@ class CartPoleEnv_abstract(gym.Env):
 
         self.steps_beyond_done = None
 
-    def set_state(self, state: HyperRectangle):
+    def set_state(self, state: Tuple[Tuple]):
         self.state = tuple([iv.mpf([x[0], x[1]]) for x in state])
 
     def seed(self, seed=None):

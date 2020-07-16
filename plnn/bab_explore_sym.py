@@ -8,6 +8,7 @@ import ray
 import torch
 
 import mosaic.utils
+from mosaic.hyperrectangle import HyperRectangle
 from symbolic.symbolic_interval import Symbolic_interval
 
 
@@ -31,12 +32,12 @@ class SymbolicDomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains: List[np.ndarray], n_workers: int, debug=True, save=False):
+    def explore(self, net, domains: List[HyperRectangle], n_workers: int, debug=True, save=False):
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
         self.reset()  # reset statistics
-        tensor = torch.tensor(domains, dtype=torch.float64)
+        tensor = torch.tensor([x.to_tuple() for x in domains], dtype=torch.float64)
         lbs = tensor[:, :, 0]
         ubs = tensor[:, :, 1]
         deltas = ubs - lbs

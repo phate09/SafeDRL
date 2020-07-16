@@ -8,6 +8,7 @@ import ray
 import torch
 
 import mosaic.utils
+from mosaic.hyperrectangle import HyperRectangle
 
 
 class DomainExplorer:
@@ -33,13 +34,13 @@ class DomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains, n_workers: int, debug=True, save=False):
+    def explore(self, net, domains: List[HyperRectangle], n_workers: int, debug=True, save=False):
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
         self.reset()  # reset statistics
         for domain in domains:
-            tensor = torch.tensor(domain, dtype=torch.float64)
+            tensor = torch.tensor(domain.to_tuple(), dtype=torch.float64).t()
             queue.append(tensor)
             total_area += mosaic.utils.area_tensor(tensor)
         total_area = max(total_area, 1e-16)
@@ -136,7 +137,7 @@ class DomainExplorer:
                 for i, ndom_i in enumerate(ndoms):
                     length, dim = self.max_length(ndom_i)
                     length = round(length, self.rounding)
-                    min_length, dim = self.min_length(ndom_i)
+                    # min_length, dim = self.min_length(ndom_i)
                     if length <= self.precision_constraints[dim]:  # or area < min_area:
                         # too short or too small
                         # approximate the interval to the closest datapoint and determine if it is safe or not
@@ -186,7 +187,7 @@ class DomainExplorer:
     @staticmethod
     def approximate_to_single_datapoint(normed_domain: torch.Tensor, precisions: List[float]) -> torch.Tensor:
         # dom_i = domain_lb.unsqueeze(dim=1) + domain_width.unsqueeze(dim=1) * normed_domain
-        mean_dom = torch.mean(normed_domain, dim=1)
+        mean_dom = torch.mean(normed_domain, dim=0)
         results = []
         for i, value in enumerate(mean_dom):
             # result = mosaic.utils.custom_rounding(value.item(), 3, precisions[i])
@@ -228,7 +229,7 @@ class DomainExplorer:
 
     @staticmethod
     def max_length(domain):
-        diff = domain[:, 1] - domain[:, 0]
+        diff = domain[1, :] - domain[0, :]
         edgelength, dim = torch.max(diff, 0)
 
         # Unwrap from tensor containers
@@ -264,7 +265,7 @@ class DomainExplorer:
         """
         # Find the longest edge by checking the difference of lower and upper
         # limits in each dimension.
-        diff = domain[:, 1] - domain[:, 0]
+        diff = domain[1, :] - domain[0, :]
         edgelength, dim = torch.max(diff, 0)
 
         # Unwrap from tensor containers
@@ -273,15 +274,15 @@ class DomainExplorer:
 
         # Now split over dimension dim:
         half_length = edgelength / 2
-        new_value = domain[dim, 1] - half_length
+        new_value = domain[1, dim] - half_length
         new_value = np.round(new_value, rounding)  # rounding
         # dom1: Upper bound in the 'dim'th dimension is now at halfway point.
         dom1 = domain.clone()
-        dom1[dim, 1] = new_value
+        dom1[1, dim] = new_value
 
         # dom2: Lower bound in 'dim'th dimension is now at haflway point.
         dom2 = domain.clone()
-        dom2[dim, 0] = new_value
+        dom2[0,dim] = new_value
 
         sub_domains = [dom1, dom2]
 

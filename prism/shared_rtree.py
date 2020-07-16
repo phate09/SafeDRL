@@ -17,31 +17,31 @@ from mosaic.utils import round_tuples, flatten_interval
 class SharedRtree:
     def __init__(self):
         self.tree: index.Index = None
-        self.union_states_total: List[HyperRectangle_action] = []  # a list representing the content of the tree
+        self.union_states_total: List[HyperRectangle] = []  # a list representing the content of the tree
 
     def reset(self, dimension):
         print("Resetting the tree")
         self.dimension = dimension
         self.p = index.Property(dimension=self.dimension)
         self.tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.union_states_total: List[HyperRectangle_action] = []  # a list representing the content of the tree
+        self.union_states_total: List[HyperRectangle] = []  # a list representing the content of the tree
 
-    def add_single(self, interval: HyperRectangle_action, rounding: int):
-        id = len(self.union_states_total)
-        # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
-        relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
-        if len(relevant_intervals) != 0:
-            print(len(relevant_intervals))
-            assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
-        self.union_states_total.append(interval)
-        coordinates = flatten_interval(interval[0])
-        action = interval[1]
-        self.tree.insert(id, coordinates, (interval[0], action))
+    # def add_single(self, interval: HyperRectangle_action, rounding: int):
+    #     id = len(self.union_states_total)
+    #     # interval = (round_tuple(interval[0], rounding), interval[1])  # rounding
+    #     relevant_intervals = self.filter_relevant_intervals3(interval[0], rounding)
+    #     if len(relevant_intervals) != 0:
+    #         print(len(relevant_intervals))
+    #         assert len(relevant_intervals) == 0, f"There is an intersection with the intervals already present in the tree! {relevant_intervals} against {interval}"
+    #     self.union_states_total.append(interval)
+    #     coordinates = flatten_interval(interval[0])
+    #     action = interval[1]
+    #     self.tree.insert(id, coordinates, (interval[0], action))
 
-    def tree_intervals(self) -> List[HyperRectangle_action]:
+    def tree_intervals(self) -> List[HyperRectangle]:
         return self.union_states_total
 
-    def load(self, intervals: pd.DataFrame):
+    def load(self, intervals: List[HyperRectangle]):
 
         # with self.lock:
         print("Building the tree")
@@ -72,23 +72,26 @@ class SharedRtree:
         pickle.dump(self.union_states_total, open(file_name, "wb+"))
         print("Saved RTree")
 
-    def filter_relevant_intervals_multi(self, current_intervals: List[HyperRectangle]) -> List[List[HyperRectangle_action]]:
+    def filter_relevant_intervals_multi(self, current_intervals: List[HyperRectangle]) -> List[List[HyperRectangle]]:
         """Filter the intervals relevant to the current_interval"""
         # current_interval = inflate(current_interval, rounding)
-        result_return: List[List[HyperRectangle_action]] = []
+        result_return: List[List[HyperRectangle]] = []
         for current_interval in current_intervals:
-            results = list(self.tree.intersection(flatten_interval(current_interval), objects='raw'))
-            total: List[HyperRectangle_action] = []
+            results = list(self.tree.intersection(current_interval.to_coordinates(), objects='raw'))
+            total: List[HyperRectangle] = []
             for result in results:
-                suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result[0], current_interval)])  #
-                if suitable:
+                if not result.intersect(current_interval).empty(): #if it intersects
                     total.append(result)
-            result_return.append(sorted(total))
+                # suitable = all([x[1] != y[0] and x[0] != y[1] for x, y in zip(result, current_interval)])  #
+                # if suitable:
+                #     total.append(result)
+            result_return.append(total)
         return result_return
 
     def flush(self):
         # with self.lock:
         self.tree.flush()
+
 
 # def get_rtree() -> SharedRtree:
 #     Pyro5.api.config.SERIALIZER = "marshal"
@@ -96,11 +99,9 @@ class SharedRtree:
 #     return storage
 
 
-def bulk_load_rtree_helper(data: pd.DataFrame):
+def bulk_load_rtree_helper(data: List[HyperRectangle]):
     for i, obj in enumerate(data):
-        interval = obj[utils.DATA]
-        yield (i, flatten_interval(interval), obj)
-
+        yield (i, obj.to_coordinates(), obj)
 
 # if __name__ == '__main__':
 #     Pyro5.api.config.SERIALIZER = "marshal"

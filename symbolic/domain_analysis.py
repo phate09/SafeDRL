@@ -25,7 +25,7 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding,sym=True)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
@@ -34,7 +34,7 @@ print(f"Finished building the tree")
 # current_interval = tuple([(-0.3, -0.2), (-0.7, -0.6)])
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
-storage.root = root.to_tuple()
+storage.root = root
 storage.graph.add_node(storage.root)
 horizon = 9
 t = 0
@@ -51,7 +51,7 @@ t = 0
 # pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
 # print("Checkpoint Saved...")
 # %%
-storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+# storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
 rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 # %%
 iterations = 0

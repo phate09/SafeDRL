@@ -20,8 +20,8 @@ class AbstractStepWorker:
         terminals_dict = defaultdict(bool)
         half_terminals_dict = defaultdict(bool)
         for interval in intervals:
-            action = 1 if interval[1] else 0  # 1 if safe 0 if not
-            next_state, half_done, done = step_state(interval[0], action, self.env, self.rounding)
+            action = 1 if interval.action else 0  # 1 if safe 0 if not
+            next_state, half_done, done = step_state(interval, action, self.env, self.rounding)
             next_state_sticky, half_done_sticky, done_sticky = step_state(next_state, action, self.env, self.rounding)
             if done:
                 terminals_dict[next_state] = True
@@ -50,7 +50,7 @@ class AbstractStepWorker:
 def step_state(state: HyperRectangle, action, env, rounding: int) -> Tuple[HyperRectangle, bool, bool]:
     # given a state and an action, calculate next state
     env.reset()
-    state = round_tuple(state, rounding)  # round the state
+    state = state.round(rounding).to_tuple()  # round the state
     env.set_state(state)
     next_state, reward, done, half_done = env.step(action)
-    return round_tuple(next_state, rounding), half_done, done
+    return next_state.round(rounding), half_done, done

@@ -1,3 +1,5 @@
+from typing import Tuple, List
+import mosaic.utils
 from mosaic.interval import Interval, BoundType
 from mosaic.point import Point
 
@@ -11,11 +13,11 @@ class HyperRectangle:
     i.e. the n-dimensional variant of a box.
     """
 
-    def __init__(self, *intervals):
+    def __init__(self, *intervals: Interval):
         """
         :param intervals: Multiple Intervals as arguments
         """
-        self.intervals = tuple(intervals)
+        self.intervals: Tuple[Interval] = tuple(intervals)
         self._size = None
 
     @classmethod
@@ -53,6 +55,10 @@ class HyperRectangle:
     def from_numpy(cls, array):
         return cls(*[Interval(array[0][i], array[1][i]) for i in range(array.shape[-1])])
 
+    @classmethod
+    def from_tuple(cls, interval):
+        return cls(*[Interval(interval[i][0], interval[i][1]) for i in range(len(interval))])
+
     def dimension(self):
         return len(self.intervals)
 
@@ -82,24 +88,32 @@ class HyperRectangle:
         assert len(pick_min_bound) == self.dimension()
         return Point(*[(interval.left_bound() if pmb else interval.right_bound()) for interval, pmb in zip(self.intervals, pick_min_bound)])
 
-    def split_in_every_dimension(self):
+    def split_in_every_dimension(self, rounding: int):
         """
         Splits the hyperrectangle in every dimension
         
         :return: The 2^n many hyperrectangles obtained by the split
         """
         result = []
-        splitted_intervals = [tuple(interv.split()) for interv in self.intervals]
+        splitted_intervals = [tuple(interv.split(rounding)) for interv in self.intervals]
         for i in range(0, pow(2, self.dimension()), 1):
             num_bits = self.dimension()
             bits = [(i >> bit) & 1 for bit in range(num_bits - 1, -1, -1)]
             result.append(HyperRectangle(*[splitted_intervals[i][x] for i, x in zip(range(0, self.dimension()), bits)]))
         return result
 
-    def split_in_single_dimension(self, dimension):
-        intervals_1 = [(interval.split()[0] if ind == dimension else interval) for ind, interval in enumerate(self.intervals)]
-        intervals_2 = [(interval.split()[1] if ind == dimension else interval) for ind, interval in enumerate(self.intervals)]
+    def split_in_single_dimension(self, dimension, rounding: int):
+        intervals_1 = [(interval.split(rounding)[0] if ind == dimension else interval) for ind, interval in enumerate(self.intervals)]
+        intervals_2 = [(interval.split(rounding)[1] if ind == dimension else interval) for ind, interval in enumerate(self.intervals)]
         return [HyperRectangle(*intervals_1), HyperRectangle(*intervals_2)]
+
+    def split(self, rounding: int):
+        diff = [x.width() for x in self.intervals]
+        dimension = max(range(len(diff)), key=lambda i: diff[i])
+        dom1 = [(interval.split(rounding)[0] if ind == dimension else interval.copy()) for ind, interval in enumerate(self.intervals)]
+        dom2 = [(interval.split(rounding)[1] if ind == dimension else interval.copy()) for ind, interval in enumerate(self.intervals)]
+        sub_domains = [HyperRectangle(*dom1), HyperRectangle(*dom2)]
+        return sub_domains
 
     def size(self):
         """
@@ -142,6 +156,15 @@ class HyperRectangle:
     def close(self):
         return HyperRectangle(*[i.close() for i in self.intervals])
 
+    def open(self):
+        return HyperRectangle(*[i.open() for i in self.intervals])
+
+    def open_closed(self):
+        return HyperRectangle(*[i.open_closed() for i in self.intervals])
+
+    def closed_open(self):
+        return HyperRectangle(*[i.closed_open() for i in self.intervals])
+
     def _setminus(self, other, dimension):
         """
         Helper function for setminus
@@ -165,21 +188,23 @@ class HyperRectangle:
             hrect_list.append(HyperRectangle(*changed_interval_list))
 
             # middle part which is cut away
-            middle_interval = Interval(new_interval_list[0].right_bound(), new_interval_list[1].left_bound(), new_interval_list[0].right_bound_type(), new_interval_list[1].left_bound_type())
+            middle_interval = Interval(new_interval_list[0].right_bound(), new_interval_list[1].left_bound(), BoundType.negated(new_interval_list[0].right_bound_type()),
+                                       BoundType.negated(new_interval_list[1].left_bound_type()))  # todo negated?
             changed_interval_list = list(self.intervals)
             changed_interval_list[dimension] = middle_interval
             hrect_list.append(HyperRectangle(*changed_interval_list))
 
         else:
-            # the cutted box
-            changed_interval_list = list(self.intervals)
-            changed_interval_list[dimension] = new_interval_list[0]
-            hrect_list.append(HyperRectangle(*changed_interval_list))
+            if len(new_interval_list) > 0:
+                # the cutted box
+                changed_interval_list = list(self.intervals)
+                changed_interval_list[dimension] = new_interval_list[0]
+                hrect_list.append(HyperRectangle(*changed_interval_list))
 
-            # the rest which have to be cutted recursively
-            changed_interval_list = list(self.intervals)
-            changed_interval_list[dimension] = other.intervals[dimension]
-            hrect_list.append(HyperRectangle(*changed_interval_list))
+                # the rest which have to be cutted recursively
+                changed_interval_list = list(self.intervals)
+                changed_interval_list[dimension] = other.intervals[dimension]
+                hrect_list.append(HyperRectangle(*changed_interval_list))  # else:  #     changed_interval_list = list(self.intervals)  #     hrect_list.append(HyperRectangle(*changed_interval_list))
 
         return hrect_list
 
@@ -200,15 +225,24 @@ class HyperRectangle:
             hrect_list.append(current_rect_list[1])
             hrect_list.extend(current_rect_list[2].setminus(other, dimension + 1))
         else:
-            hrect_list.append(current_rect_list[0])
-            hrect_list.extend(current_rect_list[1].setminus(other, dimension + 1))
+            if len(current_rect_list) > 0:
+                hrect_list.append(current_rect_list[0])
+                hrect_list.extend(current_rect_list[1].setminus(other, dimension + 1))
+            else:
+                hrect_list.extend(self.setminus(other, dimension + 1))
         return hrect_list
 
     def round(self, rounding: int):
-        HyperRectangle(*[i.round(rounding) for i in self.intervals])
+        return HyperRectangle(*[i.round(rounding) for i in self.intervals])
 
     def to_tuple(self):
         return tuple([(interval.left_bound(), interval.right_bound()) for interval in self.intervals])
+
+    def to_coordinates(self):
+        result = []
+        for interval in self.intervals:
+            result.extend([interval.left_bound(), interval.right_bound()])
+        return tuple(result)
 
     def __str__(self):
         return " x ".join([str(i) for i in self.intervals])
@@ -230,8 +264,11 @@ class HyperRectangle:
     def __iter__(self):
         return iter(self.intervals)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Interval:
         return self.intervals[key]
+
+    def assign(self, action):
+        return HyperRectangle_action.from_hyperrectangle(self, action)
 
 
 class HyperRectangle_action(HyperRectangle):
@@ -246,8 +283,22 @@ class HyperRectangle_action(HyperRectangle):
     def from_hyperrectangle(cls, hyperrectangle, action):
         return cls(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in hyperrectangle.intervals], action=action)
 
+    def split(self, rounding: int):
+        domains = super().split(rounding)
+        domains = [x.assign(self.action) for x in domains]
+        return domains
+
     def to_tuple(self):
         return super().to_tuple(), self.action
 
+    def remove_action(self):
+        return HyperRectangle(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in self.intervals])
+
     def __repr__(self):
-        return f"({repr(super())}, {self.action})"
+        return f"({super(HyperRectangle_action, self).__repr__()}, {self.action})"
+
+    def __hash__(self):
+        return hash((self.intervals, self.action))
+
+    def __eq__(self, other):
+        return other.action == self.action and super().__eq__(other)
