@@ -1,5 +1,4 @@
 from typing import Tuple, List
-import mosaic.utils
 from mosaic.interval import Interval, BoundType
 from mosaic.point import Point
 

@@ -80,10 +80,12 @@ def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, ve
     t_states = []
     for k in safe_next:
         box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box = box.round(rounding)
         box.action = True
         t_states.append(box)
     for k in unsafe_next:
         box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box = box.round(rounding)
         box.action = False
         t_states.append(box)
     return t_states, ignore_next
@@ -118,10 +120,10 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     if len(intervals) == 0:
         return []
     # intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
-    remainings = intervals
+    # remainings = intervals
     # intersected_intervals = []
     while True:
-        remainings, intersected_intervals = compute_remaining_intervals4_multi(remainings, rtree.tree)  # checks areas not covered by total intervals
+        remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals, rtree.tree, rounding=rounding)  # checks areas not covered by total intervals
         # remainings = sorted(remainings)
         if len(remainings) != 0:
             if allow_assign_action:
@@ -223,7 +225,7 @@ def compute_successors(env_class, list_assigned_action: List[HyperRectangle_acti
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")  # return next_to_compute
 
 
-def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_fill: List[HyperRectangle_action], debug=True)->Tuple[List[HyperRectangle],List[HyperRectangle_action]]:
+def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_fill: List[HyperRectangle_action], debug=True) -> Tuple[List[HyperRectangle], List[HyperRectangle_action]]:
     """
     Computes the intervals which are left blank from the subtraction of intervals_to_fill from current_interval
     :param debug:
@@ -249,53 +251,12 @@ def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_
             examine_interval: HyperRectangle = examine_intervals.pop()
             intersection = examine_interval.intersect(interval_action)
             if not intersection.empty():
-                set_minus = examine_interval.setminus(interval_action)
-                # set_minus = [x.closed_open() for x in set_minus]
+                set_minus = examine_interval.setminus(intersection)
                 examine_intervals = examine_intervals.union(set_minus)
+                assert math.isclose(examine_interval.size()-intersection.size(),sum([x.size() for x in set_minus]))
                 union_intervals.append(intersection.assign(interval_action.action))
             else:
                 remaining_intervals.append(examine_interval)
-            # # if not is_negligible(examine_interval):
-            # state = utils.shrink(interval, examine_interval)
-            # contains = utils.interval_contains(state, examine_interval)  # check it is partially contained in every dimension
-            # if contains:
-            #     if state == examine_interval:
-            #         if action:
-            #             union_safe_intervals.append(state)
-            #         else:
-            #             union_unsafe_intervals.append(state)
-            #     else:
-            #         points_of_interest = []
-            #         for dimension in range(dimensions):
-            #             points_of_interest.append({examine_interval[dimension][0], examine_interval[dimension][1]})  # adds the upper and lower bounds from the starting interval as points of interest
-            #             points_of_interest[dimension].add(max(examine_interval[dimension][0], state[dimension][0]))  # lb
-            #             points_of_interest[dimension].add(min(examine_interval[dimension][1], state[dimension][1]))  # ub
-            #         points_of_interest = [sorted(list(points_of_interest[dimension])) for dimension in range(dimensions)]  # sorts the points
-            #         point_of_interest_indices = [list(range(max(1, len(points_of_interest[dimension]) - 1))) for dimension in
-            #                                      range(dimensions)]  # we subtract 1 because we want to index the intervals not the points
-            #         permutations_indices = list(itertools.product(*point_of_interest_indices))
-            #         permutations_of_interest = []
-            #         for j, permutation_idx in enumerate(permutations_indices):
-            #             local_interval = []
-            #             for dimension in range(dimensions):
-            #                 lb = points_of_interest[dimension][permutation_idx[dimension]]
-            #                 ub = points_of_interest[dimension][min(permutation_idx[dimension] + 1, len(points_of_interest[dimension]) - 1)]
-            #                 local_interval.append((lb, ub))
-            #             permutations_of_interest.append(tuple(local_interval))
-            #
-            #         for j, permutation in enumerate(permutations_of_interest):
-            #             if permutation != state:
-            #                 if permutation != examine_interval:
-            #                     examine_intervals.append(permutation)
-            #                 else:
-            #                     remaining_intervals.append(permutation)
-            #             else:
-            #                 if action:
-            #                     union_safe_intervals.append(permutation)
-            #                 else:
-            #                     union_unsafe_intervals.append(permutation)
-            # else:
-            #     remaining_intervals.append(examine_interval)  # else:  #     print("Discarded negligible in compute_remaining_intervals3")
         if debug:
             bar.update(i)
     if debug:
@@ -303,7 +264,8 @@ def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_
     return remaining_intervals, union_intervals
 
 
-def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], tree: index.Index, debug=True) -> Tuple[List[HyperRectangle], List[Tuple[HyperRectangle, List[HyperRectangle]]]]:
+def compute_remaining_intervals4_multi(current_intervals: List[HyperRectangle], tree: index.Index, rounding: int, debug=True) -> Tuple[
+    List[HyperRectangle], List[Tuple[HyperRectangle, List[HyperRectangle]]]]:
     intervals_with_relevants: List[Tuple[HyperRectangle, HyperRectangle_action]] = []
     for i, interval in enumerate(current_intervals):
         relevant_intervals = filter_relevant_intervals3(tree, interval)

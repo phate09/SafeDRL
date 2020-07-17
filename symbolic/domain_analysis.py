@@ -32,6 +32,7 @@ rtree.reset(state_size)
 # rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 print(f"Finished building the tree")
 # current_interval = tuple([(-0.3, -0.2), (-0.7, -0.6)])
+current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
 storage.root = root
