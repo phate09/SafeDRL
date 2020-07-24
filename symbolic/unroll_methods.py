@@ -150,7 +150,7 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
             break
     # show_plot(intersected_intervals, intervals_sorted)
     if allow_merge:
-        intersected_intervals = premerge(intersected_intervals, n_workers)
+        intersected_intervals = premerge(intersected_intervals, n_workers, rounding)
     list_assigned_action = []
     with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
         for interval_noaction, successors in intersected_intervals:
@@ -162,7 +162,7 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     compute_successors(env, list_assigned_action, n_workers, rounding, storage)
 
 
-def premerge(intersected_intervals, n_workers, show_bar=True):
+def premerge(intersected_intervals, n_workers, rounding: int, show_bar=True):
     proc_ids = []
     merged_list = [(interval_noaction, successors) for interval_noaction, successors in intersected_intervals if len(successors) <= 1]
     working_list = list(utils.chunks([(interval_noaction, successors) for interval_noaction, successors in intersected_intervals if len(successors) > 1], 200))
@@ -170,7 +170,7 @@ def premerge(intersected_intervals, n_workers, show_bar=True):
         while len(working_list) != 0 or len(proc_ids) != 0:
             while len(proc_ids) < n_workers and len(working_list) != 0:
                 intervals = working_list.pop(0)
-                proc_ids.append(merge_successors.remote(intervals))
+                proc_ids.append(merge_successors.remote(intervals, rounding))
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
             results = ray.get(ready_ids)
             for result in results:
@@ -183,12 +183,12 @@ def premerge(intersected_intervals, n_workers, show_bar=True):
 
 
 @ray.remote
-def merge_successors(intersected_intervals):
+def merge_successors(intersected_intervals, rounding: int):
     merged_list = []
     for interval_noaction, successors in intersected_intervals:
         if len(successors) != 1:
-            merged1 = [(x, True) for x in merge_supremum2([x[0] for x in successors if x[1] is True], show_bar=False)]
-            merged2 = [(x, False) for x in merge_supremum2([x[0] for x in successors if x[1] is False], show_bar=False)]
+            merged1 = [x.assign(True) for x in merge4([x for x in successors if x.action is True], rounding)]
+            merged2 = [x.assign(False) for x in merge4([x for x in successors if x.action is False], rounding)]
             successors_merged: List[HyperRectangle_action] = merged1 + merged2
             merged_list.append((interval_noaction, successors_merged))
         else:
@@ -197,16 +197,16 @@ def merge_successors(intersected_intervals):
 
 
 def compute_successors(env_class, list_assigned_action: List[HyperRectangle_action], n_workers, rounding, storage: StateStorage):
-    next_states, half_terminal_states_dict, terminal_states_dict = abstract_step(list_assigned_action, env_class, n_workers,
-                                                                                 rounding)  # performs a step in the environment with the assigned action and retrieve the result
+    # performs a step in the environment with the assigned action and retrieve the result
+    next_states, half_terminal_states_dict, terminal_states_dict = abstract_step(list_assigned_action, env_class, n_workers, rounding)
     terminal_states_list = []
     half_terminal_states_list = []
     for key in terminal_states_dict:
         if terminal_states_dict[key]:
-            terminal_states_list.append((key, None))
+            terminal_states_list.append(key.assign(None))
     for key in half_terminal_states_dict:
         if half_terminal_states_dict[key]:
-            half_terminal_states_list.append((key, None))
+            half_terminal_states_list.append(key.assign(None))
     storage.mark_as_fail(terminal_states_list)
     storage.mark_as_half_fail(half_terminal_states_list)
     next_to_compute = []
@@ -215,11 +215,11 @@ def compute_successors(env_class, list_assigned_action: List[HyperRectangle_acti
         for interval, successors in next_states:
             for successor1, successor2 in successors:
                 n_successors += 2
-                storage.store_sticky_successors((successor1, None), (successor2, None), interval)  # interval with action
+                storage.store_sticky_successors(successor1.assign(None), successor2.assign(None), interval)  # interval with action
                 if not terminal_states_dict[successor1] and not half_terminal_states_dict[successor1]:
-                    next_to_compute.append((successor1, None))
+                    next_to_compute.append(successor1.assign(None))
                 if not terminal_states_dict[successor2] and not half_terminal_states_dict[successor2]:
-                    next_to_compute.append((successor2, None))
+                    next_to_compute.append(successor2.assign(None))
             bar.update(bar.value + 1)
     # store terminal states
     print(f"Sucessors : {n_successors} Terminals : {len(terminal_states_list)} Half Terminals:{len(half_terminal_states_list)} Next States :{len(next_to_compute)}")  # return next_to_compute
@@ -253,7 +253,7 @@ def compute_remaining_intervals3(current_interval: HyperRectangle, intervals_to_
             if not intersection.empty():
                 set_minus = examine_interval.setminus(intersection)
                 examine_intervals = examine_intervals.union(set_minus)
-                assert math.isclose(examine_interval.size()-intersection.size(),sum([x.size() for x in set_minus]))
+                assert math.isclose(examine_interval.size() - intersection.size(), sum([x.size() for x in set_minus]))
                 union_intervals.append(intersection.assign(interval_action.action))
             else:
                 remaining_intervals.append(examine_interval)
@@ -477,35 +477,38 @@ def merge_supremum3(starting_intervals: List[HyperRectangle], n_workers: int, pr
 
 
 def merge4(starting_intervals: List[HyperRectangle], precision: int) -> List[HyperRectangle]:
-    rtree = SharedRtree()
-    state_size = starting_intervals[0].dimension()
-    rtree.reset(state_size)
-    rtree.load(starting_intervals)
-    merged_list = []
-    window_tuple = []
-    window = rtree.tree.get_bounds()
-    while len(window) != 0:
-        window_tuple.append((window.pop(0), window.pop(0)))
-    window = HyperRectangle.from_tuple(window_tuple)
-    # subwindows = DomainExplorer.box_split_tuple(window, precision)
-    subwindows = [window]
-    with progressbar.ProgressBar(prefix="Merging intervals", max_value=progressbar.UnknownLength) as bar:
-        while len(subwindows) != 0:
-            bar.update()
-            sub = subwindows.pop()
-            filtered = rtree.filter_relevant_intervals_multi([sub])[0]
-            if len(filtered) != 0:
-                area_filtered = sum([x.size() for x in filtered])
-                area_sub = sub.size()
-                # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
-                if not (area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10)):  # check for empty areas
-                    merged_list.append(sub)
-                else:
-                    subwindows.extend(sub.split(precision))
-    # safe = [x for x in merged_list if x[1] == True]
-    # unsafe = [x for x in merged_list if x[1] == False]
-    # utils.show_plot(safe, unsafe, merged_list)
-    return merged_list
+    if len(starting_intervals) != 0:
+        rtree = SharedRtree()
+        state_size = starting_intervals[0].dimension()
+        rtree.reset(state_size)
+        rtree.load(starting_intervals)
+        merged_list = []
+        window_tuple = []
+        window = rtree.tree.get_bounds()
+        while len(window) != 0:
+            window_tuple.append((window.pop(0), window.pop(0)))
+        window = HyperRectangle.from_tuple(window_tuple)
+        # subwindows = DomainExplorer.box_split_tuple(window, precision)
+        subwindows = [window]
+        with progressbar.ProgressBar(prefix="Merging intervals", max_value=progressbar.UnknownLength) as bar:
+            while len(subwindows) != 0:
+                bar.update()
+                sub = subwindows.pop()
+                filtered = rtree.filter_relevant_intervals_multi([sub])[0]
+                if len(filtered) != 0:
+                    area_filtered = sum([x.size() for x in filtered])
+                    area_sub = sub.size()
+                    # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
+                    if not (area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10)):  # check for empty areas
+                        merged_list.append(sub)
+                    else:
+                        subwindows.extend(sub.split(precision))
+        # safe = [x for x in merged_list if x[1] == True]
+        # unsafe = [x for x in merged_list if x[1] == False]
+        # utils.show_plot(safe, unsafe, merged_list)
+        return merged_list
+    else:
+        return []
 
 
 def compute_boundaries(starting_intervals: List[HyperRectangle_action]):

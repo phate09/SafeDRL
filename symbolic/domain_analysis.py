@@ -7,7 +7,7 @@ import gym
 import ray
 import importlib
 import mosaic.utils as utils
-from mosaic.hyperrectangle import HyperRectangle_action
+from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
@@ -17,7 +17,7 @@ import pandas as pd
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
-local_mode = True
+local_mode = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
@@ -25,13 +25,13 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding,sym=True)
+explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding, sym=True)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
 # rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 print(f"Finished building the tree")
-# current_interval = tuple([(-0.3, -0.2), (-0.7, -0.6)])
+current_interval = HyperRectangle.from_tuple(tuple([(-0.05, 0.05), (-0.05, 0.05)]))
 current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
