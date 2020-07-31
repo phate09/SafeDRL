@@ -14,6 +14,7 @@ import networkx as nx
 import numpy as np
 import progressbar
 import ray
+import sympy
 from contexttimer import Timer
 from py4j.java_collections import ListConverter
 from rtree import index
@@ -648,3 +649,16 @@ def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
                            interval in shortest_path_abstract and (len(shortest_path_abstract[interval]) - 1) < t * 2 and (len(shortest_path_abstract[interval]) - 1) % 2 == 0]
         n_states.append(len(leaves_abstract))
     return n_states
+
+
+def softmax_interval(intervals: List[Tuple]):
+    output_values = []
+    variables = sympy.symbols(f'a0:{len(intervals)}')
+    exp_sum = sum([sympy.exp(x) for x in variables])
+    for i, interval in enumerate(intervals):
+        softmax_func = sympy.exp(variables[i]) / exp_sum
+        substitutions_ub = {variables[j]: x[1] if j == i else x[0] for j, x in enumerate(intervals)}
+        substitutions_lb = {variables[j]: x[0] if j == i else x[1] for j, x in enumerate(intervals)}
+        softmax_interval_var = (float(softmax_func.subs(substitutions_lb)), float(softmax_func.subs(substitutions_ub)))
+        output_values.append(softmax_interval_var)
+    return output_values
