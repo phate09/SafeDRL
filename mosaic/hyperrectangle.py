@@ -288,6 +288,11 @@ class HyperRectangle_action(HyperRectangle):
         interval, action = interval_action
         return cls(*[Interval(interval[i][0], interval[i][1]) for i in range(len(interval))], action)
 
+    @classmethod
+    def from_numpy(cls, array_action):
+        array, action = array_action
+        return cls(*[Interval(array[0][i], array[1][i]) for i in range(array.shape[-1])], action)
+
     def split(self, rounding: int):
         domains = super().split(rounding)
         domains = [x.assign(self.action) for x in domains]
@@ -295,6 +300,9 @@ class HyperRectangle_action(HyperRectangle):
 
     def to_tuple(self):
         return super().to_tuple(), self.action
+
+    def to_numpy(self):
+        return np.array([(interval.left_bound(), interval.right_bound()) for interval in self.intervals]).transpose(), self.action
 
     def remove_action(self):
         return HyperRectangle(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in self.intervals])
