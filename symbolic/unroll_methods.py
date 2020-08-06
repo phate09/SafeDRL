@@ -98,12 +98,12 @@ def discard_negligibles(intervals: List[HyperRectangle]) -> List[HyperRectangle]
 
 
 def is_negligible(interval: HyperRectangle):
-    sizes = [abs(interval[dimension][1] - interval[dimension][0]) for dimension in range(len(interval))]
+    sizes = [abs(interval[dimension].width()) for dimension in range(len(interval.intervals))]
     return any([math.isclose(x, 0) for x in sizes])
 
 
 def is_small(interval: HyperRectangle, min_size: float, rounding):
-    sizes = [round(abs(interval[dimension][1] - interval[dimension][0]), rounding) for dimension in range(len(interval))]
+    sizes = [round(abs(interval[dimension].width()), rounding) for dimension in range(len(interval.intervals))]
     return max(sizes) <= min_size
 
 
@@ -496,8 +496,9 @@ def merge4(starting_intervals: List[HyperRectangle], precision: int) -> List[Hyp
                 bar.update()
                 sub = subwindows.pop()
                 filtered = rtree.filter_relevant_intervals_multi([sub])[0]
+                filtered_shrunk = [x.intersect(sub) for x in filtered]
                 if len(filtered) != 0:
-                    area_filtered = sum([x.size() for x in filtered])
+                    area_filtered = sum([x.size() for x in filtered_shrunk])
                     area_sub = sub.size()
                     # remainings = [(x, None) for x in unroll_methods.compute_remaining_intervals3(sub, filtered)]
                     if not (area_filtered < area_sub and not math.isclose(area_filtered, area_sub, abs_tol=1e-10)):  # check for empty areas
@@ -551,9 +552,9 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
             # refine states which are undecided
             candidate_length_dict = defaultdict(list)
             # get the furthest nodes that have a maximum probability less than safe_threshold
-            candidates_ids = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if (
+            candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
                     attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('half_fail') and not attributes.get(
-                'fail') and action is not None and not is_small(interval, precision, rounding))]  # and attributes.get('lb') < unsafe_threshold
+                'fail') and interval.action is not None and not is_small(interval, precision, rounding))]  # and attributes.get('lb') < unsafe_threshold
             for id, lb, ub in candidates_ids:
                 if shortest_path.get(id) is not None:
                     if lb < unsafe_threshold:
@@ -600,7 +601,7 @@ def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage,
         if interval_probability[1] <= safe_threshold:  # low probability of not encountering a terminal state
             safe_count += 1
             intervals_safe.append(interval)
-        elif is_small(interval[0], precision, rounding):
+        elif is_small(interval, precision, rounding):
             if not storage.graph.nodes[interval].get('ignore'):
                 print(f"Interval {interval} ({interval_probability[0]},{interval_probability[1]}) is too small, considering it unsafe")
                 unsafe_count += 1
@@ -609,16 +610,14 @@ def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage,
         else:
             # print(f"Splitting interval {interval} ({interval_probability[0]},{interval_probability[1]})")  # split
             split_performed = True
-            action = interval[1]
             predecessors = list(storage.graph.predecessors(interval))
-            dom1, dom2 = DomainExplorer.box_split_tuple(interval[0], rounding)
+            domains = interval.split(rounding)
             for parent_id in predecessors:
-                storage.store_successor_multi([(parent_id, (dom1, action)), (parent_id, (dom2, action))])
+                storage.store_successor_multi([(parent_id, domain) for domain in domains])
                 storage.graph.remove_edge(parent_id, interval)
             # storage.graph.remove_node(interval)
             storage.graph.nodes[interval]['ignore'] = True
-            to_analyse.append((dom1, action))
-            to_analyse.append((dom2, action))
+            to_analyse.extend(domains)
     print(f"Safe: {safe_count} Unsafe: {unsafe_count} To Analyse:{len(to_analyse)}")
     return split_performed, to_analyse
 
@@ -627,7 +626,8 @@ def get_property_at_timestep(storage: StateStorage, t: int, properties: List[str
     path_length = nx.single_source_dijkstra_path_length(storage.graph, source=storage.root)
     list_to_show = []
     for x, attr in storage.graph.nodes.data():
-        if path_length.get(x) is not None and path_length.get(x) == t:
+        path = path_length.get(x)
+        if path is not None and path == t:
             single_result = [x]
             for property in properties:
                 single_result.append(attr.get(property))

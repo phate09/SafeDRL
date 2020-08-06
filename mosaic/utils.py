@@ -224,6 +224,10 @@ def show_plot(*args, legend: List = None):
     return fig
 
 
+def show_plot_rect(*args, legend: List = None):
+    return show_plot(*[[x.to_tuple() for x in arg] for arg in args], legend)
+
+
 def p_chart(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, save_to: str = None, rounding=4):
     fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
@@ -280,8 +284,8 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
         x_list = []
         y_list = []
         for interval in intervals:
-            x = [interval[0][0], interval[0][1], interval[0][1], interval[0][0], interval[0][0]]
-            y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
+            x = [interval[0].left_bound(), interval[0].right_bound(), interval[0].right_bound(), interval[0].left_bound(), interval[0].left_bound()]
+            y = [interval[1].left_bound(), interval[1].left_bound(), interval[1].right_bound(), interval[1].right_bound(), interval[1].left_bound()]
             x_list.extend(x)
             x_list.append(None)
             y_list.extend(y)

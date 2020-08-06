@@ -31,13 +31,13 @@ rtree = SharedRtree()
 rtree.reset(state_size)
 # rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 print(f"Finished building the tree")
-current_interval = HyperRectangle.from_tuple(tuple([(-0.05, 0.05), (-0.05, 0.05)]))
+# current_interval = HyperRectangle.from_tuple(tuple([(-0.05, 0.05), (-0.05, 0.05)]))
 current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
 storage.root = root
 storage.graph.add_node(storage.root)
-horizon = 9
+horizon = 7
 t = 0
 # %%
 # for i in range(horizon):
@@ -52,7 +52,7 @@ t = 0
 # pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
 # print("Checkpoint Saved...")
 # %%
-# storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
 rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 # %%
 iterations = 0
@@ -60,24 +60,25 @@ time_from_last_save = time.time()
 while True:
     print(f"Iteration {iterations}")
     split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                           allow_assign_actions=True)
+                                                           allow_assign_actions=True, allow_refine=False)
     if time.time() - time_from_last_save >= 60 * 5:
-        # storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-        # rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+        storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+        rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
         print("Graph Saved - Checkpoint")
         time_from_last_save = time.time()
-    if not split_performed or iterations == 1000:
+    if not split_performed or iterations == 5:
         # utils.save_graph_as_dot(storage.graph)
         if not split_performed:
             print("No more split performed")
         break
     iterations += 1
 # %%
-# storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-# rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
 # %%
 # unroll_methods.remove_spurious_nodes(storage.graph)
 # storage.remove_unreachable()
 # storage.recreate_prism()
 # utils.save_graph_as_dot(storage.graph)
-utils.show_heatmap([(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["lb"])])
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]))
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]))

@@ -1,6 +1,7 @@
 from typing import Tuple, List
 from mosaic.interval import Interval, BoundType
 from mosaic.point import Point
+import numpy as np
 
 
 # from prophesy.adapter.pycarl import inf
@@ -17,7 +18,6 @@ class HyperRectangle:
         :param intervals: Multiple Intervals as arguments
         """
         self.intervals: Tuple[Interval] = tuple(intervals)
-        self._size = None
 
     @classmethod
     def cube(cls, left_bound, right_bound, dimension, boundtype):
@@ -118,8 +118,6 @@ class HyperRectangle:
         """
         :return: The size of the hyperrectangle
         """
-        if self._size:
-            return self._size
         s = 1
         for interv in self.intervals:
             s = s * interv.width()
@@ -237,6 +235,9 @@ class HyperRectangle:
     def to_tuple(self):
         return tuple([(interval.left_bound(), interval.right_bound()) for interval in self.intervals])
 
+    def to_numpy(self):
+        return np.array([(interval.left_bound(), interval.right_bound()) for interval in self.intervals]).transpose()
+
     def to_coordinates(self):
         result = []
         for interval in self.intervals:
@@ -282,6 +283,11 @@ class HyperRectangle_action(HyperRectangle):
     def from_hyperrectangle(cls, hyperrectangle, action):
         return cls(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in hyperrectangle.intervals], action=action)
 
+    @classmethod
+    def from_tuple(cls, interval_action):
+        interval, action = interval_action
+        return cls(*[Interval(interval[i][0], interval[i][1]) for i in range(len(interval))], action)
+
     def split(self, rounding: int):
         domains = super().split(rounding)
         domains = [x.assign(self.action) for x in domains]
@@ -300,4 +306,4 @@ class HyperRectangle_action(HyperRectangle):
         return hash((self.intervals, self.action))
 
     def __eq__(self, other):
-        return other.action == self.action and super().__eq__(other)
+        return other is not None and other.action == self.action and super().__eq__(other)
