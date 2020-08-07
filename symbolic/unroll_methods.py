@@ -80,14 +80,12 @@ def assign_action_to_blank_intervals(s_array: List[HyperRectangle], explorer, ve
     ignore_next = np.stack(ignore_next).tolist() if len(ignore_next) != 0 else []
     t_states = []
     for k in safe_next:
-        box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box = HyperRectangle_action.from_tuple((tuple([tuple(x) for x in k]), True))
         box = box.round(rounding)
-        box.action = True
         t_states.append(box)
     for k in unsafe_next:
-        box = HyperRectangle_action.from_tuple(tuple([tuple(x) for x in k]))
+        box = HyperRectangle_action.from_tuple((tuple([tuple(x) for x in k]), False))
         box = box.round(rounding)
-        box.action = False
         t_states.append(box)
     return t_states, ignore_next
 

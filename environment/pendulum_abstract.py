@@ -31,7 +31,7 @@ class PendulumEnv_abstract(gym.Env):
         self.seed()
 
     def set_state(self, state: HyperRectangle):
-        self.state = tuple([interval([x[0], x[1]]) for x in state])
+        self.state = tuple([interval([x.left_bound(), x.right_bound()]) for x in state])
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)

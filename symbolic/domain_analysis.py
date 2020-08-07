@@ -14,12 +14,15 @@ import symbolic.unroll_methods as unroll_methods
 import verification_runs.domain_explorers_load
 import numpy as np
 import pandas as pd
+import mosaic.hyperrectangle_serialisation as serialisation
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = False
+allow_save = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+serialisation.register_serialisers()
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
 storage.reset()
@@ -52,8 +55,8 @@ t = 0
 # pickle.dump(remainings, open("/home/edoardo/Development/SafeDRL/save/remainings.p", "wb+"))
 # print("Checkpoint Saved...")
 # %%
-storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
+# storage.load_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+# rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 # %%
 iterations = 0
 time_from_last_save = time.time()
@@ -61,7 +64,7 @@ while True:
     print(f"Iteration {iterations}")
     split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
                                                            allow_assign_actions=True, allow_refine=False)
-    if time.time() - time_from_last_save >= 60 * 5:
+    if time.time() - time_from_last_save >= 60 * 5 and allow_save:
         storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
         rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
         print("Graph Saved - Checkpoint")
@@ -73,8 +76,9 @@ while True:
         break
     iterations += 1
 # %%
-storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
-rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
+if allow_save:
+    storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
+    rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
 # %%
 # unroll_methods.remove_spurious_nodes(storage.graph)
 # storage.remove_unreachable()

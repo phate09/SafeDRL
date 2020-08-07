@@ -3,10 +3,6 @@ from mosaic.interval import Interval, BoundType
 from mosaic.point import Point
 import numpy as np
 
-
-# from prophesy.adapter.pycarl import inf
-
-
 class HyperRectangle:
     """
     Defines a hyper-rectangle, that is the Cartisean product of intervals,
@@ -18,6 +14,7 @@ class HyperRectangle:
         :param intervals: Multiple Intervals as arguments
         """
         self.intervals: Tuple[Interval] = tuple(intervals)
+        self._empty = None
 
     @classmethod
     def cube(cls, left_bound, right_bound, dimension, boundtype):
@@ -62,10 +59,12 @@ class HyperRectangle:
         return len(self.intervals)
 
     def empty(self):
-        for interv in self.intervals:
-            if interv.empty():
-                return True
-        return False
+        if self._empty is None:
+            for interv in self.intervals:
+                if interv.empty():
+                    self._empty = True
+            self._empty = False
+        return self._empty
 
     def vertices(self):
         result = []
@@ -186,7 +185,7 @@ class HyperRectangle:
 
             # middle part which is cut away
             middle_interval = Interval(new_interval_list[0].right_bound(), new_interval_list[1].left_bound(), BoundType.negated(new_interval_list[0].right_bound_type()),
-                                       BoundType.negated(new_interval_list[1].left_bound_type()))  # todo negated?
+                                       BoundType.negated(new_interval_list[1].left_bound_type()))
             changed_interval_list = list(self.intervals)
             changed_interval_list[dimension] = middle_interval
             hrect_list.append(HyperRectangle(*changed_interval_list))
@@ -270,6 +269,9 @@ class HyperRectangle:
     def assign(self, action):
         return HyperRectangle_action.from_hyperrectangle(self, action)
 
+    def no_action(self):
+        return HyperRectangle(*self.intervals)
+
 
 class HyperRectangle_action(HyperRectangle):
     def __init__(self, *intervals, action=None):
@@ -286,12 +288,12 @@ class HyperRectangle_action(HyperRectangle):
     @classmethod
     def from_tuple(cls, interval_action):
         interval, action = interval_action
-        return cls(*[Interval(interval[i][0], interval[i][1]) for i in range(len(interval))], action)
+        return cls(*[Interval(interval[i][0], interval[i][1]) for i in range(len(interval))], action=action)
 
     @classmethod
     def from_numpy(cls, array_action):
         array, action = array_action
-        return cls(*[Interval(array[0][i], array[1][i]) for i in range(array.shape[-1])], action)
+        return cls(*[Interval(array[0][i], array[1][i]) for i in range(array.shape[-1])], action=action)
 
     def split(self, rounding: int):
         domains = super().split(rounding)
@@ -306,6 +308,9 @@ class HyperRectangle_action(HyperRectangle):
 
     def remove_action(self):
         return HyperRectangle(*[Interval(interval.left_bound(), interval.right_bound(), interval.left_bound_type(), interval.right_bound_type()) for interval in self.intervals])
+
+    def round(self, rounding: int):
+        return super(HyperRectangle_action, self).round(rounding).assign(self.action)
 
     def __repr__(self):
         return f"({super(HyperRectangle_action, self).__repr__()}, {self.action})"

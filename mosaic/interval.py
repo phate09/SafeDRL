@@ -1,7 +1,5 @@
 import re
 from enum import Enum
-import math
-
 
 class BoundType(Enum):
     open = 0
@@ -169,14 +167,6 @@ class Interval:
         if pt == self._right_value and self._right_bound_type == BoundType.closed: return True
         return False
 
-    def is_bounded(self):
-        """
-        Checks whether the interval is bounded
-        
-        :return:  The interval is bounded, if both the left and the right bound are not equal to infinity.
-        """
-        return self._left_value > float('-inf') and self._right_value < float('inf')
-
     def is_closed(self):
         """
         Does the interval have closed bounds on both sides.
@@ -191,7 +181,6 @@ class Interval:
         
         :return: right bound - left bound, if bounded from both sides, and math.inf otherwise
         """
-        if self._left_value is None or self._right_value is None: return math.inf
         return self._right_value - self._left_value
 
     def center(self):
@@ -209,7 +198,6 @@ class Interval:
         :return: Two intervals, the first from the former left bound to (excluding) middle point (leftbound + rightbound)/2, 
                                 the second from the middle point (including) till the former right bound
         """
-        assert self._left_value != float('-inf') and self._right_value != float('inf')
         mid = round(self._left_value + self.width() / 2, precision)
         return Interval(self._left_value, mid, self._left_bound_type, BoundType.open), Interval(mid, self._right_value, BoundType.closed, self._right_bound_type)
 

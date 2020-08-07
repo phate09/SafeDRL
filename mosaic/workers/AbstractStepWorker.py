@@ -50,7 +50,7 @@ class AbstractStepWorker:
 def step_state(state: HyperRectangle, action, env, rounding: int) -> Tuple[HyperRectangle, bool, bool]:
     # given a state and an action, calculate next state
     env.reset()
-    state = state.round(rounding).to_tuple()  # round the state
+    state = state.round(rounding)  # round the state
     env.set_state(state)
     next_state, reward, done, half_done = env.step(action)
     return next_state.round(rounding), half_done, done
