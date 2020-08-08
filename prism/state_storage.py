@@ -1,26 +1,15 @@
-# import multiprocessing
 import os
-import pickle
 from collections import defaultdict
-import threading
 from typing import Tuple, List
-import importlib
-import progressbar
-import zmq
-from py4j.java_gateway import JavaGateway
-from bidict import bidict
-from py4j.java_collections import ListConverter
 
-from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
-from utility.bidict_multi import bidict_multi
 import networkx as nx
-# import Pyro5.api
+from py4j.java_collections import ListConverter
+from py4j.java_gateway import JavaGateway
 
+from mosaic.hyperrectangle import HyperRectangle
 from utility.standard_progressbar import StandardProgressBar
 
 
-# @Pyro5.api.expose
-# @Pyro5.api.behavior(instance_mode="single")
 class StateStorage:
     def __init__(self):
         self.graph: nx.DiGraph = nx.DiGraph()
@@ -65,7 +54,7 @@ class StateStorage:
 
     def get_terminal_states_ids(self, half=False, dict_filter=None):
         result = []
-        is_half_str= "half " if half else " "
+        is_half_str = "half " if half else " "
         with StandardProgressBar(prefix=f"Fetching {is_half_str}terminal states ", max_value=self.graph.number_of_nodes()) as bar:
             for node, attr in self.graph.nodes.items():
                 if not half:
@@ -113,7 +102,7 @@ class StateStorage:
         # descendants = list(path_length.keys())  # descendants from 0
         # descendants.insert(0, self.root)
         descendants_dict = defaultdict(bool)
-        descendants_true = []# = list(descendants_dict.keys())
+        descendants_true = []  # = list(descendants_dict.keys())
         for descendant in path_length.keys():
             if max_t is None or path_length[descendant] <= max_t * 2:  # limit descendants to depth max_t
                 descendants_dict[descendant] = True
@@ -152,7 +141,7 @@ class StateStorage:
         # print(f"removed {id}")
         # self.graph.remove_node(id)
         terminal_states = [mapping[x] for x in self.get_terminal_states_ids(dict_filter=descendants_dict)]
-        half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True,dict_filter=descendants_dict)]
+        half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
         terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
         half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
         # get probabilities from prism to encounter a terminal state

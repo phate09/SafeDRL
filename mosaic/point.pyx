@@ -2,7 +2,7 @@ import math
 # from prophesy.data.nice_approximation import FixedDenomFloatApproximation
 
 
-def _sqrt_approx(i):
+cdef _sqrt_approx(i):
     """
     :param i: a positive number
     :return: the approximate square root of i
@@ -22,14 +22,14 @@ class Point:
     """
     An n-dimensional point class.
     """
-    def __init__(self, *args):
+    def __init__(self, args):
         """
         :param args: Numerical values to represent the point. 
         """
         self.coordinates = tuple(args)
 
     def to_float(self):
-        return Point(*[float(c) for c in self.coordinates])
+        return Point([float(c) for c in self.coordinates])
 
     # def to_nice_rationals(self, ApproxType = FixedDenomFloatApproximation, approx_type_arg = 16384):
     #     """
@@ -87,7 +87,7 @@ class Point:
         :param dims: An iterable of dimensions to select
         :return: A len(dims)-dimensional Point
         """
-        return Point(*[self.coordinates[i] for i in dims])
+        return Point([self.coordinates[i] for i in dims])
 
     def __str__(self):
         return "(" + ",".join([str(i) for i in self.coordinates]) + ")"
@@ -97,14 +97,14 @@ class Point:
 
     def __add__(self, other):
         assert self.dimension() == other.dimension()
-        return Point(*[c1 + c2 for (c1, c2) in zip(self.coordinates, other.coordinates)])
+        return Point([c1 + c2 for (c1, c2) in zip(self.coordinates, other.coordinates)])
 
     def __sub__(self, other):
         assert self.dimension() == other.dimension()
-        return Point(*[c1 - c2 for (c1, c2) in zip(self.coordinates, other.coordinates)])
+        return Point([c1 - c2 for (c1, c2) in zip(self.coordinates, other.coordinates)])
 
     def __mul__(self, sc):
-        return Point(*[c1 * sc for c1 in self.coordinates])
+        return Point([c1 * sc for c1 in self.coordinates])
 
     def __len__(self):
         return len(self.coordinates)
