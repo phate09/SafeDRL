@@ -1,3 +1,4 @@
+# cython: profile=False
 from typing import Tuple, List
 from mosaic.interval import Interval
 from mosaic.point import Point
@@ -9,16 +10,11 @@ cdef class HyperRectangle:
     i.e. the n-dimensional variant of a box.
     """
     cdef tuple __intervals
-    cdef double _size
     def __init__(self, intervals1: List[Interval]):
         """
         :param intervals: Multiple Intervals as arguments
         """
         self.__intervals = tuple(intervals1)  #: Tuple[Interval]
-        s = 1
-        for interv in self.intervals:
-            s = s * interv.width()
-        self._size = s
 
     @classmethod
     def cube(cls, left_bound, right_bound, dimension, boundtype):
@@ -123,7 +119,10 @@ cdef class HyperRectangle:
         """
         :return: The size of the hyperrectangle
         """
-        return self._size
+        s = 1
+        for interv in self.intervals:
+            s = s * interv.width()
+        return s
 
     def contains(self, point):
         """
@@ -206,7 +205,7 @@ cdef class HyperRectangle:
 
         return hrect_list
 
-    def setminus(self, other, dimension=0):
+    cpdef list setminus(self, HyperRectangle other, int dimension=0):
         """
         Does a setminus operation on hyperrectangles and returns a list with hyperrects covering the resulting area
         :param other: the other HyperRectangle

@@ -8,5 +8,6 @@ setup(
     ext_modules=cythonize(["mosaic/hyperrectangle.pyx",
                            "mosaic/interval.pyx",
                            "mosaic/point.pyx",
-                           "prism/shared_rtree.pyx"], language_level="3")
+                            "symbolic/unroll_methods.pyx",
+                           "prism/shared_rtree.pyx"], language_level="3",annotate=True)
 )

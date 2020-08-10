@@ -1,3 +1,5 @@
+# cython: profile=False
+
 cdef class Interval:
     """
     Interval class for arbitrary (constant) types.
@@ -189,7 +191,7 @@ cdef class Interval:
     cpdef Interval round(self, int rounding):
         return Interval(round(self._left_value, rounding), round(self._right_value, rounding), self._is_left_bound_closed, self._is_right_bound_closed)
 
-    cpdef setminus(self, Interval other):
+    def setminus(self, Interval other):
         """
         Compute the setminus of two rectangles
         

@@ -1,3 +1,4 @@
+# cython: profile=False
 import math
 # from prophesy.data.nice_approximation import FixedDenomFloatApproximation
 

@@ -25,9 +25,10 @@ class StateStorage:
         self.graph.add_edges_from(items, p=1.0)
 
     def store_sticky_successors(self, successor: HyperRectangle, sticky_successor: HyperRectangle, parent: HyperRectangle):
-        action_name = max([action_n for parent, successor, action_n in self.graph.edges(self.root, data='a', default=0)]) + 1
-        self.graph.add_edge(parent, successor, p=0.8, a=action_name)
-        self.graph.add_edge(parent, sticky_successor, p=0.2, a=action_name)  # same action
+        # action_name = max([action_n for parent, successor, action_n in self.graph.edges(self.root, data='a', default=0)]) + 1
+        # we use a="a" to mark the successors belonging to the same distribution (as opposed to the successors of the split operation)
+        self.graph.add_edge(parent, successor, p=0.8, a="a")
+        self.graph.add_edge(parent, sticky_successor, p=0.2, a="a")  # same action
 
     def save_state(self, folder_path):
         nx.write_gpickle(self.graph, folder_path)
