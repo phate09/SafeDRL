@@ -278,7 +278,7 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
     if len(interval_list) == 0:
         return
     colors = list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
-    probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits
+    probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits todo check why x[1] is none sometimes
     newlist = [(x, [y[0] for y in interval_list if round(y[1], rounding) == x]) for x in sorted(probabilities)]
     for probability, intervals in newlist:
         x_list = []

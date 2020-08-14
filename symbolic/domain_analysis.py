@@ -55,13 +55,13 @@ if allow_compute:
     while True:
         print(f"Iteration {iterations}")
         split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                               allow_assign_actions=True, allow_refine=False)
+                                                               allow_assign_actions=True, allow_refine=True)
         if time.time() - time_from_last_save >= 60 * 5 and allow_save:
             storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
             rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
             print("Graph Saved - Checkpoint")
             time_from_last_save = time.time()
-        if not split_performed or iterations == 10:
+        if not split_performed or iterations == 50:
             # utils.save_graph_as_dot(storage.graph)
             if not split_performed:
                 print("No more split performed")
@@ -76,5 +76,6 @@ if allow_save:
 # storage.remove_unreachable()
 # storage.recreate_prism()
 # utils.save_graph_as_dot(storage.graph)
+storage.recreate_prism(horizon * 2)
 utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]),rounding=2)
 utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]),rounding=2)
