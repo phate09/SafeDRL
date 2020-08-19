@@ -273,7 +273,7 @@ def p_chart(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, sa
         fig.write_image(save_to, width=800, height=800)
 
 
-def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, save_to: str = None, rounding=4):
+def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=None, save_to: str = None, rounding=4, concrete=False):
     fig: go.Figure = go.Figure()
     if len(interval_list) == 0:
         return
@@ -284,8 +284,12 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
         x_list = []
         y_list = []
         for interval in intervals:
-            x = [interval[0].left_bound(), interval[0].right_bound(), interval[0].right_bound(), interval[0].left_bound(), interval[0].left_bound()]
-            y = [interval[1].left_bound(), interval[1].left_bound(), interval[1].right_bound(), interval[1].right_bound(), interval[1].left_bound()]
+            if not concrete:
+                x = [interval[0].left_bound(), interval[0].right_bound(), interval[0].right_bound(), interval[0].left_bound(), interval[0].left_bound()]
+                y = [interval[1].left_bound(), interval[1].left_bound(), interval[1].right_bound(), interval[1].right_bound(), interval[1].left_bound()]
+            else:
+                x = [interval[0], interval[0] + 0.01, interval[0] + 0.01, interval[0]]
+                y = [interval[1], interval[1], interval[1] + 0.01, interval[1] + 0.01]
             x_list.extend(x)
             x_list.append(None)
             y_list.extend(y)

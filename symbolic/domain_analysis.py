@@ -1,27 +1,22 @@
 # %%
 import os
-import pickle
 import time
-
 import gym
 import ray
-import importlib
+import mosaic.hyperrectangle_serialisation as serialisation
 import mosaic.utils as utils
-from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
-from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import verification_runs.domain_explorers_load
-import numpy as np
-import pandas as pd
-import mosaic.hyperrectangle_serialisation as serialisation
+from mosaic.hyperrectangle import HyperRectangle_action
+from prism.shared_rtree import SharedRtree
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = False
-allow_compute = False
-allow_save = False
-allow_load = True
+allow_compute = True
+allow_save = True
+allow_load = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 serialisation.register_serialisers()
@@ -55,7 +50,7 @@ if allow_compute:
     while True:
         print(f"Iteration {iterations}")
         split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                               allow_assign_actions=True, allow_refine=True)
+                                                               allow_assign_actions=True, allow_refine=False)
         if time.time() - time_from_last_save >= 60 * 5 and allow_save:
             storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
             rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
