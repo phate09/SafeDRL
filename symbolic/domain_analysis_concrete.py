@@ -23,15 +23,15 @@ import mosaic.hyperrectangle_serialisation as serialisation
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = False
-allow_compute = False
-allow_load = True
+allow_compute = True
+allow_load = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
 serialisation.register_serialisers()
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
 storage.reset()
-rounding = 2
+rounding = 3
 precision = 10 ** (-rounding)
 env = PendulumEnv()
 state_size = 2
@@ -88,4 +88,4 @@ if allow_compute:
 
 # utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]), rounding=2, concrete=True)
 storage.recreate_prism(horizon * 2)
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]), rounding=2, concrete=True)
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]), rounding=3, concrete=True)
