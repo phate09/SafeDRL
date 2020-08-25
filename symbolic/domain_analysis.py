@@ -18,7 +18,7 @@ allow_compute = True
 allow_save = True
 allow_load = False
 if not ray.is_initialized():
-    ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+    ray.init(local_mode=local_mode, include_dashboard=True, log_to_driver=False)
 serialisation.register_serialisers()
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
@@ -37,7 +37,7 @@ remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
 storage.root = root
 storage.graph.add_node(storage.root)
-horizon = 7
+horizon = 4
 t = 0
 # %%
 if allow_load:
