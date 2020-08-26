@@ -8,6 +8,7 @@ import numpy as np
 
 from utility.standard_progressbar import StandardProgressBar
 
+#array [angle,speed]
 env = PendulumEnv()
 # env.state = np.array([-0.57,0.21]) #guaranteed fail
 # env.state = np.array([-0.57,0.21]) #guaranteed fail
@@ -18,7 +19,7 @@ env = PendulumEnv()
 # start_state = np.array([-0.12, 0.33]) #100% success
 # start_state = np.array([0.35,-0.83]) # should be 83% but appears 100%
 # start_state = np.array([-0.48, -0.44])  #100% fail
-start_state = np.array([0.06,0.45])  #min 33% max 100%
+start_state = np.array([0.37,0.43])  #min 33% max 100%
 
 state_size = 2
 agent = Agent(state_size, 2)
