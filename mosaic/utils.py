@@ -302,12 +302,15 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
     #     y = [interval[1][0], interval[1][0], interval[1][1], interval[1][1], interval[1][0]]
     #     color = assign_color(probability)
     #     fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color, opacity=0.2, line=dict(color=color), name=str(probability), hovertext=str(probability), marker=dict(size=0))
-    margin = go.layout.Margin(l=0,  # left margin
-                              r=0,  # right margin
-                              b=0,  # bottom margin
-                              t=0  # top margin
-                              )
-    fig.update_layout(margin=margin)
+
+
+
+    # margin = go.layout.Margin(l=0,  # left margin
+    #                           r=0,  # right margin
+    #                           b=0,  # bottom margin
+    #                           t=0  # top margin
+    #                           )
+    # fig.update_layout(margin=margin)
     if title is not None:
         fig.update_layout(title=title, title_x=0.5)
     fig.show()

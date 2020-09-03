@@ -123,16 +123,14 @@ class StateStorage:
                                 for successor_id, eattr in successors_grouped:
                                     distribution = gateway.newDistribution()
                                     distribution.add(int(mapping[successor_id]), 1.0)
-                                    mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, int(mapping[successor_id]))
+                                    mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)
                             else:
-                                last_distribution_name = None
                                 distribution = gateway.newDistribution()
-                                last_successor = None  # this is used just for naming the action
                                 for successor_id, eattr in successors_grouped:
-                                    p = eattr.get("p", 1.0 / len(successors.items()))
+                                    p = eattr.get("p")
+                                    assert p is not None
                                     distribution.add(int(mapping[successor_id]), p)
-                                    last_successor = successor_id
-                                mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, int(mapping[successor_id]))
+                                mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)  # int(mapping[successor_id])
                     else:
                         # zero successors
                         pass

@@ -8,7 +8,7 @@ import mosaic.utils as utils
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import verification_runs.domain_explorers_load
-from mosaic.hyperrectangle import HyperRectangle_action
+from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from prism.shared_rtree import SharedRtree
 
 gym.logger.set_level(40)
@@ -31,7 +31,7 @@ rtree = SharedRtree()
 rtree.reset(state_size)
 # rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 print(f"Finished building the tree")
-# current_interval = HyperRectangle.from_tuple(tuple([(-0.05, 0.05), (-0.05, 0.05)]))
+current_interval = HyperRectangle.from_tuple(tuple([(0.45, 0.52), (0.02, 0.18)]))
 current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
@@ -50,7 +50,7 @@ if allow_compute:
     while True:
         print(f"Iteration {iterations}")
         split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                               allow_assign_actions=True, allow_refine=False)
+                                                               allow_assign_actions=True, allow_refine=True)
         if time.time() - time_from_last_save >= 60 * 5 and allow_save:
             storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
             rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")
@@ -72,5 +72,5 @@ if allow_save:
 # storage.recreate_prism()
 # utils.save_graph_as_dot(storage.graph)
 storage.recreate_prism(horizon * 2)
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]),rounding=2)
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]),rounding=2)
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]),rounding=2,title=f"LB abstract horizon:{horizon}")
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]),rounding=2,title=f"UB abstract horizon:{horizon}")

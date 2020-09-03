@@ -37,8 +37,8 @@ def trainable(config):
 
 
 if __name__ == '__main__':
-    space = {"x": tune.uniform(0.41, 0.45), "y": tune.uniform(0.32, 0.42), "n_trials": 100, "horizon": 4}
-    analysis = tune.run(trainable, num_samples=10,resources_per_trial={'gpu': 1},config=space)
+    space = {"x": tune.uniform(0.31, 0.4), "y": tune.uniform(-1, -0.88), "n_trials": 100, "horizon": 4}
+    analysis = tune.run(trainable, num_samples=100,resources_per_trial={'gpu': 1},config=space)
     # Get the best hyperparameters
     results = [(trial.metric_analysis["score"]["max"],trial.config) for trial in analysis.trials]
     max_hyperparameters = max(results,key=lambda x:x[0])

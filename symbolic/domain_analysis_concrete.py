@@ -26,16 +26,17 @@ local_mode = False
 allow_compute = True
 allow_load = False
 if not ray.is_initialized():
-    ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+    ray.init(local_mode=local_mode, include_dashboard=True, log_to_driver=False)
 serialisation.register_serialisers()
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
 storage.reset()
-rounding = 3
+rounding = 2
 precision = 10 ** (-rounding)
 env = PendulumEnv()
 state_size = 2
-param_grid = {'param1': list(np.arange(-env.max_angle, env.max_angle, precision).round(rounding)), 'param2': list(np.arange(-1, 1, precision).round(rounding))}
+# param_grid = {'param1': list(np.arange(-env.max_angle, env.max_angle, precision).round(rounding)), 'param2': list(np.arange(-1, 1, precision).round(rounding))}
+param_grid = {'param1': list(np.arange(0.45, 0.52, precision).round(rounding)), 'param2': list(np.arange(0.02, 0.18, precision).round(rounding))}
 grid = ParameterGrid(param_grid)
 agent = Agent(state_size, 2)
 agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
@@ -48,7 +49,7 @@ print(f"Finished building the tree")
 root = "root"
 storage.root = root
 storage.graph.add_node(storage.root)
-horizon = 7
+horizon = 4
 t = 0
 # %%
 if allow_load:
@@ -66,11 +67,11 @@ if allow_compute:
         new_states = []
         for current_interval in current_intervals:
             env.state = current_interval
-            action = torch.argmax(agent.qnetwork_local(torch.from_numpy(current_interval).float().cuda())).item()
+            action = agent.act(current_interval)
             next_state, reward, done, _ = env.step(action)
             next_state2, reward2, done2, _ = env.step(action)
-            next_state = next_state.round(rounding)
-            next_state2 = next_state2.round(rounding)
+            # next_state = next_state.round(rounding)
+            # next_state2 = next_state2.round(rounding)
             new_states.append(next_state)
             new_states.append(next_state2)
             storage.store_sticky_successors(tuple(next_state), tuple(next_state2), tuple(current_interval))
@@ -88,4 +89,5 @@ if allow_compute:
 
 # utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]), rounding=2, concrete=True)
 storage.recreate_prism(horizon * 2)
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]), rounding=3, concrete=True)
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]), rounding=3, concrete=True, title=f"UB concrete horizon:{horizon}")
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]), rounding=3, concrete=True, title=f"LB concrete horizon:{horizon}")
