@@ -111,9 +111,26 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
                        allow_assign_action=True, allow_merge=True):
     if len(intervals) == 0:
         return []
-    # intervals_sorted = sorted(intervals)  # [utils.round_tuple(x, rounding) for x in sorted(intervals)]
-    # remainings = intervals
-    # intersected_intervals = []
+    intersected_intervals = check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model)
+    list_assigned_action = store_subregions(intersected_intervals, storage)
+    compute_successors(env, list_assigned_action, n_workers, rounding, storage)
+
+
+def store_subregions(intersected_intervals, storage):
+    list_assigned_action = []
+    with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
+        for interval_noaction, successors in intersected_intervals:
+            list_assigned_action.extend(successors)
+            parent = HyperRectangle_action.from_hyperrectangle(interval_noaction, None)
+            storage.store_successor_multi([(parent, x) for x in successors])  # store also the action
+            bar.update(bar.value + 1)
+    return list_assigned_action
+
+
+def check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model):
+    """Given a list of intervals, query the rtree for the actions taken by the agent
+    If action has not yet been discovered for an interval, compute the action for it and store it
+    """
     while True:
         remainings, intersected_intervals = compute_remaining_intervals4_multi(intervals, rtree.tree, rounding=rounding)  # checks areas not covered by total intervals
         # remainings = sorted(remainings)
@@ -143,15 +160,8 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     # show_plot(intersected_intervals, intervals_sorted)
     if allow_merge:
         intersected_intervals = premerge(intersected_intervals, n_workers, rounding)
-    list_assigned_action = []
-    with StandardProgressBar(prefix="Storing intervals with assigned actions ", max_value=len(intersected_intervals)) as bar:
-        for interval_noaction, successors in intersected_intervals:
-            list_assigned_action.extend(successors)
-            parent = HyperRectangle_action.from_hyperrectangle(interval_noaction, None)
-            storage.store_successor_multi([(parent, x) for x in successors])  # store also the action
-            bar.update(bar.value + 1)
-    # list_assigned_action = list(itertools.chain.from_iterable([x[1] for x in intersected_intervals]))
-    compute_successors(env, list_assigned_action, n_workers, rounding, storage)
+    return intersected_intervals
+
 
 def premerge(intersected_intervals, n_workers, rounding: int, show_bar=True):
     proc_ids = []
