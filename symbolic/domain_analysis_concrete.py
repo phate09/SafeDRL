@@ -35,8 +35,8 @@ rounding = 2
 precision = 10 ** (-rounding)
 env = PendulumEnv()
 state_size = 2
-# param_grid = {'param1': list(np.arange(-env.max_angle, env.max_angle, precision).round(rounding)), 'param2': list(np.arange(-1, 1, precision).round(rounding))}
-param_grid = {'param1': list(np.arange(0.45, 0.52, precision).round(rounding)), 'param2': list(np.arange(0.02, 0.18, precision).round(rounding))}
+param_grid = {'param1': list(np.arange(-env.max_angle, env.max_angle, precision).round(rounding)), 'param2': list(np.arange(-1, 1, precision).round(rounding))}
+# param_grid = {'param1': list(np.arange(0.45, 0.52, precision).round(rounding)), 'param2': list(np.arange(0.02, 0.18, precision).round(rounding))}
 grid = ParameterGrid(param_grid)
 agent = Agent(state_size, 2)
 agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")

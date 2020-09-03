@@ -9,4 +9,8 @@ pip install ray py4j bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
 #local install mpmath
-pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matplotlib plotly scikit-learn colour contexttimer pyinterval
+pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matplotlib plotly scikit-learn colour contexttimer pyinterval sympy
+
+conda install cython
+python setup.py build_ext --inplace
+
