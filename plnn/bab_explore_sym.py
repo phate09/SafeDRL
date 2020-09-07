@@ -148,7 +148,7 @@ class SymbolicDomainExplorer:
 
     def assign_approximate_action(self, net: torch.nn.Module, normed_domain) -> torch.Tensor:
         """Used for assigning an action value to an interval that is so small it gets approximated to the closest single datapoint according to #precision field"""
-        approximate_domain = torch.mean(normed_domain, dim=1, dtype=normed_domain.dtype)
+        approximate_domain = torch.min(normed_domain, dim=1)[0]
         approximate_domain = approximate_domain.to(self.device)
         outcome = net(approximate_domain)
         return outcome

@@ -62,6 +62,9 @@ cdef class HyperRectangle:
     def dimension(self):
         return len(self.intervals)
 
+    def sample(self):
+        return np.array([np.random.uniform(interval.left_bound(), interval.right_bound()) for interval in self.__intervals],dtype=np.float64)
+
     cpdef bint empty(self):
         for interv in self.intervals:
             if interv.empty():
