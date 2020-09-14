@@ -15,7 +15,7 @@ gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = False
 allow_compute = True
-allow_save = True
+allow_save = False
 allow_load = False
 if not ray.is_initialized():
     ray.init(local_mode=local_mode, include_dashboard=True, log_to_driver=False)
@@ -31,7 +31,8 @@ rtree = SharedRtree()
 rtree.reset(state_size)
 # rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
 print(f"Finished building the tree")
-current_interval = HyperRectangle.from_tuple(tuple([(0.45, 0.52), (0.02, 0.18)]))
+# current_interval = HyperRectangle.from_tuple(tuple([(-0.72, -0.71), (-1, -0.9)]))
+# current_interval = HyperRectangle.from_tuple(tuple([(0.61, 0.62), (-1, -0.99)]))
 current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
@@ -50,7 +51,7 @@ if allow_compute:
     while True:
         print(f"Iteration {iterations}")
         split_performed = unroll_methods.probability_iteration(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                               allow_assign_actions=True, allow_refine=False)
+                                                               allow_assign_actions=True, allow_refine=True)
         if time.time() - time_from_last_save >= 60 * 5 and allow_save:
             storage.save_state(f"/home/edoardo/Development/SafeDRL/save/nx_graph_e{rounding}.p")
             rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")

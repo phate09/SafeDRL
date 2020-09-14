@@ -529,6 +529,8 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     leaves = storage.get_leaves(shortest_path, unsafe_threshold, horizon * 2)
     leaves = [x for x in leaves if x[1] % 2 == 0]
     max_path_length = min([x[1] for x in leaves]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
+    # storage.remove_unreachable()
+    # storage.plot_graph()
     if max_path_length >= horizon * 2:  # REFINE
         if allow_refine:
             print("Refine process")
@@ -540,7 +542,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
             # get the furthest nodes that have a maximum probability less than safe_threshold
             candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
                     attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('half_fail') and not attributes.get(
-                'fail') and interval.action is not None and not is_small(interval, precision, rounding))]  # and attributes.get('lb') < unsafe_threshold
+                'fail') and interval.action is not None and not is_small(interval, precision, rounding) and attributes.get('lb') < unsafe_threshold)]
             for id, lb, ub in candidates_ids:
                 if shortest_path.get(id) is not None:
                     if lb < unsafe_threshold:
@@ -555,7 +557,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
             print(f"Refining layer {max_length}")
             t_ids = [x[0] for x in candidate_length_dict[max_length]]
             split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
-            next_states = compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+            compute_successors(env_class, to_analyse, n_workers, rounding, storage)
         else:
             return False
     else:  # EXPLORE

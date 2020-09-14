@@ -8,7 +8,8 @@ from py4j.java_gateway import JavaGateway
 
 from mosaic.hyperrectangle import HyperRectangle
 from utility.standard_progressbar import StandardProgressBar
-
+import tempfile
+import mosaic.utils
 
 class StateStorage:
     def __init__(self):
@@ -91,13 +92,8 @@ class StateStorage:
 
     def recreate_prism(self, max_t: int = None):
         gateway = JavaGateway()
-        # gateway.entry_point.reset_mdp()
-        # mdp = self.gateway.entry_point.getMdpSimple()
         mdp = gateway.entry_point.reset_mdp()
         gateway.entry_point.add_states(self.graph.number_of_nodes())
-        # fail_states_ids = self.get_terminal_states_ids()
-        # java_list = ListConverter().convert(fail_states_ids, gateway._gateway_client)
-        # gateway.entry_point.update_fail_label_list(java_list)
         path_length = nx.shortest_path_length(self.graph, source=self.root)
         # descendants = list(path_length.keys())  # descendants from 0
         # descendants.insert(0, self.root)
@@ -155,13 +151,5 @@ class StateStorage:
         self.prism_needs_update = False
         return mdp, gateway
 
-# def get_storage():
-#     Pyro5.api.config.SERIALIZER = "marshal"
-#     storage = Pyro5.api.Proxy("PYRONAME:prism.statestorage")
-#     return storage
-#
-#
-# if __name__ == '__main__':
-#     Pyro5.api.config.SERIALIZER = "marshal"
-#     Pyro5.api.config.SERVERTYPE = "multiplex"
-#     Pyro5.api.Daemon.serveSimple({StateStorage: "prism.statestorage"}, ns=True)
+    def plot_graph(self):
+        mosaic.utils.save_graph_as_dot(self.graph)

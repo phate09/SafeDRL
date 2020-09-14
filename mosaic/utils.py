@@ -5,7 +5,7 @@ import shelve
 from collections import defaultdict
 from functools import reduce
 from typing import Tuple, List, Any
-
+import re
 import networkx as nx
 import pandas as pd
 import plotly.graph_objects as go
@@ -303,8 +303,6 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
     #     color = assign_color(probability)
     #     fig.add_scatter(x=x, y=y, fill="toself", fillcolor=color, opacity=0.2, line=dict(color=color), name=str(probability), hovertext=str(probability), marker=dict(size=0))
 
-
-
     # margin = go.layout.Margin(l=0,  # left margin
     #                           r=0,  # right margin
     #                           b=0,  # bottom margin
@@ -350,13 +348,29 @@ def bulk_load_rtree_helper(data: List[Tuple[HyperRectangle, bool]]):
 def save_graph_as_dot(graph):
     pos = nx.nx_agraph.graphviz_layout(graph)
     nx.draw(graph, pos=pos)
-    write_dot(graph, 'file.dot')
+    nx.drawing.nx_agraph.write_dot(graph, 'file.dot')
     replace_list = []
-    replace_list.append(("fail=True", "color = orange, penwidth=4.0"))
-    replace_list.append(("p=\"", "xlabel=\""))
-    replace_list.append(("lb=\"", "xlabel=\""))
+    replace_list.append(("fail=True,\n\t\thalf_fail=True", "color = red, penwidth=4.0"))
+    replace_list.append(("half_fail=True", "color = orange, penwidth=4.0"))
+    # replace_list.append(("p=\"", "xlabel=\""))
+    # replace_list.append(("lb=\"", "xlabel=\""))
     replace_list.append(("strict digraph  {", "strict digraph  { ranksep=4;"))
     inplace_change('file.dot', replace_list)
+    regex_list = []
+    regex_list.append(("(p=\d+\.\d*)","xlabel=\"\\1\""))
+    regex_change('file.dot', regex_list)
+
+
+def regex_change(filename, replace_list: List[Tuple[str, str]]):
+    # Safely read the input filename using 'with'
+    with open(filename) as f:
+        s = f.read()
+
+    # Safely write the changed content, if found in the file
+    with open(filename, 'w') as f:
+        for old, new in replace_list:
+            s = re.sub(old, new, s)
+        f.write(s)
 
 
 def inplace_change(filename, replace_list: List[Tuple[str, str]]):
@@ -368,7 +382,7 @@ def inplace_change(filename, replace_list: List[Tuple[str, str]]):
     with open(filename, 'w') as f:
         # s = f.read()
         for old, new in replace_list:
-            s = s.replace(old, new)
+            s = s.replace(old, new)  # re.sub()
         f.write(s)
 
 

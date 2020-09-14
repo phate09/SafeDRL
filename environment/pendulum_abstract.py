@@ -45,7 +45,8 @@ class PendulumEnv_abstract(gym.Env):
         l = self.l
         dt = self.dt
 
-        u = min(max(u, -self.max_torque), self.max_torque)
+        # u = min(max(u, -self.max_torque), self.max_torque)
+        u = self.max_torque * 1 if u == 1 else -self.max_torque * 1
         self.last_u = u  # for rendering
         costs = angle_normalize_tuple(th) ** 2 + .1 * thdot ** 2 + .001 * (u ** 2)
 

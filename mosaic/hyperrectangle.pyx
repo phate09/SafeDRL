@@ -321,6 +321,9 @@ cdef class HyperRectangle_action(HyperRectangle):
     def __repr__(self):
         return f"({super(HyperRectangle_action, self).__repr__()}, {self.action})"
 
+    def __str__(self):
+        return f"({super(HyperRectangle_action, self).__str__()}, {self.action})"
+
     def __hash__(self):
         return hash((self.intervals, self.action))
 
