@@ -13,4 +13,4 @@ pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matpl
 
 conda install cython
 python setup.py build_ext --inplace
-
+pip install dm-tree opencv-python lz4
