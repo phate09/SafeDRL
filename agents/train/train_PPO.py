@@ -19,6 +19,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune import grid_search
 
+from environment.pendulum_abstract import PendulumEnv
+
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
@@ -30,28 +32,28 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=0.1)
 
 
-class SimpleCorridor(gym.Env):
-    """Example of a custom env in which you have to walk down a corridor.
-    You can configure the length of the corridor via the env config."""
-
-    def __init__(self, config):
-        self.end_pos = config["corridor_length"]
-        self.cur_pos = 0
-        self.action_space = Discrete(2)
-        self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
-
-    def reset(self):
-        self.cur_pos = 0
-        return [self.cur_pos]
-
-    def step(self, action):
-        assert action in [0, 1], action
-        if action == 0 and self.cur_pos > 0:
-            self.cur_pos -= 1
-        elif action == 1:
-            self.cur_pos += 1
-        done = self.cur_pos >= self.end_pos
-        return [self.cur_pos], 1.0 if done else -0.1, done, {}
+# class SimpleCorridor(gym.Env):
+#     """Example of a custom env in which you have to walk down a corridor.
+#     You can configure the length of the corridor via the env config."""
+#
+#     def __init__(self, config):
+#         self.end_pos = config["corridor_length"]
+#         self.cur_pos = 0
+#         self.action_space = Discrete(2)
+#         self.observation_space = Box(0.0, self.end_pos, shape=(1,), dtype=np.float32)
+#
+#     def reset(self):
+#         self.cur_pos = 0
+#         return [self.cur_pos]
+#
+#     def step(self, action):
+#         assert action in [0, 1], action
+#         if action == 0 and self.cur_pos > 0:
+#             self.cur_pos -= 1
+#         elif action == 1:
+#             self.cur_pos += 1
+#         done = self.cur_pos >= self.end_pos
+#         return [self.cur_pos], 1.0 if done else -0.1, done, {}
 
 
 class TorchCustomModel(TorchModelV2, nn.Module):
@@ -80,10 +82,12 @@ if __name__ == "__main__":
     # # register_env("corridor", lambda config: SimpleCorridor(config))
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     #
-    config = {"env": SimpleCorridor,  # or "corridor" if registered above
-              "env_config": {"corridor_length": 5, }, "model": {"custom_model": "my_model", }, "vf_share_layers": True,  # try different lrs
-              "num_workers": 4,  # parallelism
-              "framework": "torch", }
+    config = {"env": PendulumEnv,  # or "corridor" if registered above "env_config": {"corridor_length": 5, },
+              "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config,"custom_model": "my_model",
+              "vf_share_layers": False,  # try different lrs
+              "num_workers": 8,  # parallelism
+              # "batch_mode": "complete_episodes", "use_gae": False,  #
+              "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
     #
     # stop = {"training_iteration": args.stop_iters, "timesteps_total": args.stop_timesteps, "episode_reward_mean": args.stop_reward, }
     #
@@ -94,7 +98,14 @@ if __name__ == "__main__":
     # ray.shutdown()
 
     config2 = ppo.DEFAULT_CONFIG.copy()
-    ray.init()
-    trainer = ppo.PPOTrainer(env=SimpleCorridor, config=config)
+    ray.init(local_mode=True, include_dashboard=True)
+    trainer = ppo.PPOTrainer(config=config)
     while True:
-        print(trainer.train())
+        train_result = trainer.train()
+        print(train_result)
+        if train_result["episode_len_mean"] > 800:
+            print("Termination condition satisfied")
+            break
+    checkpoint = trainer.save()
+    print("checkpoint saved at", checkpoint)
+    ray.shutdown()

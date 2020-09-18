@@ -24,8 +24,8 @@ class PendulumEnv_abstract(gym.Env):
         self.l = 1.
         self.viewer = None
         self.max_angle = np.pi / 4
-        high = np.array([1., 1., self.max_speed], dtype=np.float32)
-        self.action_space = spaces.Box(low=-self.max_torque, high=self.max_torque, shape=(1,), dtype=np.float32)
+        high = np.array([ 1., self.max_speed], dtype=np.float32)
+        self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 
         self.seed()
@@ -108,17 +108,17 @@ class PendulumEnv_abstract(gym.Env):
 class PendulumEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 30}
 
-    def __init__(self, g=10.0):
+    def __init__(self, config):
         self.max_speed = 8
         self.max_torque = 2.
         self.dt = .05
-        self.g = g
+        self.g = 10.0
         self.m = 1.
         self.l = 1.
         self.viewer = None
         self.max_angle = np.pi / 4
-        high = np.array([1., 1., self.max_speed], dtype=np.float32)
-        self.action_space = spaces.Box(low=-self.max_torque, high=self.max_torque, shape=(1,), dtype=np.float32)
+        high = np.array([2*self.max_angle, self.max_speed], dtype=np.float32)
+        self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 
         self.seed()
@@ -150,7 +150,7 @@ class PendulumEnv(gym.Env):
         return self.state, reward, done, {}
 
     def reset(self):
-        high = np.array([np.pi / 4, 1])
+        high = np.array([np.pi / 8, 1])
         self.state = self.np_random.uniform(low=-high, high=high)
         # self.state = tuple([interval([0, 0.005]) for x in range(2)])
         self.last_u = None
