@@ -2,7 +2,7 @@ import os
 
 import progressbar
 
-from dqn.dqn_agent import Agent
+from agents.dqn.dqn_agent import Agent
 from environment.pendulum_abstract import PendulumEnv
 import numpy as np
 

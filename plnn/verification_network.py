@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn as nn
 
-from plnn.flatten import Flatten
+from plnn.flatten_layer import Flatten
 
 use_cuda = False
 device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")

@@ -9,8 +9,8 @@ import torch
 from sympy import symarray
 from torch import nn as nn
 
-from models.model_critic_sequential import TestNetwork
-from plnn.flatten import Flatten
+from agents.dqn.dqn_sequential import TestNetwork
+from plnn.flatten_layer import Flatten
 from symbolic.symbolic_interval import Interval_network, Symbolic_interval
 
 use_cuda = False

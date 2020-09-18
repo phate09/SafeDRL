@@ -20,7 +20,7 @@ from sympy.combinatorics.graycode import GrayCode
 
 import mosaic.utils as utils
 import prism.state_storage
-import verification_runs.aggregate_abstract_domain
+import runnables.verification_runs.aggregate_abstract_domain
 from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
@@ -397,7 +397,7 @@ def merge_iteration(bounds: HyperRectangle, codes, iteration_n, tree, intervals)
             coordinate = float(max(min([x[0][d][direction] for x in filtered]), bounds[d][direction]))
         starting_coordinate.append(coordinate)
     starting_coordinate = tuple(starting_coordinate)
-    connected_relevant = verification_runs.aggregate_abstract_domain.filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
+    connected_relevant = runnables.verification_runs.aggregate_abstract_domain.filter_only_connected(filtered, starting_coordinate)  # todo define strategy for "connected", what is the starting point?
     if len(connected_relevant) == 0:
         if len(filtered) == 0:
             return bounds  # nothing we can do at this iteration

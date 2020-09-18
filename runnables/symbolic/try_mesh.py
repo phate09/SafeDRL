@@ -3,7 +3,6 @@ import plotly.graph_objects as go
 import ray
 
 from mosaic.utils import show_plot3d
-from symbolic.mesh_cube import get_mesh
 from symbolic.unroll_methods import merge_supremum3
 
 

@@ -5,7 +5,7 @@ import torch
 
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
-from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
+from runnables.verification_runs.domain_explorers_load import generateCartpoleDomainExplorer
 
 
 class TestDomainExplorer(TestCase):

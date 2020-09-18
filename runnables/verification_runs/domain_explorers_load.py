@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import torch
-from dqn.dqn_agent import Agent
+from agents.dqn.dqn_agent import Agent
 from plnn.bab_explore import DomainExplorer
 from plnn.bab_explore_sym import SymbolicDomainExplorer
 from plnn.verification_network import VerificationNetwork
