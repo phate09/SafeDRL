@@ -24,7 +24,7 @@ class PendulumEnv_abstract(gym.Env):
         self.l = 1.
         self.viewer = None
         self.max_angle = np.pi / 4
-        high = np.array([ 1., self.max_speed], dtype=np.float32)
+        high = np.array([1., self.max_speed], dtype=np.float32)
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 
@@ -108,7 +108,7 @@ class PendulumEnv_abstract(gym.Env):
 class PendulumEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 30}
 
-    def __init__(self, config):
+    def __init__(self, config=None):
         self.max_speed = 8
         self.max_torque = 2.
         self.dt = .05
@@ -117,7 +117,7 @@ class PendulumEnv(gym.Env):
         self.l = 1.
         self.viewer = None
         self.max_angle = np.pi / 4
-        high = np.array([2*self.max_angle, self.max_speed], dtype=np.float32)
+        high = np.array([2 * self.max_angle, self.max_speed], dtype=np.float32)
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 

@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tensorboardX import SummaryWriter
 
-from dqn.dqn_agent import Agent
-from symbolic.pendulum_abstract import PendulumEnv
+from agents.dqn.dqn_agent import Agent
+from environment.pendulum_abstract import PendulumEnv
 from utility.Scheduler import Scheduler
 
 currentDT = datetime.datetime.now()

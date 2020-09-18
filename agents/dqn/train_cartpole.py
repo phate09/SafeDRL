@@ -4,20 +4,20 @@ from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
+from gym.envs.classic_control import CartPoleEnv
 from tensorboardX import SummaryWriter
 
-from dqn.dqn_agent import Agent
-from symbolic.pendulum_abstract import PendulumEnv
+from agents.dqn.dqn_agent import Agent
 from utility.Scheduler import Scheduler
 
 currentDT = datetime.datetime.now()
 print(f'Start at {currentDT.strftime("%Y-%m-%d %H:%M:%S")}')
 seed = 5
 # np.random.seed(seed)
-env = PendulumEnv()  # gym.make("CartPole-v0")
+env = CartPoleEnv()  # gym.make("CartPole-v0")
 env.seed(seed)
 np.random.seed(seed)
-state_size = 2
+state_size = 4
 action_size = 2
 STARTING_BETA = 0.6  # the higher the more it decreases the influence of high TD transitions
 ALPHA = 0.6  # the higher the more aggressive the sampling towards high TD transitions
@@ -41,7 +41,7 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     scores_window = deque(maxlen=100)  # last 100 scores
 
     betas = Scheduler(STARTING_BETA, 1.0, n_episodes)
-    eps = Scheduler(eps_start, eps_end, round(n_episodes * EPS_DECAY))
+    eps = Scheduler(eps_start, eps_end, n_episodes * EPS_DECAY)
     for i_episode in range(n_episodes):
         state = env.reset()  # reset the environment
         score = 0
@@ -50,9 +50,9 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             action = agent.act(state, eps.get(i_episode))
             next_state, reward, done, _ = env.step(action)  # send the action to the environment
             agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
-            # if np.random.rand() > 0.8 and not done:
-            #     next_state, reward, done, _ = env.step(action)
-            #     agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
+            if np.random.rand() > 0.8 and not done:
+                next_state, reward, done, _ = env.step(action)
+                agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
             state = next_state
             score += reward
             if done:
@@ -65,9 +65,9 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
         writer.add_scalar('data/beta', betas.get(i_episode), i_episode)
         # eps = max(eps_end, eps_decay * eps)  # decrease epsilon
         print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}', end="")
-        if (i_episode + 1) % 100 == 0:
+        if i_episode + 1 % 100 == 0:
             print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
-            agent.save(os.path.join(log_dir, f"checkpoint_{i_episode + 1}.pth"), i_episode)
+            agent.save(os.path.join(log_dir, f"checkpoint_{i_episode}.pth"), i_episode)
     agent.save(os.path.join(log_dir, f"checkpoint_final.pth"), i_episode)
     return scores
 

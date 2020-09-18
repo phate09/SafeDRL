@@ -9,7 +9,7 @@ import numpy as np
 import intervals as I
 from rtree import index
 
-from verification_runs.aggregate_abstract_domain import merge_list_tuple
+from runnables.verification_runs.aggregate_abstract_domain import merge_list_tuple
 
 if __name__ == '__main__':
     os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")

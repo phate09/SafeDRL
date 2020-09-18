@@ -1,5 +1,5 @@
 from plnn.branch_and_bound import bab
-from models.model_critic_sequential import QNetwork
+from agents.dqn.dqn_sequential import QNetwork
 from plnn.conv_net_convert import convert
 from plnn.verification_network import VerificationNetwork
 import torch

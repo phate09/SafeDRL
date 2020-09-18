@@ -5,8 +5,8 @@ import torch
 import zmq
 from gym.envs.classic_control import CartPoleEnv
 
-from dqn.dqn_agent import Agent
-from proto.state_request_pb2 import StringVarNames, CartPoleState
+from agents.dqn.dqn_agent import Agent
+from model_generator.state_request_pb2 import StringVarNames, CartPoleState
 
 state_size = 4
 action_size = 2

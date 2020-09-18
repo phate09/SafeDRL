@@ -10,7 +10,7 @@ from sympy.plotting import plot, plot3d
 import matplotlib.lines as mlines
 from scipy.spatial import ConvexHull
 from sklearn.linear_model import LogisticRegression
-from temp.utils import *
+from polyhedra.utils import *
 from sklearn import svm
 
 # %% plot 2 clusters

@@ -1,6 +1,6 @@
 import zmq
 
-from proto.state_request_pb2 import StringVarNames, StateInt
+from model_generator.state_request_pb2 import StringVarNames, StateInt
 
 
 class RandomWalkModelGenerator:

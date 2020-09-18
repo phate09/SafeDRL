@@ -3,14 +3,13 @@ import os
 import numpy as np
 import torch
 import zmq
-from symbolic.cartpole_abstract import CartPoleEnv_abstract
+from environment.cartpole_abstract import CartPoleEnv_abstract
 
-from proto.state_request_pb2 import StringVarNames, CartPoleState
+from model_generator.state_request_pb2 import StringVarNames, CartPoleState
 from mpmath import iv
 
-from mosaic.workers.AbstractStepWorker import interval_unwrap
-from verification_runs.aggregate_abstract_domain import aggregate
-from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
+from runnables.verification_runs.aggregate_abstract_domain import aggregate
+from runnables.verification_runs.domain_explorers_load import generateCartpoleDomainExplorer
 
 state_size = 4
 action_size = 2
