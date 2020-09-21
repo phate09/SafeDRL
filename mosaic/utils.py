@@ -25,7 +25,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from mosaic.hyperrectangle import HyperRectangle
-from symbolic.mesh_cube import get_mesh
+# from symbolic.mesh_cube import get_mesh
 from networkx.drawing.nx_pydot import write_dot
 from colour import Color
 
@@ -181,21 +181,21 @@ def flatten_interval(current_interval: np.ndarray) -> Tuple:
     return tuple(result)
 
 
-def show_plot3d(*args):
-    meshes = []
-    for i, interval_list in enumerate(args):
-        x_list = []
-        y_list = []
-        if len(interval_list) == 0:
-            continue
-        if count_elements(interval_list[0]) % 2 != 0:
-            interval_list = [x[0] for x in interval_list]  # remove the action component from the list
-        color = str(px.colors.qualitative.Plotly[i])
-        for interval in interval_list:
-            # fig.add_mesh3d(get_mesh(interval, color))
-            meshes.append(get_mesh(interval, color))
-    fig = go.Figure(data=meshes)
-    fig.show()
+# def show_plot3d(*args):
+#     meshes = []
+#     for i, interval_list in enumerate(args):
+#         x_list = []
+#         y_list = []
+#         if len(interval_list) == 0:
+#             continue
+#         if count_elements(interval_list[0]) % 2 != 0:
+#             interval_list = [x[0] for x in interval_list]  # remove the action component from the list
+#         color = str(px.colors.qualitative.Plotly[i])
+#         for interval in interval_list:
+#             # fig.add_mesh3d(get_mesh(interval, color))
+#             meshes.append(get_mesh(interval, color))
+#     fig = go.Figure(data=meshes)
+#     fig.show()
 
 
 def show_plot(*args, legend: List = None):
@@ -222,8 +222,18 @@ def show_plot(*args, legend: List = None):
     # fig.update_layout(autosize=False)
     fig.show()
     return fig
-
-
+def scatter_plot(*lists,legend: List = None):
+    fig = go.Figure()
+    for i, interval_list in enumerate(lists):
+        if len(interval_list) == 0:
+            continue
+        if count_elements(interval_list[0]) % 2 != 0:
+            interval_list = [x[0] for x in interval_list]  # remove the action component from the list
+        name = legend[i] if legend is not None and len(legend) > i else None
+        fig.add_scatter(x=[x[0] for x in interval_list], y=[x[1] for x in interval_list], mode="markers", hoveron="points", name=name)
+    fig.update_shapes(dict(xref='x', yref='y'))
+    fig.show()
+    return fig
 def show_plot_rect(*args, legend: List = None):
     return show_plot(*[[x.to_tuple() for x in arg] for arg in args], legend)
 
