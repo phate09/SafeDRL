@@ -10,7 +10,7 @@ import mosaic.utils as utils
 from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
-import verification_runs.domain_explorers_load
+import utility.domain_explorers_load
 import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.drawing.nx_pydot import write_dot
@@ -27,7 +27,7 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
+explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)

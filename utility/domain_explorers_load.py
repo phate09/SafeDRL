@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 from agents.dqn.dqn_agent import Agent
+from agents.ray_utils import load_sequential_from_ray
 from plnn.bab_explore import DomainExplorer
 from plnn.bab_explore_sym import SymbolicDomainExplorer
 from plnn.verification_network import VerificationNetwork
@@ -48,5 +49,26 @@ def generatePendulumDomainExplorer(precision=1e-2, rounding=6, sym=False):
         explorer = DomainExplorer(1, device, precision=precision, rounding=rounding)
     else:
         verification_model = SymVerificationNetwork(agent.qnetwork_local.sequential.cpu().double())
+        explorer = SymbolicDomainExplorer(1, device, precision=precision, rounding=rounding)
+    return explorer, verification_model, env, s, state_size, env_class
+
+
+def generatePendulumDomainExplorerPPO(precision=1e-2, rounding=6, sym=False):
+    use_cuda = False
+    seed = 1
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
+    env_class = PendulumEnv_abstract
+    env = env_class()
+    s = env.reset()
+    state_size = 2
+    sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25")
+    sequential_nn.add_module("softmax", torch.nn.Softmax())  # adds the softmax at the end
+    if not sym:
+        verification_model = VerificationNetwork(sequential_nn).to(device)
+        explorer = DomainExplorer(1, device, precision=precision, rounding=rounding)
+    else:
+        verification_model = SymVerificationNetwork(sequential_nn).to(device)
         explorer = SymbolicDomainExplorer(1, device, precision=precision, rounding=rounding)
     return explorer, verification_model, env, s, state_size, env_class

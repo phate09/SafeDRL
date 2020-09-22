@@ -53,6 +53,9 @@ class Interval_network(nn.Module):
             if (isinstance(layer, nn.Conv2d)):
                 self.net.append(Interval_Conv2d(layer, first_layer))
                 first_layer = False
+            if (isinstance(layer, nn.Softmax)):
+                self.net.append(Interval_Softmax(layer))
+                first_layer = False
             if 'Flatten' in (str(layer.__class__.__name__)):
                 self.net.append(Interval_Flatten())
             if 'bn' in (str(layer.__class__.__name__)):
