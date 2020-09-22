@@ -44,7 +44,7 @@ def generatePendulumDomainExplorer(precision=1e-2, rounding=6, sym=False):
     agent = Agent(state_size, 2)
     agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
     if not sym:
-        verification_model = VerificationNetwork(agent.qnetwork_local).to(device)
+        verification_model = VerificationNetwork(agent.qnetwork_local.sequential.cpu().double()).to(device)
         explorer = DomainExplorer(1, device, precision=precision, rounding=rounding)
     else:
         verification_model = SymVerificationNetwork(agent.qnetwork_local.sequential.cpu().double())

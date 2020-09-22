@@ -32,7 +32,7 @@ class SymbolicDomainExplorer:
         self.precision_constraints = [precision, precision, precision, precision]  # DomainExplorer.generate_precision(self.domain_width, precision)
         self.rounding = rounding
 
-    def explore(self, net, domains: List[HyperRectangle], n_workers: int, debug=True, save=False):
+    def explore(self, net: torch.nn.Module, domains: List[HyperRectangle], n_workers: int, debug=True, save=False):
         message_queue = []
         queue = []  # queue of domains to explore
         total_area = 0
@@ -99,7 +99,7 @@ class SymbolicDomainExplorer:
         stats["n_ignore"] = len(self.ignore_domains)
         return stats
 
-    def get_boundaries(self, net, tensor):
+    def get_boundaries(self, net: torch.nn.Module, tensor):
         lbs = tensor[:, :, 0]
         ubs = tensor[:, :, 1]
         ix = Symbolic_interval(lower=lbs, upper=ubs, use_cuda=False)
@@ -108,7 +108,7 @@ class SymbolicDomainExplorer:
 
     hasIgnored = False
 
-    def split_and_queue(self, queue, net):
+    def split_and_queue(self, queue, net: torch.nn.Module):
         message_queue = []
         for normed_domain in queue:
             # check max length
@@ -132,7 +132,7 @@ class SymbolicDomainExplorer:
                         message_queue.append(ndom_i)
         return message_queue  # these need to be evaluated
 
-    def store_approximation(self, ndom_i, net):
+    def store_approximation(self, ndom_i, net: torch.nn.Module):
         area = mosaic.utils.area_tensor(ndom_i)
         action_values = self.assign_approximate_action(net, ndom_i)
         value, index = torch.max(action_values, dim=0)

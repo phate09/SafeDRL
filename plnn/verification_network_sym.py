@@ -18,7 +18,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "c
 
 
 class SymVerificationNetwork(nn.Module):
-    def __init__(self, base_network):
+    def __init__(self, base_network:torch.nn.Sequential):
         """Base network any nn.sequential network"""
         super(SymVerificationNetwork, self).__init__()
         self.base_network = base_network

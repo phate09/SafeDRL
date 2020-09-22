@@ -15,7 +15,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "c
 
 
 class VerificationNetwork(nn.Module):
-    def __init__(self, base_network):
+    def __init__(self, base_network: torch.nn.Sequential):
         super(VerificationNetwork, self).__init__()
         self.base_network = base_network
 
@@ -23,7 +23,7 @@ class VerificationNetwork(nn.Module):
     and the closest other class'''
 
     def attach_property_layers(self, true_class_index: int):
-        n_classes = self.base_network.layers[-1].out_features
+        n_classes = self.base_network[-1].out_features
         cases = []
         for i in range(n_classes):
             if i == true_class_index:
@@ -136,9 +136,7 @@ class VerificationNetwork(nn.Module):
             ub = input_domain[i][1].item()  # check this value, it can be messed up
             lb = input_domain[i][0].item()
             assert ub > lb, "ub should be greater that lb"
-            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                    vtype=grb.GRB.CONTINUOUS,
-                                    name=f'inp_{i}')
+            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'inp_{i}')
             inp_gurobi_vars[i] = v
             inp_lb[i] = lb
             inp_ub[i] = ub
@@ -150,7 +148,7 @@ class VerificationNetwork(nn.Module):
         gurobi_vars.append(inp_gurobi_vars)
 
         layers = []
-        layers.extend(self.base_network.layers)
+        layers.extend(self.base_network)
         layers.append(self.attach_property_layers(true_class_index))
         layer_idx = 1
         for layer in layers:
@@ -208,9 +206,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     #     print(f'v={v}')
@@ -272,9 +268,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -313,11 +307,7 @@ class VerificationNetwork(nn.Module):
                     pre_lb = old_layer_lb[row]
                     pre_ub = old_layer_ub[row]
 
-                    v = gurobi_model.addVar(lb=max(0, pre_lb),
-                                            ub=max(0, pre_ub),
-                                            obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=max(0, pre_lb), ub=max(0, pre_ub), obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     if pre_lb >= 0 and pre_ub >= 0:
                         # The ReLU is always passing
                         gurobi_model.addConstr(v == old_layer_gurobi_vars[row])
@@ -325,10 +315,7 @@ class VerificationNetwork(nn.Module):
                         ub = pre_ub
                     elif pre_lb <= 0 and pre_ub <= 0:
                         lb = 0
-                        ub = 0
-                        # No need to add an additional constraint that v==0
-                        # because this will be covered by the bounds we set on
-                        # the value of v.
+                        ub = 0  # No need to add an additional constraint that v==0  # because this will be covered by the bounds we set on  # the value of v.
                     else:
                         lb = 0
                         ub = pre_ub
@@ -373,9 +360,7 @@ class VerificationNetwork(nn.Module):
                             lb = lower_bounds_section.max()
                             upper_bounds_section = old_layer_ub[channel, col * stride - padding:col * stride - padding + k_w, row * stride - padding:row * stride - padding + k_h]
                             ub = upper_bounds_section.max()
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v >= lb)
                             gurobi_model.addConstr(v <= ub)
                             gurobi_model.update()
@@ -401,8 +386,7 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             elif type(layer) == Flatten:
                 old_layer_lb = lower_bounds[-1]
                 old_layer_ub = upper_bounds[-1]
@@ -413,9 +397,7 @@ class VerificationNetwork(nn.Module):
                 new_layer_gurobi_vars = np.ndarray(new_layer_ub.shape, grb.Var)  # old_layer_gurobi_vars.flatten()
                 index = 0
                 for var in old_layer_gurobi_vars.flatten():
-                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{index}')
+                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{index}')
                     new_layer_gurobi_vars[index] = v
                     index += 1
                 gurobi_model.update()
@@ -456,11 +438,9 @@ class VerificationNetwork(nn.Module):
                                     for j in range(k_w):
                                         row_prev_layer = row * stride[0] - padding[0] + i
                                         col_prev_layer = col * stride[1] - padding[1] + j
-                                        if row_prev_layer < 0 or row_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[0]:
+                                        if row_prev_layer < 0 or row_prev_layer > old_layer_lb[kernel_channel].shape[0]:
                                             continue
-                                        if col_prev_layer < 0 or col_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[1]:
+                                        if col_prev_layer < 0 or col_prev_layer > old_layer_lb[kernel_channel].shape[1]:
                                             continue
                                         coeff = layer.weight[channel][kernel_channel][i][j].item()
                                         if coeff > 0:
@@ -470,9 +450,7 @@ class VerificationNetwork(nn.Module):
                                             lb += coeff * old_layer_ub[kernel_channel][row_prev_layer][col_prev_layer]
                                             ub += coeff * old_layer_lb[kernel_channel][row_prev_layer][col_prev_layer]
                                         lin_expr = lin_expr + coeff * gurobi_vars[-1][kernel_channel][row_prev_layer][col_prev_layer]
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v == lin_expr)
                             gurobi_model.update()
                             gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -497,8 +475,7 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             else:
                 raise Exception('Type of layer not supported')
             if save:
@@ -517,9 +494,7 @@ class VerificationNetwork(nn.Module):
         lower_bound = min(lower_bounds[-1])
         upper_bound = max(upper_bounds[-1])
         assert lower_bound <= upper_bound
-        v = gurobi_model.addVar(lb=lower_bound, ub=upper_bound, obj=0,
-                                vtype=grb.GRB.CONTINUOUS,
-                                name=f'lay{layer_idx}_min')
+        v = gurobi_model.addVar(lb=lower_bound, ub=upper_bound, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_min')
         # gurobi_model.addConstr(v == min(gurobi_vars[-1]))
         gurobi_model.addGenConstrMin(v, gurobi_vars[-1], name="minconstr")
         gurobi_model.update()
@@ -591,7 +566,7 @@ class VerificationNetwork(nn.Module):
         gurobi_vars.append(inp_gurobi_vars)
 
         layers = []
-        layers.extend(self.base_network.layers)
+        layers.extend(self.base_network)
         layers.append(self.attach_property_layers(true_class_index))
         layer_idx = 1
         for layer in layers:
@@ -649,9 +624,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     #     print(f'v={v}')
@@ -713,9 +686,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -754,11 +725,7 @@ class VerificationNetwork(nn.Module):
                     pre_lb = old_layer_lb[row]
                     pre_ub = old_layer_ub[row]
 
-                    v = gurobi_model.addVar(lb=max(0, pre_lb),
-                                            ub=max(0, pre_ub),
-                                            obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=max(0, pre_lb), ub=max(0, pre_ub), obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     if pre_lb >= 0 and pre_ub >= 0:
                         # The ReLU is always passing
                         gurobi_model.addConstr(v == old_layer_gurobi_vars[row])
@@ -766,10 +733,7 @@ class VerificationNetwork(nn.Module):
                         ub = pre_ub
                     elif pre_lb <= 0 and pre_ub <= 0:
                         lb = 0
-                        ub = 0
-                        # No need to add an additional constraint that v==0
-                        # because this will be covered by the bounds we set on
-                        # the value of v.
+                        ub = 0  # No need to add an additional constraint that v==0  # because this will be covered by the bounds we set on  # the value of v.
                     else:
                         lb = 0
                         ub = pre_ub
@@ -814,9 +778,7 @@ class VerificationNetwork(nn.Module):
                             lb = lower_bounds_section.max()
                             upper_bounds_section = old_layer_ub[channel, col * stride - padding:col * stride - padding + k_w, row * stride - padding:row * stride - padding + k_h]
                             ub = upper_bounds_section.max()
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v >= lb)
                             gurobi_model.addConstr(v <= ub)
                             gurobi_model.update()
@@ -842,8 +804,7 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             elif type(layer) == Flatten:
                 old_layer_lb = lower_bounds[-1]
                 old_layer_ub = upper_bounds[-1]
@@ -854,9 +815,7 @@ class VerificationNetwork(nn.Module):
                 new_layer_gurobi_vars = np.ndarray(new_layer_ub.shape, grb.Var)  # old_layer_gurobi_vars.flatten()
                 index = 0
                 for var in old_layer_gurobi_vars.flatten():
-                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{index}')
+                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{index}')
                     new_layer_gurobi_vars[index] = v
                     index += 1
                 gurobi_model.update()
@@ -897,11 +856,9 @@ class VerificationNetwork(nn.Module):
                                     for j in range(k_w):
                                         row_prev_layer = row * stride[0] - padding[0] + i
                                         col_prev_layer = col * stride[1] - padding[1] + j
-                                        if row_prev_layer < 0 or row_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[0]:
+                                        if row_prev_layer < 0 or row_prev_layer > old_layer_lb[kernel_channel].shape[0]:
                                             continue
-                                        if col_prev_layer < 0 or col_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[1]:
+                                        if col_prev_layer < 0 or col_prev_layer > old_layer_lb[kernel_channel].shape[1]:
                                             continue
                                         coeff = layer.weight[channel][kernel_channel][i][j].item()
                                         if coeff > 0:
@@ -911,9 +868,7 @@ class VerificationNetwork(nn.Module):
                                             lb += coeff * old_layer_ub[kernel_channel][row_prev_layer][col_prev_layer]
                                             ub += coeff * old_layer_lb[kernel_channel][row_prev_layer][col_prev_layer]
                                         lin_expr = lin_expr + coeff * gurobi_vars[-1][kernel_channel][row_prev_layer][col_prev_layer]
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v == lin_expr)
                             gurobi_model.update()
                             gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -938,8 +893,7 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             else:
                 raise Exception('Type of layer not supported')
             if save:
@@ -958,9 +912,7 @@ class VerificationNetwork(nn.Module):
         lower_bound = min(lower_bounds[-1])
         upper_bound = max(upper_bounds[-1])
         assert lower_bound <= upper_bound
-        v = gurobi_model.addVar(lb=lower_bound, ub=upper_bound, obj=0,
-                                vtype=grb.GRB.CONTINUOUS,
-                                name=f'lay{layer_idx}_max')
+        v = gurobi_model.addVar(lb=lower_bound, ub=upper_bound, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_max')
         # gurobi_model.addConstr(v == min(gurobi_vars[-1]))
         gurobi_model.addGenConstrMin(v, gurobi_vars[-1], name="maxconstr")
         gurobi_model.update()
@@ -1032,7 +984,7 @@ class VerificationNetwork(nn.Module):
         gurobi_vars.append(inp_gurobi_vars)
 
         layers = []
-        layers.extend(self.base_network.layers)
+        layers.extend(self.base_network)
         layers.append(self.attach_property_layers(true_class_index))
         layer_idx = 1
         for layer in layers:
@@ -1090,9 +1042,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     #     print(f'v={v}')
@@ -1154,9 +1104,7 @@ class VerificationNetwork(nn.Module):
                             lb = lb + coeff * old_layer_ub[column]  # multiplies the lb
                         lin_expr = lin_expr + coeff * old_layer_gurobi_vars[column]  # multiplies the unknown by the coefficient
 
-                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     gurobi_model.addConstr(v == lin_expr)
                     gurobi_model.update()
                     gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -1195,11 +1143,7 @@ class VerificationNetwork(nn.Module):
                     pre_lb = old_layer_lb[row]
                     pre_ub = old_layer_ub[row]
 
-                    v = gurobi_model.addVar(lb=max(0, pre_lb),
-                                            ub=max(0, pre_ub),
-                                            obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{row}')
+                    v = gurobi_model.addVar(lb=max(0, pre_lb), ub=max(0, pre_ub), obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{row}')
                     if pre_lb >= 0 and pre_ub >= 0:
                         # The ReLU is always passing
                         gurobi_model.addConstr(v == old_layer_gurobi_vars[row])
@@ -1207,10 +1151,7 @@ class VerificationNetwork(nn.Module):
                         ub = pre_ub
                     elif pre_lb <= 0 and pre_ub <= 0:
                         lb = 0
-                        ub = 0
-                        # No need to add an additional constraint that v==0
-                        # because this will be covered by the bounds we set on
-                        # the value of v.
+                        ub = 0  # No need to add an additional constraint that v==0  # because this will be covered by the bounds we set on  # the value of v.
                     else:
                         lb = 0
                         ub = pre_ub
@@ -1255,9 +1196,7 @@ class VerificationNetwork(nn.Module):
                             lb = lower_bounds_section.max()
                             upper_bounds_section = old_layer_ub[channel, col * stride - padding:col * stride - padding + k_w, row * stride - padding:row * stride - padding + k_h]
                             ub = upper_bounds_section.max()
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v >= lb)
                             gurobi_model.addConstr(v <= ub)
                             gurobi_model.update()
@@ -1283,8 +1222,7 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End MaxPool2d{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             elif type(layer) == Flatten:
                 old_layer_lb = lower_bounds[-1]
                 old_layer_ub = upper_bounds[-1]
@@ -1295,9 +1233,7 @@ class VerificationNetwork(nn.Module):
                 new_layer_gurobi_vars = np.ndarray(new_layer_ub.shape, grb.Var)  # old_layer_gurobi_vars.flatten()
                 index = 0
                 for var in old_layer_gurobi_vars.flatten():
-                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0,
-                                            vtype=grb.GRB.CONTINUOUS,
-                                            name=f'lay{layer_idx}_{index}')
+                    v = gurobi_model.addVar(lb=var.lb, ub=var.ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{index}')
                     new_layer_gurobi_vars[index] = v
                     index += 1
                 gurobi_model.update()
@@ -1338,11 +1274,9 @@ class VerificationNetwork(nn.Module):
                                     for j in range(k_w):
                                         row_prev_layer = row * stride[0] - padding[0] + i
                                         col_prev_layer = col * stride[1] - padding[1] + j
-                                        if row_prev_layer < 0 or row_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[0]:
+                                        if row_prev_layer < 0 or row_prev_layer > old_layer_lb[kernel_channel].shape[0]:
                                             continue
-                                        if col_prev_layer < 0 or col_prev_layer > \
-                                                old_layer_lb[kernel_channel].shape[1]:
+                                        if col_prev_layer < 0 or col_prev_layer > old_layer_lb[kernel_channel].shape[1]:
                                             continue
                                         coeff = layer.weight[channel][kernel_channel][i][j].item()
                                         if coeff > 0:
@@ -1352,9 +1286,7 @@ class VerificationNetwork(nn.Module):
                                             lb += coeff * old_layer_ub[kernel_channel][row_prev_layer][col_prev_layer]
                                             ub += coeff * old_layer_lb[kernel_channel][row_prev_layer][col_prev_layer]
                                         lin_expr = lin_expr + coeff * gurobi_vars[-1][kernel_channel][row_prev_layer][col_prev_layer]
-                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                                    vtype=grb.GRB.CONTINUOUS,
-                                                    name=f'lay{layer_idx}_{channel}_{row}_{col}')
+                            v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{channel}_{row}_{col}')
                             gurobi_model.addConstr(v == lin_expr)
                             gurobi_model.update()
                             gurobi_model.setObjective(v, grb.GRB.MINIMIZE)
@@ -1379,18 +1311,17 @@ class VerificationNetwork(nn.Module):
                 upper_bounds.append(new_layer_ub)
                 gurobi_vars.append(new_layer_gurobi_vars)
                 t1_stop = time.perf_counter()
-                t2_stop = time.process_time()
-                # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
+                t2_stop = time.process_time()  # print(f"End Conv2d_{layer_idx} {((t1_stop - t1_start)):.1f} [sec]")
             else:
                 raise Exception('Type of layer not supported')
-            if save:
-                with open(f'./data/{file_name}-{layer_idx}.ub', 'wb') as f_ub:
-                    pickle.dump(new_layer_ub, f_ub)
-                with open(f'./data/{file_name}-{layer_idx}.lb', 'wb') as f_lb:
-                    pickle.dump(new_layer_lb, f_lb)
-                gurobi_model.ModelName = f'{file_name}'
-                gurobi_model.update()
-                gurobi_model.write(f'./data/{file_name}-{layer_idx}.mps')
+            # if save:
+            #     with open(f'./data/{file_name}-{layer_idx}.ub', 'wb') as f_ub:
+            #         pickle.dump(new_layer_ub, f_ub)
+            #     with open(f'./data/{file_name}-{layer_idx}.lb', 'wb') as f_lb:
+            #         pickle.dump(new_layer_lb, f_lb)
+            #     gurobi_model.ModelName = f'{file_name}'
+            #     gurobi_model.update()
+            #     gurobi_model.write(f'./data/{file_name}-{layer_idx}.mps')
             layer_idx += 1
         # Assert that this is as expected a network with a single output
         # assert len(gurobi_vars[-1]) == 1, "Network doesn't have scalar output"
@@ -1430,7 +1361,7 @@ class VerificationNetwork(nn.Module):
         # print(f'Result={gurobi_vars[-1][0].X}')
         # print(f'Result={gurobi_vars[-1]}')
         # print(f'Result -1={gurobi_vars[-2]}')
-        return upper_bound,lower_bound
+        return upper_bound, lower_bound
 
     def convert_ConvL_to_FCL(self, input: torch.Tensor, K: torch.Tensor, padding, stride):
         batch_size, channels_in, h_in, w_in = input.size()
@@ -1440,8 +1371,7 @@ class VerificationNetwork(nn.Module):
         padding = stride * (h_out - 1) + k_h - h_in
         plefttop = int((padding - 1) / 2) if padding > 0 else 0
         prightbot = padding - plefttop
-        padedinput = np.lib.pad(input.cpu(), ((0, 0), (plefttop, prightbot), (plefttop, prightbot), (0, 0)), 'constant',
-                                constant_values=((0, 0), (0, 0), (0, 0), (0, 0)))
+        padedinput = np.lib.pad(input.cpu(), ((0, 0), (plefttop, prightbot), (plefttop, prightbot), (0, 0)), 'constant', constant_values=((0, 0), (0, 0), (0, 0), (0, 0)))
         # M = torch.tensor(np.ndarray(shape=(batch_size * h_out * w_out, k_h * k_w * channels_in)))
         stretchinput = np.zeros(shape=(batch_size * h_out * w_out, k_h * k_w * channels_in), dtype=np.float64)
         # L = torch.tensor(np.ndarray(shape=(k_h * k_w * channels_in, channels_out)))
@@ -1481,38 +1411,32 @@ class VerificationNetwork(nn.Module):
         for k in range(batch):
             for i in range(len(first_col_index)):
                 for j in range(len(first_row_index)):
-                    w_index = first_row_index[j] + i * patches_row + \
-                              k * (int((h - kernel_size) / stride) + 1) * (int((w - kernel_size) / stride) + 1)
+                    w_index = first_row_index[j] + i * patches_row + k * (int((h - kernel_size) / stride) + 1) * (int((w - kernel_size) / stride) + 1)
                     # print('------------------------')
                     if i != len(first_col_index) - 1 and j != len(first_row_index) - 1:
                         # print( original_input[  k , first_row_index[j] : first_row_index[j]+kernel_size ,
                         #     first_col_index[i] :  first_col_index[i]+kernel_size ,:].shape)
                         # print(input[w_index,:].reshape(kernel_size,kernel_size,-11_2).shape)
-                        original_input[k, first_row_index[j]: first_row_index[j] + kernel_size,
-                        first_col_index[i]:  first_col_index[i] + kernel_size, :] \
-                            = input[w_index, :].reshape(kernel_size, kernel_size, -1)
+                        original_input[k, first_row_index[j]: first_row_index[j] + kernel_size, first_col_index[i]:  first_col_index[i] + kernel_size, :] = input[w_index, :].reshape(kernel_size,
+                                                                                                                                                                                      kernel_size, -1)
                     elif i == len(first_col_index) - 1 and j != len(first_row_index) - 1:
                         # print(original_input[k, first_col_index[-11_2] + colend_index : ,
                         #     first_row_index[i] :  first_row_index[i]+kernel_size, :].shape)
                         # print(input[w_index, :].reshape(kernel_size, kernel_size, -11_2)[rowend_index:,:,:].shape)
-                        original_input[k, first_col_index[-1] + colend_index:,
-                        first_row_index[i]:  first_row_index[i] + kernel_size, :] \
-                            = input[w_index, :].reshape(kernel_size, kernel_size, -1)[rowend_index:, :, :]
+                        original_input[k, first_col_index[-1] + colend_index:, first_row_index[i]:  first_row_index[i] + kernel_size, :] = input[w_index, :].reshape(kernel_size, kernel_size, -1)[
+                                                                                                                                           rowend_index:, :, :]
                     elif i != len(first_col_index) - 1 and j == len(first_row_index) - 1:
                         # print(original_input[k, first_col_index[i]: first_col_index[i]+kernel_size, first_row_index[-11_2]+rowend_index : ,:].shape)
                         # print(input[w_index, :].reshape(kernel_size, kernel_size, -11_2)[:, colend_index : , :].shape)
-                        original_input[k, first_col_index[i]: first_col_index[i] + kernel_size,
-                        first_row_index[-1] + rowend_index:, :] \
-                            = input[w_index, :].reshape(kernel_size, kernel_size, -1)[:, colend_index:, :]
+                        original_input[k, first_col_index[i]: first_col_index[i] + kernel_size, first_row_index[-1] + rowend_index:, :] = input[w_index, :].reshape(kernel_size, kernel_size, -1)[:,
+                                                                                                                                          colend_index:, :]
                     else:
                         # print( original_input[k,first_col_index[-11_2] + colend_index : ,
                         #     first_row_index[-11_2] + rowend_index:, :].shape)
                         # print(input[w_index, :].reshape(kernel_size, kernel_size, -11_2)[
                         #       rowend_index :, colend_index :, :].shape)
-                        original_input[k, first_col_index[-1] + colend_index:,
-                        first_row_index[-1] + rowend_index:, :] \
-                            = input[w_index, :].reshape(kernel_size, kernel_size, -1)[
-                              rowend_index:, colend_index:, :]
+                        original_input[k, first_col_index[-1] + colend_index:, first_row_index[-1] + rowend_index:, :] = input[w_index, :].reshape(kernel_size, kernel_size, -1)[rowend_index:,
+                                                                                                                         colend_index:, :]
         return original_input
 
     def stretchKernel(self, kernel: torch.Tensor):
@@ -1527,8 +1451,7 @@ class VerificationNetwork(nn.Module):
         return torch.tensor(stretchkernel)
 
 
-def linear_layer(self, gurobi_model, gurobi_vars, weight, bias, layer_idx, lower_bounds, new_layer_gurobi_vars,
-                 new_layer_lb, new_layer_ub, upper_bounds):
+def linear_layer(self, gurobi_model, gurobi_vars, weight, bias, layer_idx, lower_bounds, new_layer_gurobi_vars, new_layer_lb, new_layer_ub, upper_bounds):
     for neuron_idx in range(weight.size(0)):
         if bias is None:
             ub = 0
@@ -1550,12 +1473,9 @@ def linear_layer(self, gurobi_model, gurobi_vars, weight, bias, layer_idx, lower
                 lb = lb + coeff * upper_bounds[-1][prev_neuron_idx]  # multiplies the lb
             #         print(f'ub={ub} lb={lb}')
             #                     assert ub!=lb
-            lin_expr = lin_expr + coeff.item() * gurobi_vars[-1][
-                prev_neuron_idx]  # multiplies the unknown by the coefficient
+            lin_expr = lin_expr + coeff.item() * gurobi_vars[-1][prev_neuron_idx]  # multiplies the unknown by the coefficient
         #         print(lin_expr)
-        v = gurobi_model.addVar(lb=lb, ub=ub, obj=0,
-                                vtype=grb.GRB.CONTINUOUS,
-                                name=f'lay{layer_idx}_{neuron_idx}')
+        v = gurobi_model.addVar(lb=lb, ub=ub, obj=0, vtype=grb.GRB.CONTINUOUS, name=f'lay{layer_idx}_{neuron_idx}')
         gurobi_model.addConstr(v == lin_expr)
         gurobi_model.update()
         #     print(f'v={v}')
