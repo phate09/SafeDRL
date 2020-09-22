@@ -232,7 +232,7 @@ def scatter_plot(*lists,legend: List = None):
         name = legend[i] if legend is not None and len(legend) > i else None
         fig.add_scatter(x=[x[0] for x in interval_list], y=[x[1] for x in interval_list], mode="markers", hoveron="points", name=name)
     fig.update_shapes(dict(xref='x', yref='y'))
-    fig.show()
+    # fig.show()
     return fig
 def show_plot_rect(*args, legend: List = None):
     return show_plot(*[[x.to_tuple() for x in arg] for arg in args], legend)
