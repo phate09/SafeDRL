@@ -26,7 +26,7 @@ Point.project(p2,Point(1,0))
 a = np.array([[1,1],[2,1],[1.5,1.5]])
 a1 = np.array([[1,1]])
 a2 = np.array([[2,1]])
-b = np.array([[1,0]])
+b = np.array([[1,0]]) #direction
 b1 = np.array([[2,0]])
 b2 = np.array([[1,1]])
 c = utils.project(a,b2)
