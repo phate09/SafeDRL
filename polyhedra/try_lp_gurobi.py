@@ -13,8 +13,8 @@ x = m.addMVar(shape=2, name="x")
 A = np.array([[0, -1], [1, 1], [-1, 0]])
 b = np.array([0, 2, -1])
 # Set objective
-obj = np.array([1.0, 0])  # the direction
-m.setObjective(obj @ x, GRB.MINIMIZE)
+d = np.array([1.0, 0])  # the direction
+m.setObjective(-d @ x, GRB.MINIMIZE)
 
 # Add constraints
 m.addConstr(A @ x <= b, name="c")  # point inside polyhedra
@@ -23,4 +23,4 @@ m.addConstr(A @ x <= b, name="c")  # point inside polyhedra
 m.optimize()
 
 print(x.X)
-print('Obj: %g' % m.objVal)
+print('Obj: %g' % -m.objVal)

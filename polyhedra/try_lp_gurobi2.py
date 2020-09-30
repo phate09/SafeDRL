@@ -8,7 +8,6 @@ from gurobipy import GRB
 # Create a new model
 m = gp.Model("matrix1")
 # Create variables
-x = m.addMVar(shape=2, name="x")
 points = np.array([[1, 1], [2, 1], [1.5, 1.5]])
 d = np.array([1.0, 0])  # the direction
 
