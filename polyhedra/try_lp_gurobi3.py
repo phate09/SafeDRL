@@ -4,12 +4,12 @@ import gurobipy as gp
 from gurobipy import GRB
 
 # %%
-"""Given a cloud of points and a polyhedra (Ax<b), find the minimum distance across a direction"""
+"""Given a cloud of points and a polyhedron (Ax<b), find the minimum distance across a direction"""
 # Create a new model
 m = gp.Model("matrix1")
 # Create variables
-x = m.addMVar(shape=2, name="x", lb=None)
-y = m.addMVar(shape=3, name="y")
+x = m.addMVar(shape=(2,), name="x", lb=None)
+y = m.addMVar(shape=(3,), name="y")
 epsilon = np.array([-0.1])
 # bad state polyhedra definition
 A = np.array([[0, -1], [1, 1], [-1, 0]])
@@ -31,9 +31,13 @@ for i in range(len(points)):
 
 # Optimize model
 m.optimize()
-
-print(f"z:{z1.X}")
-# print(f"d:{d.X}")
-print(f"y:{y.X}")
-print(f"x:{x.X}")
-# print('Obj: %g' % m.objVal)
+if m.Status == gp.GRB.OPTIMAL:
+    print("Model solved successfully")
+elif m.Status == gp.GRB.INFEASIBLE:
+    print("Model infeasible")
+else:
+    print(f"Unknown code: {m.Status}")
+# print(f"z:{z1.X}")
+# # print(f"d:{d.X}")
+# print(f"y:{y.X}")
+# print(f"x:{x.X}")  # print('Obj: %g' % m.objVal)

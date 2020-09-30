@@ -4,7 +4,7 @@ import gurobipy as gp
 from gurobipy import GRB
 
 # %%
-"""Given a polyhedra (triangle) defined as halfspaces, find the furthest point across a direction"""
+"""Given a polyhedron (triangle) defined as halfspaces, find the furthest point across a direction"""
 # Create a new model
 m = gp.Model("matrix1")
 
