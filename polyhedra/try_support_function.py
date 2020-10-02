@@ -1,3 +1,4 @@
+
 from math import sqrt
 import polyhedra.utils as utils
 import matplotlib.pyplot as plt
@@ -23,13 +24,13 @@ p4 = Point(x,y)
 # Point(1,0).dot(Point(2,1))/Point(1,0).distance(Point(0,0))
 
 Point.project(p2,Point(1,0))
-a = np.array([[1,1],[2,1],[1.5,1.5]])
+a = np.array([[2,2],[2,1.5],[1.5,1.5]])
 a1 = np.array([[1,1]])
 a2 = np.array([[2,1]])
-b = np.array([[1,0]]) #direction
+b = np.array([[0,1]]) #direction
 b1 = np.array([[2,0]])
 b2 = np.array([[1,1]])
-c = utils.project(a,b2)
+c = utils.project(a,b)
 plt.figure(figsize=(7, 7))
 plt.xlim(-1, 5)
 plt.ylim(-1, 5)

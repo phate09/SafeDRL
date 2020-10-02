@@ -13,7 +13,7 @@ x = m.addMVar(shape=2, name="x")
 A = np.array([[0, -1], [1, 1], [-1, 0]])
 b = np.array([0, 2, -1])
 # Set objective
-d = np.array([1.0, 0])  # the direction
+d = np.array([1.0, -1])  # the direction
 m.setObjective(-d @ x, GRB.MINIMIZE)
 
 # Add constraints
