@@ -9,7 +9,7 @@ import mosaic.utils as utils
 from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
-import verification_runs.domain_explorers_load
+import utility.domain_explorers_load
 import networkx as nx
 from datetime import datetime
 
@@ -27,9 +27,9 @@ def experiment(env_name="cartpole", horizon: int = 8, abstract: bool = True, rou
     storage.reset()
     precision = 10 ** (-rounding)
     if env_name == "cartpole":
-        explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
+        explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generateCartpoleDomainExplorer(precision, rounding)
     elif env_name == "pendulum":
-        explorer, verification_model, env, current_interval, state_size, env_class = verification_runs.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding)
+        explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding)
     else:
         raise Exception("Invalid choice")
     print(f"Building the tree")

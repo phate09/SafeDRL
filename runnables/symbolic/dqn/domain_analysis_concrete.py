@@ -14,7 +14,7 @@ from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
-import verification_runs.domain_explorers_load
+import utility.domain_explorers_load
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import ParameterGrid

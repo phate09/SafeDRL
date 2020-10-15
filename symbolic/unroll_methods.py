@@ -572,6 +572,57 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
     iteration += 1
     return True
 
+def probability_iteration_PPO(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
+                          unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True, allow_refine=True):
+    iteration = 0
+    storage.recreate_prism(horizon * 2)
+    shortest_path = nx.shortest_path(storage.graph, source=storage.root)
+    leaves = storage.get_leaves(shortest_path, unsafe_threshold, horizon * 2)
+    leaves = [x for x in leaves if x[1] % 2 == 0]
+    max_path_length = min([x[1] for x in leaves]) if len(leaves) > 0 else horizon * 2  # longest path to a leave, only even number layers
+    # storage.remove_unreachable()
+    # storage.plot_graph()
+    if max_path_length >= horizon * 2:  # REFINE
+        if allow_refine:
+            print("Refine process")
+            # find terminal states and split them
+            # half_terminal = [((interval, action), attributes.get('lb'), attributes.get('ub')) for (interval, action), attributes in storage.graph.nodes.data() if attributes.get('half_fail')]
+
+            # refine states which are undecided
+            candidate_length_dict = defaultdict(list)
+            # get the furthest nodes that have a maximum probability less than safe_threshold
+            candidates_ids = [(interval, attributes.get('lb'), attributes.get('ub')) for interval, attributes in storage.graph.nodes.data() if (
+                    attributes.get('lb') is not None and attributes.get('ub') > safe_threshold and not attributes.get('ignore') and not attributes.get('half_fail') and not attributes.get(
+                'fail') and interval.action is not None and not is_small(interval, precision, rounding) and attributes.get('lb') < unsafe_threshold)]
+            for id, lb, ub in candidates_ids:
+                if shortest_path.get(id) is not None:
+                    if lb < unsafe_threshold:
+                        candidate_length = len(shortest_path[id]) - 1
+                        candidate_length_dict[candidate_length].append((id, lb, ub))
+                    else:
+                        lower_bound_exceeded = True
+            odd_layers = [x for x in candidate_length_dict.keys() if x % 2 == 1 and x < horizon * 2]
+            if len(odd_layers) == 0:
+                return False
+            max_length = min(odd_layers)  # get only odd numbers
+            print(f"Refining layer {max_length}")
+            t_ids = [x[0] for x in candidate_length_dict[max_length]]
+            split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
+            compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+        else:
+            return False
+    else:  # EXPLORE
+        print(f"Exploring at timestep {max_path_length}")
+        to_analyse = []
+        for interval_action, length, lb, ub in leaves:
+            if length == max_path_length:
+                to_analyse.append(interval_action.remove_action())  # just interval no action
+        allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
+        # to_analyse_array = np.array(to_analyse)
+        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
+    iteration += 1
+    return True
+
 def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage, safe_threshold: float, unsafe_threshold: float, precision: float, rounding: int):
     split_performed = False
     to_analyse = []
