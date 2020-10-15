@@ -222,7 +222,9 @@ def show_plot(*args, legend: List = None):
     # fig.update_layout(autosize=False)
     fig.show()
     return fig
-def scatter_plot(*lists,legend: List = None):
+
+
+def scatter_plot(*lists, legend: List = None):
     fig = go.Figure()
     for i, interval_list in enumerate(lists):
         if len(interval_list) == 0:
@@ -234,6 +236,33 @@ def scatter_plot(*lists,legend: List = None):
     fig.update_shapes(dict(xref='x', yref='y'))
     # fig.show()
     return fig
+
+
+def PolygonSort(corners):
+    # e.g corners = [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]
+    n = len(corners)
+    cx = float(sum(x for x, y in corners)) / n
+    cy = float(sum(y for x, y in corners)) / n
+    cornersWithAngles = []
+    for x, y in corners:
+        an = (np.arctan2(y - cy, x - cx) + 2.0 * np.pi) % (2.0 * np.pi)
+        cornersWithAngles.append((x, y, an))
+    cornersWithAngles.sort(key=lambda tup: tup[2])
+    return map(lambda x: (x[0], x[1]), cornersWithAngles)
+
+
+def compute_trace_polygon(corners):
+    # e.g corners = [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]
+    # corners need to be sorted
+    x = [corner[0] for corner in corners]
+    y = [corner[1] for corner in corners]
+    x.append(corners[0][0])
+    y.append(corners[0][1])
+
+    trace1 = go.Scatter(x=x, y=y, mode='markers', fill='toself', )
+    return trace1
+
+
 def show_plot_rect(*args, legend: List = None):
     return show_plot(*[[x.to_tuple() for x in arg] for arg in args], legend)
 
@@ -367,7 +396,7 @@ def save_graph_as_dot(graph):
     replace_list.append(("strict digraph  {", "strict digraph  { ranksep=4;"))
     inplace_change('file.dot', replace_list)
     regex_list = []
-    regex_list.append(("(p=\d+\.\d*)","xlabel=\"\\1\""))
+    regex_list.append(("(p=\d+\.\d*)", "xlabel=\"\\1\""))
     regex_change('file.dot', regex_list)
 
 
