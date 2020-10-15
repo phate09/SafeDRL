@@ -317,6 +317,10 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
     if len(interval_list) == 0:
         return
     colors = list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
+    max_x = None
+    min_x = None
+    max_y = None
+    min_y = None
     probabilities = set(map(lambda x: round(x[1], rounding), interval_list))  # round to 4 digits todo check why x[1] is none sometimes
     newlist = [(x, [y[0] for y in interval_list if round(y[1], rounding) == x]) for x in sorted(probabilities)]
     for probability, intervals in newlist:
@@ -329,6 +333,14 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
             else:
                 x = [interval[0], interval[0] + 0.01, interval[0] + 0.01, interval[0]]
                 y = [interval[1], interval[1], interval[1] + 0.01, interval[1] + 0.01]
+            if max_x is None or interval[0].right_bound() > max_x:
+                max_x = interval[0].right_bound()
+            if min_x is None or interval[0].left_bound() < min_x:
+                min_x = interval[0].left_bound()
+            if max_y is None or interval[1].right_bound() > max_y:
+                max_y = interval[1].right_bound()
+            if min_y is None or interval[1].left_bound() < min_y:
+                min_y = interval[1].left_bound()
             x_list.extend(x)
             x_list.append(None)
             y_list.extend(y)
@@ -350,6 +362,8 @@ def show_heatmap(interval_list: List[Tuple[HyperRectangle, float]], *, title=Non
     # fig.update_layout(margin=margin)
     if title is not None:
         fig.update_layout(title=title, title_x=0.5)
+        fig['layout']['xaxis'].update(title='', range=[min_x, max_x], autorange=False)
+        fig['layout']['yaxis'].update(title='', range=[min_y, max_y], autorange=False)
     fig.show()
     if save_to is not None:
         fig.write_image(save_to, width=800, height=800)
