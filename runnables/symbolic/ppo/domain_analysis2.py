@@ -51,24 +51,20 @@ for params in grid:
     current_intervals.append(torch.tensor(state))
 tensor_intervals = torch.stack(current_intervals)
 # ix = Symbolic_interval(lower=torch.tensor([[0, 0]], dtype=torch.float64, requires_grad=False), upper=torch.tensor([[0.01, 0.01]], dtype=torch.float64, requires_grad=False))
-ix2 = Symbolic_interval(lower=tensor_intervals, upper=tensor_intervals + np.array([delta_x, delta_y]))
-# verif.get_boundaries(ix, 0)
+lower_intervals = tensor_intervals.clone()
+upper_intervals = tensor_intervals.clone() + np.array([delta_x, delta_y])
+ix2 = Symbolic_interval(lower=lower_intervals, upper=upper_intervals)
 inet = Interval_network(sequential_nn.double(), None)
 result_interval = inet(ix2)
 upper_bound = result_interval.u
 lower_bound = result_interval.l
-upper_bound_rectangles = []
-for x, y in zip(tensor_intervals, upper_bound[:, 0]):
-    x_numpy = x.numpy()
-    x_numpy = np.stack([x_numpy, x_numpy + np.array([delta_x, delta_y])])
+probabilities_rectangle = []
+for x0, x1, u, l in zip(lower_intervals, upper_intervals, upper_bound[:, 0], lower_bound[:, 0]):
+    x_numpy = np.stack([x0.numpy(), x1.numpy()])
     from_numpy = HyperRectangle.from_numpy(x_numpy)
-    upper_bound_rectangles.append((from_numpy, y.item()))
-lower_bound_rectangles = []
-for x, y in zip(tensor_intervals, lower_bound[:, 0]):
-    x_numpy = x.numpy()
-    x_numpy = np.stack([x_numpy, x_numpy + np.array([delta_x, delta_y])])
-    from_numpy = HyperRectangle.from_numpy(x_numpy)
-    lower_bound_rectangles.append((from_numpy, y.item()))
-utils.show_heatmap(upper_bound_rectangles, title="Upper bound probability of action=0", rounding=3)
-utils.show_heatmap(lower_bound_rectangles, title="Lower bound probability of action=0", rounding=3)
+    from_numpy.assign((l.item(), u.item()))
+    probabilities_rectangle.append(from_numpy)
+rtree = SharedRtree()
+rtree.load(probabilities_rectangle)
+
 print("Finished")
