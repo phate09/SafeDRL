@@ -3,6 +3,7 @@ from ray.rllib.agents.ppo import PPOTorchPolicy, ppo
 import torch
 
 from environment.pendulum_abstract import PendulumEnv
+from environment.stopping_car import StoppingCar
 
 
 def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
@@ -18,8 +19,7 @@ def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequent
     return sequential_nn
 
 
-def load_sequential_from_ray(filename: str):
-    trainer = get_pendulum_ppo_agent()
+def load_sequential_from_ray(filename: str,trainer):
     trainer.restore(filename)
     return convert_ray_policy_to_sequential(trainer.get_policy())
 
@@ -30,5 +30,15 @@ def get_pendulum_ppo_agent():
               "vf_share_layers": False,  # try different lrs
               "num_workers": 8,  # parallelism
               "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}  # "batch_mode":"complete_episodes"
+    trainer = ppo.PPOTrainer(config=config)
+    return trainer
+
+def get_car_ppo_agent():
+    config = {"env": StoppingCar,  #
+              "model": {"fcnet_hiddens": [20, 20, 20, 20], "fcnet_activation": "relu"},  # model config,"custom_model": "my_model",
+              "vf_share_layers": False,  # try different lrs
+              "num_workers": 8,  # parallelism
+              # "batch_mode": "complete_episodes", "use_gae": False,  #
+              "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
     trainer = ppo.PPOTrainer(config=config)
     return trainer
