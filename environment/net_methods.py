@@ -1,7 +1,8 @@
 import torch
 import numpy as np
-
-
+from sklearn.model_selection import ParameterGrid
+import pandas as pd
+import plotly.express as px
 def generate_nn(x, min_speed=20, max_speed=30, min_distance=40, max_distance=50):
     """x: an array with [speed,distance]"""
 
@@ -36,5 +37,19 @@ def generate_nn(x, min_speed=20, max_speed=30, min_distance=40, max_distance=50)
 
 
 if __name__ == '__main__':
-    x = np.array([[25, 45],[18,50.5]])
-    print(generate_nn(x))
+    precision = 0.1
+    rounding = 1
+    param_grid = {'speed': list(np.arange(15, 35, precision).round(rounding)), 'distance': list(np.arange(35, 55, precision).round(rounding))}
+    # param_grid = {'param1': list(np.arange(0.33, 0.35, precision).round(rounding)), 'param2': list(np.arange(-0.19, -0.15, precision).round(rounding))}
+    grid = ParameterGrid(param_grid)
+    points = []
+    for params in grid:
+        state = np.array((params['speed'], params['distance']))
+        points.append(state)
+    # x = np.array([[25, 45], [18, 50.5]])
+    x = np.stack(points)
+    y = generate_nn(x)
+
+    print(y)
+    fig = px.scatter(x=x[:,0], y=x[:,1], color=y.astype(str), color_continuous_scale=px.colors.sequential.Viridis)
+    fig.show()
