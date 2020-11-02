@@ -37,8 +37,9 @@ class StoppingCar(gym.Env):
             acceleration = -self.a_ego
         else:
             acceleration = self.a_ego
-        self.y_ego += -2 * self.y_ego * self.dt + 2 * acceleration
+        self.y_ego += acceleration  # -2 * self.y_ego * self.dt + 2 * acceleration
         self.v_ego += self.y_ego * self.dt
+        self.v_ego = max(self.v_ego,1)
         self.v_lead += self.y_lead * self.dt
         self.x_lead += self.v_lead * self.dt
         self.x_ego += self.v_ego * self.dt
@@ -55,6 +56,18 @@ class StoppingCar(gym.Env):
             cost += abs(self.v_set - self.v_ego)  # try to match v_set speed
 
         return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_x, delta_v, self.v_set, self.t_gap]), -cost, done, {}
+
+    def perfect_action(self):
+        delta_x = self.x_lead - self.x_ego
+        target_delta_x = self.d_default + self.t_gap * self.v_ego
+        if delta_x < target_delta_x:
+            action = 0
+        elif self.v_set - self.v_ego < 0:  # keep target speed
+            action = 0
+        else:
+            action = 1
+        # todo we want delta_v to be 0 when delta_x ==target_delta_x
+        return action
 
 
 if __name__ == '__main__':

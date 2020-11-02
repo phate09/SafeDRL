@@ -33,7 +33,7 @@ if __name__ == "__main__":
     config = {"env": StoppingCar,  #
               "model": {"fcnet_hiddens": [20, 20, 20, 20], "fcnet_activation": "relu"},  # model config,"custom_model": "my_model",
               "vf_share_layers": False,  # try different lrs
-              "num_workers": 8,  # parallelism
+              "vf_clip_param": 100, "num_workers": 8,  # parallelism
               # "batch_mode": "complete_episodes", "use_gae": False,  #
               "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
     ray.init(local_mode=False, include_dashboard=True)
