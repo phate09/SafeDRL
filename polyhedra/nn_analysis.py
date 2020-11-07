@@ -7,7 +7,8 @@ from environment.net_methods import generate_nn_torch, generate_mock_input
 
 def analyse_input(nn: torch.nn.Sequential):
     gurobi_model = grb.Model()
-    v = gurobi_model.addMVar(shape=(2,), name="input")
+    gurobi_model.setParam('OutputFlag', False)
+    v = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), name="input")
     gurobi_vars = []
     gurobi_vars.append(v)
     for i, layer in enumerate(nn):
