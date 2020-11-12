@@ -2,7 +2,7 @@ import torch
 import torch.nn
 import numpy as np
 import gurobi as grb
-from environment.net_methods import generate_nn_torch, generate_mock_input
+from polyhedra.net_methods import generate_nn_torch, generate_mock_input
 
 
 def analyse_input(nn: torch.nn.Sequential):

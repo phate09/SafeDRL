@@ -127,7 +127,7 @@ class Interval_Dense(nn.Module):
 
             return ix
 
-        if (isinstance(ix, Symbolic_interval)):
+        if (isinstance(ix, Symbolic_interval)):  # normally we use this layer
             # print (ix.c.shape, self.layer.weight.shape)
             ix.c = F.linear(ix.c, self.layer.weight, bias=self.layer.bias)
             ix.idep = F.linear(ix.idep, self.layer.weight)
@@ -419,7 +419,7 @@ class Interval_ReLU(nn.Module):
             upper = ix.u.clamp(min=0)
             upper = torch.max(upper, lower + 1e-8)
             mask = upper / (upper - lower)
-            appr_condition = ((ix.l < 0) * (ix.u > 0))
+            appr_condition = ((ix.l < 0) * (ix.u > 0))  # vector that describes if both the lower bound is <0 and the upper bound is >0
 
             # ix.l.retain_grad()
             # mask[0,0].backward()
@@ -563,19 +563,18 @@ class Interval_Softmax(nn.Module):
         # print(ix.u)
         # print(ix.l)
         if (isinstance(ix, Symbolic_interval)):
-
             lower = ix.u.detach().clone().unsqueeze(1).repeat((1, ix.input_size, 1))
             upper = ix.l.detach().clone().unsqueeze(1).repeat((1, ix.input_size, 1))
             lower = lower - lower * torch.eye(ix.input_size)  # remove elements across diagonal
-            lower = lower + ix.l.detach().clone().unsqueeze(1).repeat((1, ix.input_size, 1)) * torch.eye(ix.input_size) # for each element add worst case
+            lower = lower + ix.l.detach().clone().unsqueeze(1).repeat((1, ix.input_size, 1)) * torch.eye(ix.input_size)  # for each element add worst case
             upper = upper - upper * torch.eye(ix.input_size)  # remove elements across diagonal
             upper = upper + ix.u.detach().clone().unsqueeze(1).repeat((1, ix.input_size, 1)) * torch.eye(ix.input_size)
-            lower_softmax = torch.nn.functional.softmax(lower,2)
-            upper_softmax = torch.nn.functional.softmax(upper,2)
-            lower_masked = lower_softmax*torch.eye(ix.input_size)
-            upper_masked = upper_softmax*torch.eye(ix.input_size)
-            lower_result = torch.sum(lower_masked,dim=1)
-            upper_result = torch.sum(upper_masked,dim=1)
+            lower_softmax = torch.nn.functional.softmax(lower, 2)
+            upper_softmax = torch.nn.functional.softmax(upper, 2)
+            lower_masked = lower_softmax * torch.eye(ix.input_size)
+            upper_masked = upper_softmax * torch.eye(ix.input_size)
+            lower_result = torch.sum(lower_masked, dim=1)
+            upper_result = torch.sum(upper_masked, dim=1)
             ix.update_lu(lower_result, upper_result)
             return ix
 
