@@ -15,7 +15,7 @@ In addition, download PRISM from the following link: https://github.com/phate09/
 Ensure you have Gradle installed (https://gradle.org/install/) 
 
 ## Running the code
-Before running any code, go to the PRISM project folder and run
+Before running any code, in a new terminal go to the PRISM project folder and run
 ```
 gradle run
 ``` 
