@@ -21,8 +21,8 @@ gradle run
 ``` 
 This will enable the communication channel between PRISM and MOSAIC
 
-###Training
+### Training
 Run the ``train_pendulum.py`` inside ``agents/dqn`` to train the agent on the inverted pendulum problem and record the location of the saved agent
 
-###Analysis
+### Analysis
 Run the ``domain_analysis_sym.py`` inside ``runnables/symbolic/dqn`` changing paths to point to the saved network
