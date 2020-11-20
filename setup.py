@@ -2,7 +2,7 @@ from distutils.core import setup
 
 from Cython.Build import cythonize
 
-# setup(ext_modules=cythonize('ilqr_server2.pyx'))
+# to compile: python setup.py build_ext --inplace
 
 setup(
     ext_modules=cythonize(["mosaic/hyperrectangle.pyx",
