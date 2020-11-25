@@ -248,7 +248,7 @@ def PolygonSort(corners):
         an = (np.arctan2(y - cy, x - cx) + 2.0 * np.pi) % (2.0 * np.pi)
         cornersWithAngles.append((x, y, an))
     cornersWithAngles.sort(key=lambda tup: tup[2])
-    return map(lambda x: (x[0], x[1]), cornersWithAngles)
+    return cornersWithAngles  # map(lambda x: (x[0], x[1]), cornersWithAngles)
 
 
 def compute_trace_polygon(corners):

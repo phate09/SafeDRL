@@ -2,7 +2,14 @@ import torch
 import torch.nn
 import numpy as np
 import gurobi as grb
+import pypoman
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+from mosaic.utils import compute_trace_polygon, PolygonSort
 from polyhedra.net_methods import generate_nn_torch, generate_mock_input
+import plotly.graph_objects as go
+import itertools
 
 
 def generate_input_region(gurobi_model):
@@ -72,16 +79,17 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0):
     return z
 
 
-def optimise(templates, x_prime, gurobi_model: grb.Model):
+def optimise(templates, gurobi_model: grb.Model, x_prime):
     results = []
     for template in templates:
         gurobi_model.update()
         gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(6)), grb.GRB.MAXIMIZE)
         gurobi_model.optimize()
-        print_model(gurobi_model)
+        # print_model(gurobi_model)
         result = gurobi_model.ObjVal
         results.append(result)
     print(results)
+    return np.array(results)
 
 
 def print_model(gurobi_model):
@@ -105,10 +113,6 @@ def main():
     nn = generate_nn_torch()
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
-    input = generate_input_region(gurobi_model)
-    generate_mock_guard(gurobi_model, input, 0)
-    # apply dynamic
-    x_prime = apply_dynamic(input, gurobi_model)
     # optimise in a direction
     template = []
     for dimension in range(6):
@@ -119,9 +123,44 @@ def main():
         template.append(t1)
         template.append(t2)
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
-    template = np.array(template)  # the 8 dimensions in 2 variables
+    template = np.array(template)  # the 6 dimensions in 2 variables
+    input = generate_input_region(gurobi_model)
+    x_results = optimise(template, gurobi_model, input)
+    x_vertices = pypoman.duality.compute_polytope_vertices(template, x_results)
+    generate_mock_guard(gurobi_model, input, 0)
+    # apply dynamic
+    x_prime = apply_dynamic(input, gurobi_model)
     # enclosing halfspaces  # max <template,y>
-    optimise(template, x_prime, gurobi_model)  # dimensionality reduction  # plot
+    x_prime_results = optimise(template, gurobi_model, x_prime)  # dimensionality reduction  # plot
+    x_prime_vertices = pypoman.duality.compute_polytope_vertices(template, x_prime_results)
+    show_polygon_list([x_vertices,x_prime_vertices])
+
+
+def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
+
+    scaler = StandardScaler()
+    scaler.fit(polygon_vertices_list[0])#list(itertools.chain.from_iterable(polygon_vertices_list)))
+    scaled_list = []
+    for x in polygon_vertices_list:
+        scaled_list.append(scaler.transform(x))
+    pca = PCA(n_components=2)
+    pca.fit(list(itertools.chain.from_iterable(scaled_list)))#
+    principal_components_list = []
+    for x_scaled in scaled_list:
+        principal_components_list.append(pca.transform(x_scaled))
+    traces = []
+    for principal_component in principal_components_list:
+        traces.append(compute_polygon_trace(principal_component))
+    fig = go.Figure()
+    for trace in traces:
+        fig.add_trace(trace)
+    fig.show()
+
+
+def compute_polygon_trace(principalComponents):
+    polygon1 = PolygonSort(principalComponents)
+    trace1 = compute_trace_polygon(polygon1)
+    return trace1
 
 
 if __name__ == '__main__':
