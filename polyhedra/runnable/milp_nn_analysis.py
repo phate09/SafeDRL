@@ -35,17 +35,31 @@ def generate_input_region(gurobi_model):
     return input
 
 
+# def generate_mock_guard(gurobi_model: grb.Model, input, mode=0, t=0):
+#     if mode == 0:  # should accelerate
+#         gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
+#         gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
+#     elif mode == 1:  # should decelerate
+#         gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
+#         gurobi_model.addConstr(input[3] >= 25, name=f"cond2_{t}")
+#     elif mode == 2:  # should decelerate
+#         gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
+#         gurobi_model.addConstr(input[3] >= 25, name=f"cond2_{t}")
+#     else:  # should decelerate
+#         gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
+#         gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
+
 def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
     if action_ego == 0:
         y = gurobi_model.addVars(2, vtype=grb.GRB.BINARY, name=f"or_indicator_{t}")
-        gurobi_model.addGenConstrIndicator(y[0], True, ((input[0] - input[1]) >= 50), name=f"cond1_{t}")
-        gurobi_model.addGenConstrIndicator(y[1], True, (input[3] >= 30), name=f"cond2_{t}")
+        gurobi_model.addGenConstrIndicator(y[0], True, ((input[0] - input[1]) <= 50), name=f"cond1_{t}")
+        gurobi_model.addGenConstrIndicator(y[1], True, (input[3] >= 25), name=f"cond2_{t}")
         gurobi_model.addConstr(y[0] + y[1] == 1, name=f"cond3_{t}")
     else:
         constr3 = gurobi_model.getConstrByName(f"cond3_{t}")
         if constr3 is not None:
             gurobi_model.remove(constr3)
-        gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
+        gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
         gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
 
 
@@ -86,6 +100,8 @@ def optimise(templates, gurobi_model: grb.Model, x_prime):
         gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(6)), grb.GRB.MAXIMIZE)
         gurobi_model.optimize()
         # print_model(gurobi_model)
+        if gurobi_model.status != 2:
+            return None
         result = gurobi_model.ObjVal
         results.append(result)
     print(results)
@@ -126,15 +142,20 @@ def main():
     template = np.array(template)  # the 6 dimensions in 2 variables
     input = generate_input_region(gurobi_model)
     x_results = optimise(template, gurobi_model, input)
+    if x_results is None:
+        print("Model unsatisfiable")
+        return
     x_vertices = pypoman.duality.compute_polytope_vertices(template, x_results)
     vertices_list = []
     vertices_list.append(x_vertices)
-    for t in range(4):
+    for t in range(20):
         generate_mock_guard(gurobi_model, input, 0, t=t)
         # apply dynamic
         x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
         # enclosing halfspaces  # max <template,y>
         x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
+        if x_prime_results is None:
+            break
         x_prime_vertices = pypoman.duality.compute_polytope_vertices(template, x_prime_results)
         vertices_list.append(x_prime_vertices)
         input = x_prime
@@ -148,7 +169,7 @@ def transform_vertices(polygon_vertices_list):
         for vertex in vertices:
             transformed_vertex = np.zeros(shape=(2,))
             transformed_vertex[0] = vertex[0] - vertex[1]
-            transformed_vertex[1] = vertex[2] - vertex[3]
+            transformed_vertex[1] = vertex[3]
             transformed_vertices.append(transformed_vertex)
         result.append(transformed_vertices)
     return result
