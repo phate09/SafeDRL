@@ -6,10 +6,11 @@ import networkx as nx
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 
-from mosaic.hyperrectangle import HyperRectangle
+from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from utility.standard_progressbar import StandardProgressBar
 import tempfile
 import mosaic.utils
+
 
 class StateStorage:
     def __init__(self):
@@ -23,7 +24,13 @@ class StateStorage:
 
     def store_successor_multi(self, items: List[Tuple[HyperRectangle, HyperRectangle]]):
         # first element is parent
+
         self.graph.add_edges_from(items, p=1.0)
+
+    def store_successor_prob(self, items: List[Tuple[HyperRectangle, HyperRectangle, dict]]):
+        for item in items:
+            parent, successor, properties = item
+            self.graph.add_edge(parent, successor, **properties)
 
     def store_sticky_successors(self, successor: HyperRectangle, sticky_successor: HyperRectangle, parent: HyperRectangle):
         # we use a="a" to mark the successors belonging to the same distribution (as opposed to the successors of the split operation)
@@ -127,6 +134,65 @@ class StateStorage:
                                     assert p is not None
                                     distribution.add(int(mapping[successor_id]), p)
                                 mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)  # int(mapping[successor_id])
+                    else:
+                        # zero successors
+                        pass
+                    bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
+        # for id in to_remove:
+        # print(f"removed {id}")
+        # self.graph.remove_node(id)
+        terminal_states = [mapping[x] for x in self.get_terminal_states_ids(dict_filter=descendants_dict)]
+        half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
+        terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
+        half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
+        # get probabilities from prism to encounter a terminal state
+        solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
+        solution_max = list(gateway.entry_point.check_state_list(half_terminal_states_java, False))
+        # update the probabilities in the graph
+        with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
+            for descendant in descendants_true:
+                self.graph.nodes[descendant]['ub'] = solution_max[mapping[descendant]]
+                self.graph.nodes[descendant]['lb'] = solution_min[mapping[descendant]]
+                bar.update(bar.value + 1)
+        print("Prism updated with new data")
+        self.prism_needs_update = False
+        return mdp, gateway
+
+    def recreate_prism_PPO(self, max_t: int = None):
+        gateway = JavaGateway()
+        mdp = gateway.entry_point.reset_mdp()
+        gateway.entry_point.add_states(self.graph.number_of_nodes())
+        path_length = nx.shortest_path_length(self.graph, source=self.root)
+        descendants_dict = defaultdict(bool)
+        descendants_true = []
+        for descendant in path_length.keys():
+            if max_t is None or path_length[descendant] <= max_t * 2:  # limit descendants to depth max_t
+                descendants_dict[descendant] = True
+                descendants_true.append(descendant)
+        to_remove = []
+        mapping = dict(zip(self.graph.nodes(), range(self.graph.number_of_nodes())))
+        with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants_dict) + 1).start() as bar:
+            for parent_id, successors in self.graph.adjacency():  # generate the edges
+                if descendants_dict[parent_id]:
+                    if len(successors.items()) != 0:  # filter out non-reachable states
+                        if parent_id.action is None:  # action choice (probabilistic)
+                            distribution = gateway.newDistribution()
+                            successor: HyperRectangle_action
+                            for successor in successors:
+                                eattr = successors[successor]
+                                p = eattr.get("p_ub")
+                                assert p is not None
+                                distribution.add(int(mapping[successor]), p)
+                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)
+                        else:  # action transition
+                            for successor in successors:
+                                distribution = gateway.newDistribution()
+                                eattr = successors[successor]
+                                p = eattr.get("p_ub")
+                                assert p is not None
+                                distribution.add(int(mapping[successor]), p)
+                                mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)
+
                     else:
                         # zero successors
                         pass

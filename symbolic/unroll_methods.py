@@ -122,13 +122,36 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     compute_successors(env, list_assigned_action, n_workers, rounding, storage)
 
 
-def analysis_iteration_PPO(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
-                           allow_assign_action=True, allow_merge=True):
+def exploration_PPO(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
+                    allow_assign_action=True, allow_merge=True):
     if len(intervals) == 0:
         return []
-    intersected_intervals = check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model)
-    list_assigned_action = store_subregions(intersected_intervals, storage)
-    compute_successors(env, list_assigned_action, n_workers, rounding, storage, probabilistic=True)
+    # todo get interval probabilities of choosing actions
+    # intersected_intervals = check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model)
+    # list_assigned_action = store_subregions(intersected_intervals, storage)
+    actions = [0, 1]
+    for action in actions:
+        list_assigned_action = [x.assign(action) for x in intervals]
+        parent_successor_intervals = [(x.assign(None), x.assign(action), {"p_ub": 0.5, "p_lb": 0}) for x in intervals]
+        storage.store_successor_prob(parent_successor_intervals)
+        # compute_successors(env, list_assigned_action, n_workers, rounding, storage, probabilistic=True)
+        compute_successors_PPO(env, list_assigned_action, n_workers, rounding, storage)
+
+
+def compute_successors_PPO(env, list_assigned_action, n_workers, rounding, storage):
+    next_states, half_terminal_states_dict, terminal_states_dict = abstract_step(list_assigned_action, env, n_workers, rounding, probabilistic=True)
+    next_states_prob = [(x, y[0].assign(None), {"p_ub": 1.0, "p_lb": 1.0}) for x, y in next_states]  # todo assign proper probabilities
+    terminal_states_list = []
+    half_terminal_states_list = []
+    for key in terminal_states_dict:
+        if terminal_states_dict[key]:
+            terminal_states_list.append(key.assign(None))
+    for key in half_terminal_states_dict:
+        if half_terminal_states_dict[key]:
+            half_terminal_states_list.append(key.assign(None))
+    storage.mark_as_fail(terminal_states_list)
+    storage.mark_as_half_fail(half_terminal_states_list)
+    storage.store_successor_prob(next_states_prob)
 
 
 def store_subregions(intersected_intervals, storage):
@@ -611,7 +634,7 @@ def probability_iteration(storage: StateStorage, rtree: SharedRtree, precision, 
 def probability_iteration_PPO(storage: StateStorage, rtree: SharedRtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon, safe_threshold=0.2,
                               unsafe_threshold=0.8, allow_assign_actions=False, allow_merge=True, allow_refine=True):
     iteration = 0
-    storage.recreate_prism(horizon * 2)
+    storage.recreate_prism_PPO(horizon * 2)
     shortest_path = nx.shortest_path(storage.graph, source=storage.root)
     leaves = storage.get_leaves(shortest_path, unsafe_threshold, horizon * 2)
     leaves = [x for x in leaves if x[1] % 2 == 0]
@@ -644,18 +667,19 @@ def probability_iteration_PPO(storage: StateStorage, rtree: SharedRtree, precisi
             print(f"Refining layer {max_length}")
             t_ids = [x[0] for x in candidate_length_dict[max_length]]
             split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
-            compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+            # compute_successors(env_class, to_analyse, n_workers, rounding, storage)
+            compute_successors_PPO(env_class,to_analyse,n_workers,rounding,storage)
         else:
             return False
-    else:  # EXPLORE
+    else:
+        # EXPLORE
         print(f"Exploring at timestep {max_path_length}")
         to_analyse = []
         for interval_action, length, lb, ub in leaves:
             if length == max_path_length:
                 to_analyse.append(interval_action.remove_action())  # just interval no action
         allow_assign_action = allow_assign_actions or True  # for i in range(iterations_needed):
-        # to_analyse_array = np.array(to_analyse)
-        analysis_iteration(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
+        exploration_PPO(to_analyse, n_workers, rtree, env_class, explorer, verification_model, state_size, rounding, storage, allow_assign_action=allow_assign_action, allow_merge=allow_merge)
     iteration += 1
     return True
 
@@ -688,7 +712,8 @@ def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage,
             predecessors = list(storage.graph.predecessors(interval))
             domains = interval.split(rounding)
             for parent_id in predecessors:
-                storage.store_successor_multi([(parent_id, domain) for domain in domains])
+                eattr = storage.graph.get_edge_data(parent_id,interval)
+                storage.store_successor_prob([(parent_id, domain,eattr) for domain in domains])
                 storage.graph.remove_edge(parent_id, interval)
             # storage.graph.remove_node(interval)
             storage.graph.nodes[interval]['ignore'] = True
