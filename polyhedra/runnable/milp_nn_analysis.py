@@ -12,26 +12,34 @@ import plotly.graph_objects as go
 import itertools
 
 
-def generate_input_region(gurobi_model):
+def generate_input_region(gurobi_model, templates, boundaries):
     input = gurobi_model.addVars(6, lb=float("-inf"), name="input")
-    # x_lead
-    gurobi_model.addConstr(input[0] >= 90, name="input_constr_1")
-    gurobi_model.addConstr(input[0] <= 92, name="input_constr_2")
-    # x_ego
-    gurobi_model.addConstr(input[1] >= 30, name="input_constr_3")
-    gurobi_model.addConstr(input[1] <= 31, name="input_constr_4")
-    # v_lead
-    gurobi_model.addConstr(input[2] >= 20, name="input_constr_5")
-    gurobi_model.addConstr(input[2] <= 30, name="input_constr_6")
-    # v_ego
-    gurobi_model.addConstr(input[3] >= 30, name="input_constr_7")
-    gurobi_model.addConstr(input[3] <= 30.5, name="input_constr_8")
-    # y_lead
-    gurobi_model.addConstr(input[4] >= 0, name="input_constr_9")
-    gurobi_model.addConstr(input[4] <= 0, name="input_constr_10")
-    # y_ego
-    gurobi_model.addConstr(input[5] >= 0, name="input_constr_11")
-    gurobi_model.addConstr(input[5] <= 0, name="input_constr_12")
+    # # x_lead
+    # gurobi_model.addConstr(input[0] >= 90, name="input_constr_1")
+    # gurobi_model.addConstr(input[0] <= 92, name="input_constr_2")
+    # # x_ego
+    # gurobi_model.addConstr(input[1] >= 30, name="input_constr_3")
+    # gurobi_model.addConstr(input[1] <= 31, name="input_constr_4")
+    # # v_lead
+    # gurobi_model.addConstr(input[2] >= 20, name="input_constr_5")
+    # gurobi_model.addConstr(input[2] <= 30, name="input_constr_6")
+    # # v_ego
+    # gurobi_model.addConstr(input[3] >= 30, name="input_constr_7")
+    # gurobi_model.addConstr(input[3] <= 30.5, name="input_constr_8")
+    # # y_lead
+    # gurobi_model.addConstr(input[4] >= 0, name="input_constr_9")
+    # gurobi_model.addConstr(input[4] <= 0, name="input_constr_10")
+    # # y_ego
+    # gurobi_model.addConstr(input[5] >= 0, name="input_constr_11")
+    # gurobi_model.addConstr(input[5] <= 0, name="input_constr_12")
+
+    results = []
+    for j, template in enumerate(templates):
+        gurobi_model.update()
+        multiplication = 0
+        for i in range(6):
+            multiplication += template[i] * input[i]
+        gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
     return input
 
 
@@ -140,7 +148,8 @@ def main():
         template.append(t2)
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
     template = np.array(template)  # the 6 dimensions in 2 variables
-    input = generate_input_region(gurobi_model)
+    input_boundaries = [90, -92, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
+    input = generate_input_region(gurobi_model, template, input_boundaries)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
@@ -194,7 +203,7 @@ def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
     fig = go.Figure()
     for trace in traces:
         fig.add_trace(trace)
-    fig.update_layout(xaxis_title="x_lead - x_ego",yaxis_title="Speed")
+    fig.update_layout(xaxis_title="x_lead - x_ego", yaxis_title="Speed")
     fig.show()
 
 
