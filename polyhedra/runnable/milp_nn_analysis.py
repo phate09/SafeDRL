@@ -187,7 +187,6 @@ def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
     # principal_components_list = []
     # for x_scaled in scaled_list:
     #     principal_components_list.append(pca.transform(x_scaled))
-    # todo apply transformation of points
     principal_components_list = transform_vertices(polygon_vertices_list)
     traces = []
     for principal_component in principal_components_list:
@@ -195,6 +194,7 @@ def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
     fig = go.Figure()
     for trace in traces:
         fig.add_trace(trace)
+    fig.update_layout(xaxis_title="x_lead - x_ego",yaxis_title="Speed")
     fig.show()
 
 

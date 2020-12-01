@@ -1,0 +1,37 @@
+digraph G {
+    rankdir=LR;
+    splines=false;
+    acc [shape=circle,label=<
+<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+  <TR><TD><i>Accelerate</i></TD></TR>
+  <TR><TD>y_ego=1</TD></TR>
+  <TR><TD>v_ego=y*dt</TD></TR>
+  <TR><TD>x_ego=v_ego*dt</TD></TR>
+  <TR><TD>x_lead=v_lead*dt</TD></TR>
+  <TR><TD></TD></TR>
+  <TR><TD>x_lead-x_ego &gt;=50 &amp;&amp; v_ego&lt;=25</TD></TR>
+</TABLE>>];
+    dec [shape=circle,label=<
+<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+  <TR><TD><i>Decelerate</i></TD></TR>
+  <TR><TD>y_ego=-1</TD></TR>
+  <TR><TD>v_ego=y*dt</TD></TR>
+  <TR><TD>x_ego=v_ego*dt</TD></TR>
+  <TR><TD>x_lead=v_lead*dt</TD></TR>
+  <TR><TD></TD></TR>
+  <TR><TD>x_lead-x_ego &lt;50 || v_ego&gt;25</TD></TR>
+</TABLE>>];
+    init [label= <
+<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+  <TR><TD><i>Init</i></TD></TR>
+  <TR><TD>y_ego=0</TD></TR>
+  <TR><TD>v_ego~[30,30.5]</TD></TR>
+  <TR><TD>v_lead~[20,30]</TD></TR>
+  <TR><TD>x_ego~[30,31]</TD></TR>
+  <TR><TD>x_lead~[90,92]</TD></TR>
+</TABLE>>, shape=none]
+    acc -> dec /*[label= <x_lead-x_ego &lt;50 || v_ego&gt;25>]*/
+    dec -> acc /*[label= <x_lead-x_ego &gt;50 &amp;&amp; v_ego&lt;25>]*/
+    init ->dec
+
+}
