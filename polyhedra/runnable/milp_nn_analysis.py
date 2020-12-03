@@ -1,3 +1,6 @@
+from collections import defaultdict
+from typing import Union
+
 import torch
 import torch.nn
 import numpy as np
@@ -10,30 +13,11 @@ from mosaic.utils import compute_trace_polygon, PolygonSort
 from polyhedra.net_methods import generate_nn_torch, generate_mock_input
 import plotly.graph_objects as go
 import itertools
+import networkx as nx
 
 
 def generate_input_region(gurobi_model, templates, boundaries):
     input = gurobi_model.addVars(6, lb=float("-inf"), name="input")
-    # # x_lead
-    # gurobi_model.addConstr(input[0] >= 90, name="input_constr_1")
-    # gurobi_model.addConstr(input[0] <= 92, name="input_constr_2")
-    # # x_ego
-    # gurobi_model.addConstr(input[1] >= 30, name="input_constr_3")
-    # gurobi_model.addConstr(input[1] <= 31, name="input_constr_4")
-    # # v_lead
-    # gurobi_model.addConstr(input[2] >= 20, name="input_constr_5")
-    # gurobi_model.addConstr(input[2] <= 30, name="input_constr_6")
-    # # v_ego
-    # gurobi_model.addConstr(input[3] >= 30, name="input_constr_7")
-    # gurobi_model.addConstr(input[3] <= 30.5, name="input_constr_8")
-    # # y_lead
-    # gurobi_model.addConstr(input[4] >= 0, name="input_constr_9")
-    # gurobi_model.addConstr(input[4] <= 0, name="input_constr_10")
-    # # y_ego
-    # gurobi_model.addConstr(input[5] >= 0, name="input_constr_11")
-    # gurobi_model.addConstr(input[5] <= 0, name="input_constr_12")
-
-    results = []
     for j, template in enumerate(templates):
         gurobi_model.update()
         multiplication = 0
@@ -41,21 +25,6 @@ def generate_input_region(gurobi_model, templates, boundaries):
             multiplication += template[i] * input[i]
         gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
     return input
-
-
-# def generate_mock_guard(gurobi_model: grb.Model, input, mode=0, t=0):
-#     if mode == 0:  # should accelerate
-#         gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
-#         gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
-#     elif mode == 1:  # should decelerate
-#         gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
-#         gurobi_model.addConstr(input[3] >= 25, name=f"cond2_{t}")
-#     elif mode == 2:  # should decelerate
-#         gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
-#         gurobi_model.addConstr(input[3] >= 25, name=f"cond2_{t}")
-#     else:  # should decelerate
-#         gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
-#         gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
 
 def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
     if action_ego == 0:
@@ -67,8 +36,9 @@ def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
         constr3 = gurobi_model.getConstrByName(f"cond3_{t}")
         if constr3 is not None:
             gurobi_model.remove(constr3)
-        gurobi_model.addConstr((input[0] - input[1]) >= 50, name=f"cond1_{t}")
-        gurobi_model.addConstr(input[3] <= 25, name=f"cond2_{t}")
+        epsilon = 1e-8
+        gurobi_model.addConstr((input[0] - input[1]) >= 50 + epsilon, name=f"cond1_{t}")
+        gurobi_model.addConstr(input[3] <= 25 + epsilon, name=f"cond2_{t}")
 
 
 def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, t=0):
@@ -105,7 +75,7 @@ def optimise(templates, gurobi_model: grb.Model, x_prime):
     results = []
     for template in templates:
         gurobi_model.update()
-        gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(6)), grb.GRB.MAXIMIZE)
+        gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(6)), grb.GRB.MINIMIZE)
         gurobi_model.optimize()
         # print_model(gurobi_model)
         if gurobi_model.status != 2:
@@ -133,6 +103,27 @@ def print_model(gurobi_model):
     print("----------------------------")
 
 
+class GraphExplorer:
+    def __init__(self):
+        self.graph = nx.DiGraph()
+        self.root = None
+
+    def store_boundary(self, boundary: tuple):
+        self.graph.add_node(boundary)
+
+    def get_next_in_fringe(self):
+        min_distance = float("inf")
+        result = defaultdict(list)
+        shortest_path = nx.shortest_path(self.graph, source=self.root)
+        for key in shortest_path:
+            if self.graph.out_degree[key] == 0:
+                distance = len(shortest_path[key])
+                if distance < min_distance:
+                    min_distance = distance
+                result[distance].append(key)
+        return result[min_distance]
+
+
 def main():
     nn = generate_nn_torch()
     gurobi_model = grb.Model()
@@ -148,27 +139,55 @@ def main():
         template.append(t2)
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
     template = np.array(template)  # the 6 dimensions in 2 variables
+    graph = GraphExplorer()
     input_boundaries = [90, -92, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
+    root = tuple(input_boundaries)
+    graph.root = root
+    graph.store_boundary(root)
     input = generate_input_region(gurobi_model, template, input_boundaries)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
         return
-    x_vertices = pypoman.duality.compute_polytope_vertices(template, x_results)
+    x_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_results)
     vertices_list = []
     vertices_list.append(x_vertices)
-    for t in range(20):
-        generate_mock_guard(gurobi_model, input, 0, t=t)
-        # apply dynamic
-        x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
-        # enclosing halfspaces  # max <template,y>
-        x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
-        if x_prime_results is None:
-            break
-        x_prime_vertices = pypoman.duality.compute_polytope_vertices(template, x_prime_results)
-        vertices_list.append(x_prime_vertices)
-        input = x_prime
+    for t in range(25):
+        fringe = graph.get_next_in_fringe()
+        for fringe_element in fringe:
+            found_successor = False
+            # deceleration
+            gurobi_model = grb.Model()
+            gurobi_model.setParam('OutputFlag', False)
+            input = generate_input_region(gurobi_model, template, fringe_element)
+            generate_mock_guard(gurobi_model, input, 0, t=t)
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
+            found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, vertices_list, x_prime)
+            # # acceleration
+            gurobi_model = grb.Model()
+            gurobi_model.setParam('OutputFlag', False)
+            input = generate_input_region(gurobi_model, template, fringe_element)
+            generate_mock_guard(gurobi_model, input, 1, t=t)
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 1, t=t)
+            found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, vertices_list, x_prime)
+            if not found_successor:
+                graph.graph.nodes[fringe_element]["ignore"] = True
     show_polygon_list(vertices_list)
+    show_polygon_list2(vertices_list)
+
+
+def h_repr_to_plot(found_successor, fringe, graph, gurobi_model, template, vertices_list, x_prime):
+    x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
+    if x_prime_results is not None:
+        x_prime_tuple = tuple(x_prime_results)
+        found_successor = True
+        graph.store_boundary(x_prime_tuple)
+        graph.graph.add_edge(fringe, x_prime_tuple)
+        x_prime_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_prime_results)
+        vertices_list.append(x_prime_vertices)
+    return found_successor
 
 
 def transform_vertices(polygon_vertices_list):
@@ -179,6 +198,19 @@ def transform_vertices(polygon_vertices_list):
             transformed_vertex = np.zeros(shape=(2,))
             transformed_vertex[0] = vertex[0] - vertex[1]
             transformed_vertex[1] = vertex[3]
+            transformed_vertices.append(transformed_vertex)
+        result.append(transformed_vertices)
+    return result
+
+
+def transform_vertices2(polygon_vertices_list):
+    result = []
+    for vertices in polygon_vertices_list:
+        transformed_vertices = []
+        for vertex in vertices:
+            transformed_vertex = np.zeros(shape=(2,))
+            transformed_vertex[0] = vertex[0]
+            transformed_vertex[1] = vertex[1]
             transformed_vertices.append(transformed_vertex)
         result.append(transformed_vertices)
     return result
@@ -204,6 +236,18 @@ def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
     for trace in traces:
         fig.add_trace(trace)
     fig.update_layout(xaxis_title="x_lead - x_ego", yaxis_title="Speed")
+    fig.show()
+
+
+def show_polygon_list2(polygon_vertices_list):
+    principal_components_list = transform_vertices2(polygon_vertices_list)
+    traces = []
+    for principal_component in principal_components_list:
+        traces.append(compute_polygon_trace(principal_component))
+    fig = go.Figure()
+    for trace in traces:
+        fig.add_trace(trace)
+    fig.update_layout(xaxis_title="x_lead", yaxis_title="x_ego")
     fig.show()
 
 
