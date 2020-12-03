@@ -1,6 +1,6 @@
 from collections import defaultdict
 from typing import Union
-
+from rtree import index
 import torch
 import torch.nn
 import numpy as np
@@ -25,6 +25,7 @@ def generate_input_region(gurobi_model, templates, boundaries):
             multiplication += template[i] * input[i]
         gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
     return input
+
 
 def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
     if action_ego == 0:
@@ -104,12 +105,44 @@ def print_model(gurobi_model):
 
 
 class GraphExplorer:
-    def __init__(self):
+    def __init__(self, template):
         self.graph = nx.DiGraph()
+        self.dimension = int(len(template) / 2)
+        self.p = index.Property(dimension=self.dimension)
         self.root = None
+        self.coverage_tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
+        self.last_index = 0
 
     def store_boundary(self, boundary: tuple):
-        self.graph.add_node(boundary)
+        covered = self.is_covered(boundary)
+        if not covered:
+            self.graph.add_node(boundary)
+            self.last_index += 1
+            self.coverage_tree.insert(self.last_index, self.convert_boundary_to_rtree_boundary(boundary), boundary)
+
+    @staticmethod
+    def convert_boundary_to_rtree_boundary(boundary: tuple):
+        boundary_array = np.array(boundary)
+        boundary_array = np.abs(boundary_array)
+        return tuple(boundary_array)
+
+    def is_covered(self, other: tuple):
+        intersection = self.coverage_tree.intersection(self.convert_boundary_to_rtree_boundary(other), objects='raw')
+        for item in intersection:
+            contained = True
+            for i, element in enumerate(item):
+                other_element = other[i]
+                if i % 2 == 0:
+                    if element < other_element:
+                        contained = False
+                        break
+                else:
+                    if element > other_element:
+                        contained = False
+                        break
+            if contained:
+                return True
+        return False
 
     def get_next_in_fringe(self):
         min_distance = float("inf")
@@ -139,7 +172,7 @@ def main():
         template.append(t2)
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
     template = np.array(template)  # the 6 dimensions in 2 variables
-    graph = GraphExplorer()
+    graph = GraphExplorer(template)
     input_boundaries = [90, -92, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
     root = tuple(input_boundaries)
     graph.root = root
