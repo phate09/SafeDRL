@@ -17,15 +17,17 @@ import ray
 import sympy
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
-
+import torch
 import mosaic.utils as utils
 import prism.state_storage
 import runnables.verification_runs.aggregate_abstract_domain
 from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from mosaic.workers.AbstractStepWorker import AbstractStepWorker
 from plnn.bab_explore import DomainExplorer
+from plnn.verification_network import VerificationNetwork
 from prism.shared_rtree import SharedRtree
 from prism.state_storage import StateStorage
+from symbolic.symbolic_interval import Interval_network, Symbolic_interval
 from utility.standard_progressbar import StandardProgressBar
 
 
@@ -122,6 +124,17 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
     compute_successors(env, list_assigned_action, n_workers, rounding, storage)
 
 
+def get_interval_action_probability(intervals: List[HyperRectangle], action: int, verification_model: VerificationNetwork):
+    interval_to_numpy = np.stack([interval.to_numpy() for interval in intervals])
+    sequential_nn = verification_model.base_network
+    ix2 = Symbolic_interval(lower=torch.tensor(interval_to_numpy[:,0]), upper=torch.tensor(interval_to_numpy[:,1]))
+    inet = Interval_network(sequential_nn.double(), None)
+    result_interval = inet(ix2)
+    upper_bound = result_interval.u
+    lower_bound = result_interval.l
+    return upper_bound, lower_bound
+
+
 def exploration_PPO(intervals: List[HyperRectangle], n_workers: int, rtree: SharedRtree, env, explorer, verification_model, state_size: int, rounding: int, storage: StateStorage,
                     allow_assign_action=True, allow_merge=True):
     if len(intervals) == 0:
@@ -130,9 +143,10 @@ def exploration_PPO(intervals: List[HyperRectangle], n_workers: int, rtree: Shar
     # intersected_intervals = check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model)
     # list_assigned_action = store_subregions(intersected_intervals, storage)
     actions = [0, 1]
+    upper_bound,lower_bound =get_interval_action_probability(intervals, 0, verification_model)
     for action in actions:
         list_assigned_action = [x.assign(action) for x in intervals]
-        parent_successor_intervals = [(x.assign(None), x.assign(action), {"p_ub": 0.5, "p_lb": 0}) for x in intervals]
+        parent_successor_intervals = [(x.assign(None), x.assign(action), {"p_ub": upper_bound[i][action].item(), "p_lb": lower_bound[i][action].item()}) for i,x in enumerate(intervals)]
         storage.store_successor_prob(parent_successor_intervals)
         # compute_successors(env, list_assigned_action, n_workers, rounding, storage, probabilistic=True)
         compute_successors_PPO(env, list_assigned_action, n_workers, rounding, storage)
@@ -668,7 +682,7 @@ def probability_iteration_PPO(storage: StateStorage, rtree: SharedRtree, precisi
             t_ids = [x[0] for x in candidate_length_dict[max_length]]
             split_performed, to_analyse = perform_split(t_ids, storage, safe_threshold, unsafe_threshold, precision, rounding)
             # compute_successors(env_class, to_analyse, n_workers, rounding, storage)
-            compute_successors_PPO(env_class,to_analyse,n_workers,rounding,storage)
+            compute_successors_PPO(env_class, to_analyse, n_workers, rounding, storage)
         else:
             return False
     else:
@@ -712,8 +726,8 @@ def perform_split(ids_split: List[HyperRectangle_action], storage: StateStorage,
             predecessors = list(storage.graph.predecessors(interval))
             domains = interval.split(rounding)
             for parent_id in predecessors:
-                eattr = storage.graph.get_edge_data(parent_id,interval)
-                storage.store_successor_prob([(parent_id, domain,eattr) for domain in domains])
+                eattr = storage.graph.get_edge_data(parent_id, interval)
+                storage.store_successor_prob([(parent_id, domain, eattr) for domain in domains])
                 storage.graph.remove_edge(parent_id, interval)
             # storage.graph.remove_node(interval)
             storage.graph.nodes[interval]['ignore'] = True

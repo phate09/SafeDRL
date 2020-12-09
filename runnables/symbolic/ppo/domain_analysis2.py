@@ -46,7 +46,7 @@ current_interval = current_interval.round(rounding)
 remainings = [current_interval]
 storage.root = HyperRectangle_action.from_hyperrectangle(current_interval, None)
 storage.graph.add_node(storage.root)
-horizon = 5
+horizon = 3
 t = 0
 # %%
 # storage.load_state(f"/home/edoardo/Development/SafeDRL/save/ppo_nx_graph_e{rounding}.p")
