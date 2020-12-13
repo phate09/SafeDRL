@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from mosaic.utils import compute_trace_polygons, PolygonSort
+from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch, generate_mock_input
 import plotly.graph_objects as go
 import itertools
@@ -143,58 +144,6 @@ def print_model(gurobi_model):
     print("----------------------------")
 
 
-class GraphExplorer:
-    def __init__(self, template):
-        self.graph = nx.DiGraph()
-        self.dimension = int(len(template) / 2)
-        self.p = index.Property(dimension=self.dimension)
-        self.root = None
-        self.coverage_tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.last_index = 0
-
-    def store_boundary(self, boundary: tuple):
-        covered = self.is_covered(boundary)
-        if not covered:
-            self.graph.add_node(boundary)
-            self.last_index += 1
-            self.coverage_tree.insert(self.last_index, self.convert_boundary_to_rtree_boundary(boundary), boundary)
-
-    @staticmethod
-    def convert_boundary_to_rtree_boundary(boundary: tuple):
-        boundary_array = np.array(boundary)
-        boundary_array = np.abs(boundary_array)
-        return tuple(boundary_array)
-
-    def is_covered(self, other: tuple):
-        intersection = self.coverage_tree.intersection(self.convert_boundary_to_rtree_boundary(other), objects='raw')
-        for item in intersection:
-            contained = True
-            for i, element in enumerate(item):
-                other_element = other[i]
-                if i % 2 == 0:
-                    if element < other_element:
-                        contained = False
-                        break
-                else:
-                    if element > other_element:
-                        contained = False
-                        break
-            if contained:
-                return True
-        return False
-
-    def get_next_in_fringe(self):
-        min_distance = float("inf")
-        result = defaultdict(list)
-        shortest_path = nx.shortest_path(self.graph, source=self.root)
-        for key in shortest_path:
-            if self.graph.out_degree[key] == 0:
-                distance = len(shortest_path[key])
-                if distance < min_distance:
-                    min_distance = distance
-                result[distance].append(key)
-        return result[min_distance]
-
 
 def main():
     nn = generate_nn_torch(six_dim=True)
@@ -225,7 +174,7 @@ def main():
     x_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_results)
     vertices_list = []
     vertices_list.append([x_vertices])
-    for t in range(25):
+    for t in range(15):
         fringe = graph.get_next_in_fringe()
         timestep_container = []
         for fringe_element in fringe:
@@ -234,7 +183,7 @@ def main():
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            feasible = generate_mock_guard(gurobi_model, input, nn, 0)
+            feasible = generate_mock_guard(gurobi_model, input, nn, action_ego=0)
             if feasible:
                 # apply dynamic
                 x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
@@ -243,7 +192,7 @@ def main():
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            feasible = generate_mock_guard(gurobi_model, input, nn, 1)
+            feasible = generate_mock_guard(gurobi_model, input, nn, action_ego=1)
             if feasible:
                 # apply dynamic
                 x_prime = apply_dynamic(input, gurobi_model, 1, t=t)

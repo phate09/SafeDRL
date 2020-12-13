@@ -1,19 +1,9 @@
-from collections import defaultdict
-from typing import Union, List
-from rtree import index
-import torch
-import torch.nn
 import numpy as np
 import gurobi as grb
 import pypoman
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
-from mosaic.utils import compute_trace_polygons, PolygonSort
-from polyhedra.net_methods import generate_nn_torch, generate_mock_input
-import plotly.graph_objects as go
-import itertools
-import networkx as nx
+from polyhedra.graph_explorer import GraphExplorer
+from polyhedra.net_methods import generate_nn_torch
 
 from polyhedra.plot_utils import show_polygon_list, show_polygon_list2
 
@@ -31,17 +21,14 @@ def generate_input_region(gurobi_model, templates, boundaries):
 
 def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
     if action_ego == 0:
-        y = gurobi_model.addVars(2, vtype=grb.GRB.BINARY, name=f"or_indicator_{t}")
-        gurobi_model.addGenConstrIndicator(y[0], True, ((input[0] - input[1]) <= 50), name=f"cond1_{t}")
-        gurobi_model.addGenConstrIndicator(y[1], True, (input[3] >= 25), name=f"cond2_{t}")
-        gurobi_model.addConstr(y[0] + y[1] == 1, name=f"cond3_{t}")
+        if t == 0:
+            gurobi_model.addConstr(input[3] >= 30, name=f"cond2_{t}")
+        else:
+            gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
     else:
-        constr3 = gurobi_model.getConstrByName(f"cond3_{t}")
-        if constr3 is not None:
-            gurobi_model.remove(constr3)
         epsilon = 1e-8
         gurobi_model.addConstr((input[0] - input[1]) >= 50 + epsilon, name=f"cond1_{t}")
-        gurobi_model.addConstr(input[3] <= 25 + epsilon, name=f"cond2_{t}")
+        gurobi_model.addConstr(input[3] <= 30 + epsilon, name=f"cond2_{t}")
 
 
 def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, t=0):
@@ -106,60 +93,6 @@ def print_model(gurobi_model):
     print("----------------------------")
 
 
-class GraphExplorer:
-    def __init__(self, template):
-        self.graph = nx.DiGraph()
-        self.dimension = int(len(template) / 2)
-        self.p = index.Property(dimension=self.dimension)
-        self.root = None
-        self.coverage_tree = index.Index(interleaved=False, properties=self.p, overwrite=True)
-        self.last_index = 0
-
-    def store_boundary(self, boundary: tuple):
-        boundary = tuple(np.array(boundary).round(4))
-        covered = self.is_covered(boundary)
-        if not covered:
-            self.graph.add_node(boundary)
-            self.last_index += 1
-            self.coverage_tree.insert(self.last_index, self.convert_boundary_to_rtree_boundary(boundary), boundary)
-
-    @staticmethod
-    def convert_boundary_to_rtree_boundary(boundary: tuple):
-        boundary_array = np.array(boundary)
-        boundary_array = np.abs(boundary_array)
-        return tuple(boundary_array)
-
-    def is_covered(self, other: tuple):
-        intersection = self.coverage_tree.intersection(self.convert_boundary_to_rtree_boundary(other), objects='raw')
-        for item in intersection:
-            contained = True
-            for i, element in enumerate(item):
-                other_element = other[i]
-                if i % 2 == 0:
-                    if element < other_element:
-                        contained = False
-                        break
-                else:
-                    if element > other_element:
-                        contained = False
-                        break
-            if contained:
-                return True
-        return False
-
-    def get_next_in_fringe(self):
-        min_distance = float("inf")
-        result = defaultdict(list)
-        shortest_path = nx.shortest_path(self.graph, source=self.root)
-        for key in shortest_path:
-            if self.graph.out_degree[key] == 0:
-                distance = len(shortest_path[key])
-                if distance < min_distance:
-                    min_distance = distance
-                result[distance].append(key)
-        return result[min_distance]
-
-
 def main():
     nn = generate_nn_torch()
     gurobi_model = grb.Model()
@@ -188,16 +121,24 @@ def main():
     x_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_results)
     vertices_list = []
     vertices_list.append([x_vertices])
-    for t in range(25):
+    for t in range(15):
         fringe = graph.get_next_in_fringe()
-        timestep_container=[]
+        timestep_container = []
         for fringe_element in fringe:
             found_successor = False
-            # deceleration
+            # deceleration 1
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            generate_mock_guard(gurobi_model, input, 0, t=t)
+            generate_mock_guard(gurobi_model, input, 0, t=0)
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
+            found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
+            # deceleration 2
+            gurobi_model = grb.Model()
+            gurobi_model.setParam('OutputFlag', False)
+            input = generate_input_region(gurobi_model, template, fringe_element)
+            generate_mock_guard(gurobi_model, input, 0, t=1)
             # apply dynamic
             x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
             found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
@@ -205,7 +146,7 @@ def main():
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            generate_mock_guard(gurobi_model, input, 1, t=t)
+            generate_mock_guard(gurobi_model, input, 1)
             # apply dynamic
             x_prime = apply_dynamic(input, gurobi_model, 1, t=t)
             found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
@@ -226,9 +167,6 @@ def h_repr_to_plot(found_successor, fringe, graph, gurobi_model, template, verti
         x_prime_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_prime_results)
         vertices_list.append(x_prime_vertices)
     return found_successor
-
-
-
 
 
 if __name__ == '__main__':

@@ -40,7 +40,7 @@ def generate_nn(x, min_speed=20, max_speed=30, min_distance=40, max_distance=50)
     return y
 
 
-def generate_nn_torch(min_speed=20, max_speed=25, min_distance=40, max_distance=50, six_dim=False):
+def generate_nn_torch(min_speed=20, max_speed=30, min_distance=40, max_distance=50, six_dim=False):
     layers = []
     if six_dim:
         l0 = torch.nn.Linear(6, 2, bias=False)
