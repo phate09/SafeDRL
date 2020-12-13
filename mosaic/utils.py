@@ -251,15 +251,22 @@ def PolygonSort(corners):
     return cornersWithAngles  # map(lambda x: (x[0], x[1]), cornersWithAngles)
 
 
-def compute_trace_polygon(corners):
+def compute_trace_polygons(polygons: List[List]):
     # e.g corners = [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]
     # corners need to be sorted
-    x = [corner[0] for corner in corners]
-    y = [corner[1] for corner in corners]
-    x.append(corners[0][0])
-    y.append(corners[0][1])
+    x_list = []
+    y_list = []
+    for corners in polygons:
+        x = [corner[0] for corner in corners]
+        y = [corner[1] for corner in corners]
+        x.append(corners[0][0])
+        y.append(corners[0][1])
+        x.append(None)
+        y.append(None)
+        x_list.extend(x)
+        y_list.extend(y)
 
-    trace1 = go.Scatter(x=x, y=y, mode='markers', fill='toself', )
+    trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', )
     return trace1
 
 

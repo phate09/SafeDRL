@@ -40,8 +40,12 @@ def generate_nn(x, min_speed=20, max_speed=30, min_distance=40, max_distance=50)
     return y
 
 
-def generate_nn_torch(min_speed=20, max_speed=30, min_distance=40, max_distance=50):
+def generate_nn_torch(min_speed=20, max_speed=25, min_distance=40, max_distance=50, six_dim=False):
     layers = []
+    if six_dim:
+        l0 = torch.nn.Linear(6, 2, bias=False)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 0, 1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float64))
+        layers.append(l0)
     l1 = torch.nn.Linear(2, 4)
     l1.weight = torch.nn.Parameter(torch.tensor([[1, 1, 0, 0], [0, 0, 1, 1]], dtype=torch.float64).T)
     l1.bias = torch.nn.Parameter(torch.tensor([-min_speed, -max_speed, -min_distance, -max_distance], dtype=torch.float64))
@@ -97,7 +101,7 @@ def test_nn_torch():
     x = torch.tensor(x_numpy, dtype=torch.float64)
     nn = generate_nn_torch()
     y = nn(x)
-    y = torch.argmax(y,1)
+    y = torch.argmax(y, 1)
     print(y)
     fig = px.scatter(x=x_numpy[:, 0], y=x_numpy[:, 1], color=y.detach().numpy().astype(str), color_continuous_scale=px.colors.sequential.Viridis)
     fig.show()

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Union, List
+from typing import Union
 from rtree import index
 import torch
 import torch.nn
@@ -16,10 +16,11 @@ import itertools
 import networkx as nx
 
 from polyhedra.plot_utils import show_polygon_list, show_polygon_list2
+from polyhedra.runnable.nn_analysis import analyse_input
 
 
 def generate_input_region(gurobi_model, templates, boundaries):
-    input = gurobi_model.addVars(6, lb=float("-inf"), name="input")
+    input = gurobi_model.addMVar(shape=6, lb=float("-inf"), name="input")
     for j, template in enumerate(templates):
         gurobi_model.update()
         multiplication = 0
@@ -29,20 +30,56 @@ def generate_input_region(gurobi_model, templates, boundaries):
     return input
 
 
-def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
-    if action_ego == 0:
-        y = gurobi_model.addVars(2, vtype=grb.GRB.BINARY, name=f"or_indicator_{t}")
-        gurobi_model.addGenConstrIndicator(y[0], True, ((input[0] - input[1]) <= 50), name=f"cond1_{t}")
-        gurobi_model.addGenConstrIndicator(y[1], True, (input[3] >= 25), name=f"cond2_{t}")
-        gurobi_model.addConstr(y[0] + y[1] == 1, name=f"cond3_{t}")
-    else:
-        constr3 = gurobi_model.getConstrByName(f"cond3_{t}")
-        if constr3 is not None:
-            gurobi_model.remove(constr3)
-        epsilon = 1e-8
-        gurobi_model.addConstr((input[0] - input[1]) >= 50 + epsilon, name=f"cond1_{t}")
-        gurobi_model.addConstr(input[3] <= 25 + epsilon, name=f"cond2_{t}")
+def generate_mock_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
+    gurobi_vars = []
+    gurobi_vars.append(input)
+    for i, layer in enumerate(nn):
 
+        # print(layer)
+        if type(layer) is torch.nn.Linear:
+            v = gurobi_model.addMVar(lb=float("-inf"), shape=(layer.out_features), name=f"layer_{i}")
+            lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
+            if layer.bias is not None:
+                lin_expr = lin_expr + layer.bias.data.numpy()
+            gurobi_model.addConstr(v == lin_expr)
+            gurobi_vars.append(v)
+            gurobi_model.update()
+            gurobi_model.optimize()
+            assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        elif type(layer) is torch.nn.ReLU:
+            v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+            z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
+            M = 10e6
+            # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+            gurobi_model.addConstr(v >= gurobi_vars[-1])
+            gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z)
+            gurobi_model.addConstr(v >= 0)
+            gurobi_model.addConstr(v <= M - M * z)
+            gurobi_vars.append(v)
+            gurobi_model.update()
+            gurobi_model.optimize()
+            assert gurobi_model.status == 2, "LP wasn't optimally solved"
+            """
+            y = Relu(x)
+            0 <= z <= 1, z is integer
+            y >= x
+            y <= x + Mz
+            y >= 0
+            y <= M - Mz"""
+    # gurobi_model.setObjective(v[0].sum(), grb.GRB.MINIMIZE)
+    gurobi_model.update()
+    gurobi_model.optimize()
+    assert gurobi_model.status == 2, "LP wasn't optimally solved"
+    # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+    last_layer = gurobi_vars[-1]
+    if action_ego == 0:
+        gurobi_model.addConstr(last_layer[0] >= last_layer[1])
+    else:
+        gurobi_model.addConstr(last_layer[1] >= last_layer[0])
+    gurobi_model.update()
+    gurobi_model.optimize()
+    # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+    return gurobi_model.status == 2
 
 def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, t=0):
     x_lead = input[0]
@@ -51,7 +88,7 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, t=0):
     v_ego = input[3]
     y_lead = input[4]
     y_ego = input[5]
-    z = gurobi_model.addVars(6, lb=float("-inf"), name=f"x_prime_{t}")
+    z = gurobi_model.addMVar(shape=(6,), lb=float("-inf"), name=f"x_prime_{t}")
     a_ego = 1
     dt = .1
     if action_ego == 0:
@@ -116,7 +153,6 @@ class GraphExplorer:
         self.last_index = 0
 
     def store_boundary(self, boundary: tuple):
-        boundary = tuple(np.array(boundary).round(4))
         covered = self.is_covered(boundary)
         if not covered:
             self.graph.add_node(boundary)
@@ -161,7 +197,8 @@ class GraphExplorer:
 
 
 def main():
-    nn = generate_nn_torch()
+    nn = generate_nn_torch(six_dim=True)
+    res = nn(torch.tensor([90,30,20,30,0,0],dtype=torch.float64))
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
     # optimise in a direction
@@ -190,25 +227,27 @@ def main():
     vertices_list.append([x_vertices])
     for t in range(25):
         fringe = graph.get_next_in_fringe()
-        timestep_container=[]
+        timestep_container = []
         for fringe_element in fringe:
             found_successor = False
             # deceleration
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            generate_mock_guard(gurobi_model, input, 0, t=t)
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
-            found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
+            feasible = generate_mock_guard(gurobi_model, input, nn, 0)
+            if feasible:
+                # apply dynamic
+                x_prime = apply_dynamic(input, gurobi_model, 0, t=t)
+                found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
             # # acceleration
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = generate_input_region(gurobi_model, template, fringe_element)
-            generate_mock_guard(gurobi_model, input, 1, t=t)
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 1, t=t)
-            found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
+            feasible = generate_mock_guard(gurobi_model, input, nn, 1)
+            if feasible:
+                # apply dynamic
+                x_prime = apply_dynamic(input, gurobi_model, 1, t=t)
+                found_successor = h_repr_to_plot(found_successor, fringe_element, graph, gurobi_model, template, timestep_container, x_prime)
             if not found_successor:
                 graph.graph.nodes[fringe_element]["ignore"] = True
         vertices_list.append(timestep_container)
@@ -226,10 +265,5 @@ def h_repr_to_plot(found_successor, fringe, graph, gurobi_model, template, verti
         x_prime_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_prime_results)
         vertices_list.append(x_prime_vertices)
     return found_successor
-
-
-
-
-
 if __name__ == '__main__':
     main()
