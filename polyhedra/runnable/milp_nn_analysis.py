@@ -162,7 +162,7 @@ def main():
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
     template = np.array(template)  # the 6 dimensions in 2 variables
     graph = GraphExplorer(template)
-    input_boundaries = [90, -92, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
+    input_boundaries = [50, -52, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
     root = tuple(input_boundaries)
     graph.root = root
     graph.store_boundary(root)

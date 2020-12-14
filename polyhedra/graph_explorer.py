@@ -16,11 +16,11 @@ class GraphExplorer:
 
     def store_boundary(self, boundary: tuple):
         boundary = tuple(np.array(boundary).round(4))  # rounding to 4 decimal digits
-        covered = self.is_covered(boundary)
+        covered = False#self.is_covered(boundary)
         if not covered:
             self.graph.add_node(boundary)
             self.last_index += 1
-            self.coverage_tree.insert(self.last_index, self.convert_boundary_to_rtree_boundary(boundary), boundary)
+            # self.coverage_tree.insert(self.last_index, self.convert_boundary_to_rtree_boundary(boundary[0:12]), boundary)
 
     @staticmethod
     def convert_boundary_to_rtree_boundary(boundary: tuple):

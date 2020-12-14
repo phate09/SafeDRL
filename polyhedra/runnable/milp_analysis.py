@@ -13,9 +13,10 @@ def generate_input_region(gurobi_model, templates, boundaries):
     for j, template in enumerate(templates):
         gurobi_model.update()
         multiplication = 0
+        const_multiplication = 0
         for i in range(6):
             multiplication += template[i] * input[i]
-        gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
+        gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")  # todo fix this
     return input
 
 
@@ -24,10 +25,10 @@ def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
         if t == 0:
             gurobi_model.addConstr(input[3] >= 30, name=f"cond2_{t}")
         else:
-            gurobi_model.addConstr((input[0] - input[1]) <= 50, name=f"cond1_{t}")
+            gurobi_model.addConstr((input[0] - input[1]) <= 5, name=f"cond1_{t}")
     else:
-        epsilon = 1e-8
-        gurobi_model.addConstr((input[0] - input[1]) >= 50 + epsilon, name=f"cond1_{t}")
+        epsilon = 1e-4
+        gurobi_model.addConstr((input[0] - input[1]) >= 5 + epsilon, name=f"cond1_{t}")
         gurobi_model.addConstr(input[3] <= 30 + epsilon, name=f"cond2_{t}")
 
 
@@ -106,18 +107,25 @@ def main():
         t2[dimension] = -1
         template.append(t1)
         template.append(t2)
+
     # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
     template = np.array(template)  # the 6 dimensions in 2 variables
     graph = GraphExplorer(template)
-    input_boundaries = [90, -92, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0]
-    root = tuple(input_boundaries)
-    graph.root = root
-    graph.store_boundary(root)
+    input_boundaries = [50, -52, 30, -31, 20, -30, 30, -30.5, 0, -0, 0, -0,20]
+    t1 = [0] * 6
+    t1[0] = 1
+    t1[1] = -1
+    template = np.vstack([template, t1])
+
     input = generate_input_region(gurobi_model, template, input_boundaries)
+
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
         return
+    root = tuple(x_results)
+    graph.root = root
+    graph.store_boundary(root)
     x_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_results)
     vertices_list = []
     vertices_list.append([x_vertices])
@@ -153,7 +161,7 @@ def main():
             if not found_successor:
                 graph.graph.nodes[fringe_element]["ignore"] = True
         vertices_list.append(timestep_container)
-    show_polygon_list(vertices_list)
+    # show_polygon_list(vertices_list)
     show_polygon_list2(vertices_list)
 
 
