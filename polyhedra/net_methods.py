@@ -46,12 +46,12 @@ def generate_nn_torch(min_speed=20, max_speed=30, min_distance=5, max_distance=1
         l0 = torch.nn.Linear(6, 2, bias=False)
         l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 0, 1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float64))
         layers.append(l0)
-    l1 = torch.nn.Linear(2, 4)
+    l1 = torch.nn.Linear(2, 4)  # (v_ego, x_lead-x_ego)
     l1.weight = torch.nn.Parameter(torch.tensor([[1, 1, 0, 0], [0, 0, 1, 1]], dtype=torch.float64).T)
     l1.bias = torch.nn.Parameter(torch.tensor([-min_speed, -max_speed, -min_distance, -max_distance], dtype=torch.float64))
     layers.append(l1)
     # z1 = l1(x)
-    l2 = torch.nn.Linear(4, 4)
+    l2 = torch.nn.Linear(4, 4)  # (v_ego-min_speed,v_ego-max_speed,x_lead-x_ego-min_distance,x_lead-x_ego-max_distance)
     l2.weight = torch.nn.Parameter(torch.tensor([[0, 1, 0, 0], [0, 0, -1, 0], [0, -1, 0, 0], [0, 0, 1, 0]], dtype=torch.float64))
     l2.bias = torch.nn.Parameter(torch.tensor([0, 0, 0, 0], dtype=torch.float64))
     layers.append(l2)
@@ -63,7 +63,8 @@ def generate_nn_torch(min_speed=20, max_speed=30, min_distance=5, max_distance=1
     l3.bias = torch.nn.Parameter(torch.tensor([0, 0], dtype=torch.float64))
     layers.append(l3)
     # z3 = l3(x3)
-    l4 = torch.nn.Linear(2, 2)
+    nn_upper_bound(layers,1)
+    l4 = torch.nn.Linear(2, 2)  # (decelerate,accelerate)
     l4.weight = torch.nn.Parameter(torch.tensor([[1, 0], [0, 0.001]], dtype=torch.float64))
     l4.bias = torch.nn.Parameter(torch.tensor([0, 0], dtype=torch.float64))
     layers.append(l4)
@@ -71,9 +72,26 @@ def generate_nn_torch(min_speed=20, max_speed=30, min_distance=5, max_distance=1
     return torch.nn.Sequential(*layers)
 
 
+def nn_upper_bound(layers, ub=6):
+    # (10,5)
+    # *-1 (-10,-5)
+    # +upper_bound[6] (-4,+1
+    # relu (0,+1)
+    # *-1 (0,-1)
+    # +upper_bound (6,5)
+    l1 = torch.nn.Linear(2, 2)
+    l1.weight = torch.nn.Parameter(torch.tensor([[-1, 0], [0, -1]], dtype=torch.float64))
+    l1.bias = torch.nn.Parameter(torch.tensor([ub,ub], dtype=torch.float64))
+    layers.append(l1)
+    layers.append(torch.nn.ReLU())
+    l2 = torch.nn.Linear(2, 2)
+    l2.weight = torch.nn.Parameter(torch.tensor([[-1, 0], [0, -1]], dtype=torch.float64))
+    l2.bias = torch.nn.Parameter(torch.tensor([ub, ub], dtype=torch.float64))
+    layers.append(l2)
+
 def test_nn_numpy():
     x = generate_mock_input()
-    y = generate_nn(np.array([[20, 30], [20, 55], [30, 40], [20, 40], [10, 20]]))
+    y = generate_nn(np.array([[30, 5], [28, 5], [32, 5], [20, 5], [10, 20]]))
 
     print(y)
     fig = px.scatter(x=x[:, 0], y=x[:, 1], color=y.astype(str), color_continuous_scale=px.colors.sequential.Viridis)
@@ -96,8 +114,8 @@ def generate_mock_input():
 
 
 def test_nn_torch():
-    x_numpy = generate_mock_input()
-    # x_numpy = np.array([[20, 30], [20, 55], [30, 40], [20, 40], [10, 20]])
+    # x_numpy = generate_mock_input()
+    x_numpy = np.array([[30, 5], [28, 5], [32, 5], [20, 5], [20, 4]])
     x = torch.tensor(x_numpy, dtype=torch.float64)
     nn = generate_nn_torch()
     y = nn(x)

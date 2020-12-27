@@ -173,17 +173,17 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
 
 
 def main():
-    mode = 0  # 0 hardcoded guard, 1 nn guard
+    mode = 1  # 0 hardcoded guard, 1 nn guard
     output_flag = False
     nn = generate_nn_torch(six_dim=True, min_distance=20, max_distance=22)  # min_speed=30,max_speed=36
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
     graph = GraphExplorer(None)
 
-    input_boundaries, template = get_template(3)
+    input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    _, template = get_template(1)
+    _, template = get_template(4)
     x_results = optimise(template, gurobi_model, input)
     # input_boundaries, template = get_template(3)
     if x_results is None:
@@ -309,7 +309,7 @@ def get_template(mode=0):
     a_lead = e(6, 4)
     a_ego = e(6, 5)
     if mode == 0:  # box directions with intervals
-        input_boundaries = [52, -40, 31, -30, 30, -27, 30.5, -30, 0, -0, 0, -0]
+        input_boundaries = [50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
         # optimise in a direction
         template = []
         for dimension in range(6):
@@ -326,7 +326,7 @@ def get_template(mode=0):
 
         input_boundaries = [20]
 
-        template = np.array([a_lead, -a_lead, a_ego, -a_ego, v_lead, -v_lead, v_ego, -(x_lead - x_ego), (x_lead - x_ego)])
+        template = np.array([a_lead, -a_lead, a_ego, -a_ego, v_lead, -v_lead, v_ego, -(x_lead - x_ego)])
         return input_boundaries, template
     if mode == 2:
         input_boundaries = [0, -100, 30, -31, 20, -30, 0, -35, 0, -0, -10, -10, 20]
