@@ -180,12 +180,12 @@ def main():
     gurobi_model.setParam('OutputFlag', output_flag)
     graph = GraphExplorer(None)
 
-    input_boundaries, template = get_template(0)
+    input_boundaries, template = get_template(3)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    _, template = get_template(4)
+    _, template = get_template(1)
     x_results = optimise(template, gurobi_model, input)
-    # input_boundaries, template = get_template(3)
+    # input_boundaries, template = get_template(1)
     if x_results is None:
         print("Model unsatisfiable")
         return

@@ -38,7 +38,7 @@ def get_dqn_car_trainer():
 
               # "vf_share_layers": False,  # try different lrs
               # "vf_clip_param": 100,
-              "clip_rewards": 10000,
+              "clip_rewards": False,
               "num_workers": 8,  # parallelism
               "batch_mode": "complete_episodes",  # "use_gae": False,  #
               "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
@@ -47,7 +47,7 @@ def get_dqn_car_trainer():
 
 
 if __name__ == "__main__":
-    ray.init(local_mode=False, include_dashboard=True)
+    ray.init(local_mode=True, include_dashboard=True)
     trainer, config = get_dqn_car_trainer()
     while True:
         train_result = trainer.train()

@@ -1,5 +1,7 @@
 from collections import defaultdict
 from typing import Union
+
+import ray
 from rtree import index
 import torch
 import torch.nn
@@ -9,6 +11,8 @@ import pypoman
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+from agents.dqn.train_DQN_car import get_dqn_car_trainer
+from agents.ray_utils import convert_DQN_ray_policy_to_sequential
 from mosaic.utils import compute_trace_polygons, PolygonSort
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch, generate_mock_input
@@ -147,6 +151,12 @@ def print_model(gurobi_model):
 
 def main():
     nn = generate_nn_torch(six_dim=True)
+    # ray.init(local_mode=True)
+    # trainer, config = get_dqn_car_trainer()
+    # trainer.restore("/home/edoardo/ray_results/DQN_StoppingCar_2020-12-28_15-49-16c3ga4n0f/checkpoint_12/checkpoint-12")  # super safe
+    # policy = trainer.get_policy()
+    # sequential_nn = convert_DQN_ray_policy_to_sequential(policy).cpu()
+    # nn_trained = sequential_nn
     res = nn(torch.tensor([90,30,20,30,0,0],dtype=torch.float64))
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)

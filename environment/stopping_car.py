@@ -46,15 +46,17 @@ class StoppingCar(gym.Env):
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
         cost = 0
-        if self.x_ego > self.x_lead:  # crash
+        done = False
+        if delta_x < 0:  # crash
             done = True
-            cost += 1e10
+            cost = -1e10
         else:
-            done = False
-            cost += 0.0001 * (abs(delta_x - self.d_default) ** 2)
-            cost += 0.0001 * (abs(delta_v) ** 2)  # try to match v_set speed
+            cost -= (((delta_x - self.d_default) ** 2) / delta_x)
+        cost = max(cost, -1e10)
 
-        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_x, delta_v]), -cost, done, {}
+        if cost > 0:
+            print(cost)
+        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego,delta_v, delta_x]), cost, done, {}
 
     def perfect_action(self):
         delta_x = self.x_lead - self.x_ego
