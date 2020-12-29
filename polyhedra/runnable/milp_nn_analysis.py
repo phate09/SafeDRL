@@ -151,12 +151,7 @@ def print_model(gurobi_model):
 
 def main():
     nn = generate_nn_torch(six_dim=True)
-    # ray.init(local_mode=True)
-    # trainer, config = get_dqn_car_trainer()
-    # trainer.restore("/home/edoardo/ray_results/DQN_StoppingCar_2020-12-28_15-49-16c3ga4n0f/checkpoint_12/checkpoint-12")  # super safe
-    # policy = trainer.get_policy()
-    # sequential_nn = convert_DQN_ray_policy_to_sequential(policy).cpu()
-    # nn_trained = sequential_nn
+
     res = nn(torch.tensor([90,30,20,30,0,0],dtype=torch.float64))
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)

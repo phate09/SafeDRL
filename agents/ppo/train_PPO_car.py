@@ -33,17 +33,25 @@ if __name__ == "__main__":
     config = {"env": StoppingCar,  #
               "model": {"fcnet_hiddens": [20, 20, 20, 20], "fcnet_activation": "relu"},  # model config,"custom_model": "my_model",
               "vf_share_layers": False,  # try different lrs
-              "vf_clip_param": 1000, "num_workers": 8,  # parallelism
+              "lr": 0.01,
+              "vf_clip_param": 10000,
+              "num_workers": 8,  # parallelism
               # "batch_mode": "complete_episodes", "use_gae": False,  #
-              "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
+              "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 200}
     ray.init(local_mode=False, include_dashboard=True)
     trainer = ppo.PPOTrainer(config=config)
+    i = 0
     while True:
         train_result = trainer.train()
-        print(train_result)
-        if train_result["episode_len_mean"] > 800:
+        print(
+            f"i:{i} episode_reward_max:{train_result['episode_reward_max']:.2E}, episode_reward_min:{train_result['episode_reward_min']:.2E}, episode_reward_mean:{train_result['episode_reward_mean']:.2E}, episode_len_mean:{train_result['episode_len_mean']}")
+        i += 1
+        if train_result["episode_reward_mean"] > -2000:
             print("Termination condition satisfied")
             break
+        if i % 50 == 0:
+            checkpoint = trainer.save()
+            print("\ncheckpoint saved at", checkpoint)
     checkpoint = trainer.save()
     print("checkpoint saved at", checkpoint)
     ray.shutdown()

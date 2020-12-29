@@ -24,9 +24,10 @@ def convert_DQN_ray_policy_to_sequential(policy: DQNTorchPolicy) -> torch.nn.Seq
         for layer in seq_layer._modules['_model']:
             print(layer)
             layers_list.append(layer)
-    for layer in policy.model._modules['torch_sub_model']._modules['_value_branch']._modules["_model"]:
-        print(layer)
-        layers_list.append(layer)
+    for seq_layer in policy.model._modules['advantage_module']:
+        for layer in seq_layer._modules['_model']:
+            print(layer)
+            layers_list.append(layer)
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
 

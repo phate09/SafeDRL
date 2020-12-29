@@ -1,7 +1,11 @@
 import numpy as np
 import gurobi as grb
 import pypoman
+import ray
 import torch
+
+from agents.dqn.train_DQN_car import get_dqn_car_trainer
+from agents.ray_utils import convert_DQN_ray_policy_to_sequential
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
 import functools
@@ -173,9 +177,25 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
 
 
 def main():
-    mode = 1  # 0 hardcoded guard, 1 nn guard
     output_flag = False
-    nn = generate_nn_torch(six_dim=True, min_distance=20, max_distance=22)  # min_speed=30,max_speed=36
+    mode = 2  # 0 hardcoded guard, 1 nn guard, 2 trained nn
+    if mode == 2:
+        ray.init(local_mode=True)
+        trainer, config = get_dqn_car_trainer()
+        trainer.restore("/home/edoardo/ray_results/DQN_StoppingCar_2020-12-29_15-12-59onuvlhtv/checkpoint_400/checkpoint-400")  # super safe
+        policy = trainer.get_policy()
+        sequential_nn = convert_DQN_ray_policy_to_sequential(policy).cpu()
+        l0 = torch.nn.Linear(6, 2, bias=False)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 0, 1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float64))
+        layers = [l0]
+        for l in sequential_nn:
+            layers.append(l)
+
+        nn = torch.nn.Sequential(*layers)
+    elif mode == 1:
+        nn = generate_nn_torch(six_dim=True, min_distance=20, max_distance=22)  # min_speed=30,max_speed=36
+    else:
+        nn = None
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
     graph = GraphExplorer(None)
@@ -265,7 +285,7 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
         if found_successor:
             post.append(tuple(x_prime_results))
-    if mode == 1:
+    if mode == 1 or mode == 2:
         # deceleration
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)

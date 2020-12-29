@@ -34,14 +34,20 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 def get_dqn_car_trainer():
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": StoppingCar,  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [20, 20, 20], "fcnet_activation": "relu"},  # model config,
+              "model": {"custom_model": "my_model", "fcnet_hiddens": [128], "fcnet_activation": "relu"},  # model config,
 
               # "vf_share_layers": False,  # try different lrs
               # "vf_clip_param": 100,
-              "clip_rewards": False,
+              "lr": 0.001,
+              # "clip_rewards": False,  # 500*1000,
+              "grad_clip": 2500,
+              # "worker_side_prioritization": True,
               "num_workers": 8,  # parallelism
-              "batch_mode": "complete_episodes",  # "use_gae": False,  #
-              "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
+              "batch_mode": "complete_episodes",
+              "rollout_fragment_length": 1,
+              "num_envs_per_worker": 5,
+              "train_batch_size": 256,
+              "framework": "torch", "horizon": 200}
     trainer = dqn.DQNTrainer(config=config)
     return trainer, config
 
@@ -49,12 +55,19 @@ def get_dqn_car_trainer():
 if __name__ == "__main__":
     ray.init(local_mode=True, include_dashboard=True)
     trainer, config = get_dqn_car_trainer()
+    # trainer.load_checkpoint("/home/edoardo/ray_results/DQN_StoppingCar_2020-12-29_13-34-14253_nvwd/checkpoint_400/checkpoint-400")
+    i = 0
     while True:
         train_result = trainer.train()
-        print(train_result)
-        if train_result["episode_len_mean"] > 800:
+        print(
+            f"i:{i} episode_reward_max:{train_result['episode_reward_max']:.2E}, episode_reward_min:{train_result['episode_reward_min']:.2E}, episode_reward_mean:{train_result['episode_reward_mean']:.2E}, episode_len_mean:{train_result['episode_len_mean']}")
+        i += 1
+        if train_result["episode_reward_mean"] > -5e4:
             print("Termination condition satisfied")
             break
+        if i % 100 == 0:
+            checkpoint = trainer.save()
+            print("\ncheckpoint saved at", checkpoint)
     checkpoint = trainer.save()
     print("checkpoint saved at", checkpoint)
     ray.shutdown()

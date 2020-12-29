@@ -14,7 +14,7 @@ sequential_nn = generate_nn_torch(six_dim=False,min_distance=20,max_distance=30)
 env = StoppingCar()
 state = env.reset()
 print(state)
-for i in range(2000):
+for i in range(1000):
     state_reduced = torch.from_numpy(state).float().unsqueeze(0)
     v_ego = state_reduced[:, 3]
     delta_x = state_reduced[:, -1]

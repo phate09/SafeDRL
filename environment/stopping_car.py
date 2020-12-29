@@ -1,3 +1,4 @@
+import math
 import random
 
 import gym
@@ -15,7 +16,7 @@ class StoppingCar(gym.Env):
         self.y_ego = 0  # acceleration ego vehicle
         self.a_ego = 3  # deceleration/acceleration amount
         self.dt = .1  # delta time
-        self.d_default = 30  # minimum safe distance
+        self.d_default = 40  # minimum safe distance
         # self.t_gap = 1.4  # safe distance reaction time
         self.v_set = 30  # speed to drive at if no cars ahead
         self.action_space = spaces.Discrete(2)
@@ -25,9 +26,9 @@ class StoppingCar(gym.Env):
     def reset(self):
         self.y_lead = self.y_ego = 0
         self.v_lead = random.uniform(20, 30)
-        self.v_ego = random.uniform(30, 30.5)
+        self.v_ego = random.uniform(20, 30)
         self.x_ego = random.uniform(30, 31)
-        self.x_lead = random.uniform(90, 92)
+        self.x_lead = random.uniform(50, 51)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
         return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_x, delta_v])
@@ -39,7 +40,7 @@ class StoppingCar(gym.Env):
             acceleration = self.a_ego
         self.y_ego = acceleration  # -2 * self.y_ego * self.dt + 2 * acceleration
         self.v_ego += self.y_ego * self.dt
-        self.v_ego = max(self.v_ego, 1)
+        # self.v_ego = max(self.v_ego, 1)
         self.v_lead += self.y_lead * self.dt
         self.x_lead += self.v_lead * self.dt
         self.x_ego += self.v_ego * self.dt
@@ -47,16 +48,22 @@ class StoppingCar(gym.Env):
         delta_v = self.v_lead - self.v_ego
         cost = 0
         done = False
-        if delta_x < 0:  # crash
-            done = True
-            cost = -1e10
-        else:
-            cost -= (((delta_x - self.d_default) ** 2) / delta_x)
-        cost = max(cost, -1e10)
-
-        if cost > 0:
-            print(cost)
-        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego,delta_v, delta_x]), cost, done, {}
+        # if delta_x < 0:  # crash
+        #     # done = True
+        #     cost = -1000
+        # else:
+        # cost -= 0.5 * (((delta_x - self.d_default) ** 2) / (delta_x))
+        # if delta_x > self.d_default:
+        #     cost -= (-20 * math.log10(delta_x - self.d_default)) + (0.02 * ((delta_x - self.d_default) ** 2)) + 20
+        # else:
+        #     cost -= 1000
+        # cost -= min((delta_v ** 2),1000)
+        # cost = max(cost, -200)
+        cost -= (delta_x - self.d_default) ** 2
+        # cost -= (delta_v ** 2)
+        # if cost > 0:
+        #     print(cost)
+        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x]), cost, done, {}
 
     def perfect_action(self):
         delta_x = self.x_lead - self.x_ego
