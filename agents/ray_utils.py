@@ -9,11 +9,11 @@ from environment.stopping_car import StoppingCar
 
 def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
-    for seq_layer in policy.model._modules['_hidden_layers']:
+    for seq_layer in policy.model.torch_sub_model._hidden_layers:
         for layer in seq_layer._modules['_model']:
             print(layer)
             layers_list.append(layer)
-    for layer in policy.model._modules['_logits']._modules['_model']:
+    for layer in policy.model.torch_sub_model._modules['_logits']._modules['_model']:
         print(layer)
         layers_list.append(layer)
     sequential_nn = torch.nn.Sequential(*layers_list)

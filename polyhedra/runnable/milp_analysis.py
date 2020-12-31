@@ -4,8 +4,9 @@ import pypoman
 import ray
 import torch
 
-from agents.dqn.train_DQN_car import get_dqn_car_trainer
-from agents.ray_utils import convert_DQN_ray_policy_to_sequential
+from agents.dqn.train_DQN_car import get_dqn_car_trainer, get_apex_dqn_car_trainer
+from agents.ppo.train_PPO_car import get_PPO_trainer
+from agents.ray_utils import convert_DQN_ray_policy_to_sequential, convert_ray_policy_to_sequential
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
 import functools
@@ -181,12 +182,12 @@ def main():
     mode = 2  # 0 hardcoded guard, 1 nn guard, 2 trained nn
     if mode == 2:
         ray.init(local_mode=True)
-        trainer, config = get_dqn_car_trainer()
-        trainer.restore("/home/edoardo/ray_results/DQN_StoppingCar_2020-12-29_15-12-59onuvlhtv/checkpoint_400/checkpoint-400")  # super safe
+        config, trainer = get_PPO_trainer(use_gpu=0)
+        trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
         policy = trainer.get_policy()
-        sequential_nn = convert_DQN_ray_policy_to_sequential(policy).cpu()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         l0 = torch.nn.Linear(6, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 0, 1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float64))
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
         layers = [l0]
         for l in sequential_nn:
             layers.append(l)
@@ -225,7 +226,7 @@ def main():
     frontier = [(0, root)]
     while len(frontier) != 0:
         t, x = frontier.pop()
-        if t > 100:
+        if t > 200:
             break
         if any([contained(x, s) for s in seen]):
             continue
