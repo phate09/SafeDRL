@@ -47,24 +47,24 @@ def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, a
             lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
             if layer.bias is not None:
                 lin_expr = lin_expr + layer.bias.data.numpy()
-            gurobi_model.addConstr(v == lin_expr)
+            gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
             gurobi_vars.append(v)
-            gurobi_model.update()
-            gurobi_model.optimize()
-            assert gurobi_model.status == 2, "LP wasn't optimally solved"
+            # gurobi_model.update()
+            # gurobi_model.optimize()
+            # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         elif type(layer) is torch.nn.ReLU:
             v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
             z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
             M = 10e6
             # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
-            gurobi_model.addConstr(v >= gurobi_vars[-1])
-            gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z)
-            gurobi_model.addConstr(v >= 0)
-            gurobi_model.addConstr(v <= M - M * z)
+            gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
+            gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
+            gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
+            gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
             gurobi_vars.append(v)
-            gurobi_model.update()
-            gurobi_model.optimize()
-            assert gurobi_model.status == 2, "LP wasn't optimally solved"
+            # gurobi_model.update()
+            # gurobi_model.optimize()
+            # assert gurobi_model.status == 2, "LP wasn't optimally solved"
             """
             y = Relu(x)
             0 <= z <= 1, z is integer
@@ -72,16 +72,15 @@ def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, a
             y <= x + Mz
             y >= 0
             y <= M - Mz"""
-    # gurobi_model.setObjective(v[0].sum(), grb.GRB.MINIMIZE)
-    gurobi_model.update()
-    gurobi_model.optimize()
-    assert gurobi_model.status == 2, "LP wasn't optimally solved"
+    # gurobi_model.update()
+    # gurobi_model.optimize()
+    # assert gurobi_model.status == 2, "LP wasn't optimally solved"
     # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
     last_layer = gurobi_vars[-1]
     if action_ego == 0:
-        gurobi_model.addConstr(last_layer[0] >= last_layer[1])
+        gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
     else:
-        gurobi_model.addConstr(last_layer[1] >= last_layer[0])
+        gurobi_model.addConstr(last_layer[1] >= last_layer[0], name="last_layer")
     gurobi_model.update()
     gurobi_model.optimize()
     # assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -290,6 +289,9 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         # deceleration
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
+        # gurobi_model.setParam('OptimalityTol', 1e-9)
+        # gurobi_model.setParam('FeasibilityTol', 1e-9)
+        # gurobi_model.setParam('IntFeasTol', 1e-9)
         input = generate_input_region(gurobi_model, template, x)
         feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
         if feasible:
@@ -301,6 +303,9 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         # # acceleration
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
+        # gurobi_model.setParam('OptimalityTol', 1e-9)
+        # gurobi_model.setParam('FeasibilityTol', 1e-9)
+        # gurobi_model.setParam('IntFeasTol', 1e-9)
         input = generate_input_region(gurobi_model, template, x)
         feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
         if feasible:
@@ -347,7 +352,7 @@ def get_template(mode=0):
 
         input_boundaries = [20]
 
-        template = np.array([a_lead, -a_lead, a_ego, -a_ego, v_lead, -v_lead, v_ego, -(x_lead - x_ego)])
+        template = np.array([a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -(v_lead - v_ego),(v_lead - v_ego), -(x_lead - x_ego),(x_lead - x_ego)])
         return input_boundaries, template
     if mode == 2:
         input_boundaries = [0, -100, 30, -31, 20, -30, 0, -35, 0, -0, -10, -10, 20]

@@ -64,7 +64,7 @@ if __name__ == "__main__":
         print(
             f"i:{i} episode_reward_max:{train_result['episode_reward_max']:.2E}, episode_reward_min:{train_result['episode_reward_min']:.2E}, episode_reward_mean:{train_result['episode_reward_mean']:.2E}, episode_len_mean:{train_result['episode_len_mean']}")
         i += 1
-        if train_result["episode_reward_mean"] > -5e2:
+        if train_result["episode_reward_mean"] > -5e1:
             print("Termination condition satisfied")
             break
         if i % 10 == 0:

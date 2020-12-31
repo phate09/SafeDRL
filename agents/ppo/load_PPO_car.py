@@ -8,7 +8,8 @@ from environment.stopping_car import StoppingCar
 ray.init()
 config, trainer = get_PPO_trainer(use_gpu=0)
 # trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_60/checkpoint-60")
-trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
+trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65") # 5e-2 ~19.8 delta x
+# trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-31_04-54-40836ruh3q/checkpoint_190/checkpoint-190") # not fully trained ~14.5 delta x
 policy = trainer.get_policy()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 l0 = torch.nn.Linear(6, 2, bias=False)
