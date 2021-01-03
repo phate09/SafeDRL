@@ -42,10 +42,16 @@ def generate_guard(gurobi_model: grb.Model, input, action_ego=0, case=0):
         gurobi_model.addConstr(input[1] <= 0, name=f"cond2")
     if case == 1:
         gurobi_model.addConstr(input[0] <= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] >= 0, name=f"cond2")
+        gurobi_model.addConstr(input[1] >= 4, name=f"cond2")
     if case == 2:
         gurobi_model.addConstr(input[0] >= 0, name=f"cond1")
+        gurobi_model.addConstr(input[1] >= 4, name=f"cond2")
+    if case == 3:
         gurobi_model.addConstr(input[1] >= 0, name=f"cond2")
+    gurobi_model.update()
+    gurobi_model.optimize()
+    # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+    return gurobi_model.status == 2
 
 
 def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
@@ -108,9 +114,10 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, case=0):
 
     v = input[0]
     p = input[1]
+    dt = 0.1
     z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
     if case == 0:  # v <= 0 && p <= 0
-        v_prime = -(0.85 + 0.05) * v
+        v_prime = -(0.85) * v
         p_prime = 0
     if case == 1:  # v <= 0 && p >= 4 && action = 1
         v_prime = -4
@@ -118,8 +125,11 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, case=0):
     if case == 2:  # v >=0 && p >= 4 && action = 1
         v_prime = -(0.9 + 0.05) * v - 4
         p_prime = p
-    v_second = v_prime - 9.81
-    p_second = p_prime + 1 * v_prime
+    if case == 3:
+        v_prime = v
+        p_prime = p
+    v_second = v_prime - 9.81 * dt
+    p_second = p_prime + dt * v_prime
     gurobi_model.addConstr(z[0] == v_second, name=f"dyna_constr_1")
     gurobi_model.addConstr(z[1] == p_second, name=f"dyna_constr_2")
     return z
@@ -187,8 +197,10 @@ def main():
     graph.store_in_fringe(root)
     template_2d = np.array([[1, 0], [0, 1]])
     vertices = windowed_projection(template, x_results, template_2d)
+    vertices_time = []
     vertices_list = []
     vertices_list.append([vertices])
+    vertices_time = [[0, vertices[0, 1]]]
     # vertices = windowed_projection(template, x_results, template2d_speed)
     # vertices_list.append([vertices])
 
@@ -207,6 +219,8 @@ def main():
         vertices_container = []
         x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container)
         vertices_list.append(vertices_container)
+        for v in vertices_container:
+            vertices_time.append((t, v[0, 1]))
         for x_prime in x_primes:
 
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
@@ -215,6 +229,11 @@ def main():
 
     print(f"T={t}")
     show_polygon_list2(vertices_list, "p", "v")  # show_polygon_list2(vertices_list)
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    trace1 = go.Scatter(x=[x[0] for x in vertices_time], y=[x[1] for x in vertices_time], mode='markers', )
+    fig.add_trace(trace1)
+    fig.show()
 
 
 def contained(x: tuple, y: tuple):
@@ -228,70 +247,55 @@ def contained(x: tuple, y: tuple):
 
 def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
     post = []
-    if mode == 0:
-        # deceleration 1
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        generate_mock_guard(gurobi_model, input, 0, t=0)
-        # apply dynamic
-        x_prime = apply_dynamic(input, gurobi_model, 0, t=t)  # 0
-        found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        if found_successor:
-            post.append(tuple(x_prime_results))
-        # # deceleration 2
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        generate_mock_guard(gurobi_model, input, 0, t=1)  # # apply dynamic
-        x_prime = apply_dynamic(input, gurobi_model, 0, t=t)  # 0
-        found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        if found_successor:
-            post.append(tuple(x_prime_results))
-        # # acceleration
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        generate_mock_guard(gurobi_model, input, 1)  # # apply dynamic  #
-        x_prime = apply_dynamic(input, gurobi_model, 1, t=t)  # 1
-        found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        if found_successor:
-            post.append(tuple(x_prime_results))
     if mode == 1 or mode == 2:
         # case 0
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
         input = generate_input_region(gurobi_model, template, x)
+        feasible = generate_guard(gurobi_model, input, action_ego=0, case=0)
         # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
-        feasible = True
         if feasible:
             # apply dynamic
             x_prime = apply_dynamic(input, gurobi_model, 0, case=0)
             found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
             if found_successor:
                 post.append(tuple(x_prime_results))
-        # # case 1
-        # gurobi_model = grb.Model()
-        # gurobi_model.setParam('OutputFlag', output_flag)
-        # input = generate_input_region(gurobi_model, template, x)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        # if feasible:
-        #     # apply dynamic
-        #     x_prime = apply_dynamic(input, gurobi_model, 1, case=1)
-        #     found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        #     if found_successor:
-        #         post.append(tuple(x_prime_results))
-        # # case 2
-        # gurobi_model = grb.Model()
-        # gurobi_model.setParam('OutputFlag', output_flag)
-        # input = generate_input_region(gurobi_model, template, x)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        # if feasible:
-        #     # apply dynamic
-        #     x_prime = apply_dynamic(input, gurobi_model, 1, case=2)
-        #     found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        #     if found_successor:
-        #         post.append(tuple(x_prime_results))
+        # case 3
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = generate_input_region(gurobi_model, template, x)
+        feasible = generate_guard(gurobi_model, input, action_ego=0, case=3)
+        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
+        if feasible:
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 0, case=3)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+            if found_successor:
+                post.append(tuple(x_prime_results))
+        # case 1
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = generate_input_region(gurobi_model, template, x)
+        feasible = generate_guard(gurobi_model, input, action_ego=0, case=1)
+        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
+        if feasible:
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 1, case=1)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+            if found_successor:
+                post.append(tuple(x_prime_results))
+        # case 2
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = generate_input_region(gurobi_model, template, x)
+        feasible = generate_guard(gurobi_model, input, action_ego=0, case=2)
+        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
+        if feasible:
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 1, case=2)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+            if found_successor:
+                post.append(tuple(x_prime_results))
     return post
 
 
