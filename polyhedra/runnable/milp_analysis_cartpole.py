@@ -1,16 +1,18 @@
+import math
+
 import gurobi as grb
 import numpy as np
 import pypoman
 import ray
 import torch
 
-from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
+from agents.ppo.train_PPO_cartpole import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
 from polyhedra.plot_utils import show_polygon_list2
 
-env_input_size = 2
+env_input_size = 4
 
 
 def generate_input_region(gurobi_model, templates, boundaries):
@@ -34,18 +36,6 @@ def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
         epsilon = 1e-4
         gurobi_model.addConstr(input[3] <= 36 - epsilon, name=f"cond2_{t}")
         gurobi_model.addConstr((input[0] - input[1]) >= 20 + epsilon, name=f"cond1_{t}")
-
-
-def generate_guard(gurobi_model: grb.Model, input, action_ego=0, case=0):
-    if case == 0:  # v <= 0 && p <= 0
-        gurobi_model.addConstr(input[0] <= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] <= 0, name=f"cond2")
-    if case == 1:
-        gurobi_model.addConstr(input[0] <= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] >= 0, name=f"cond2")
-    if case == 2:
-        gurobi_model.addConstr(input[0] >= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] >= 0, name=f"cond2")
 
 
 def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
@@ -105,23 +95,34 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, case=0):
     :param t:
     :return:
     '''
-
-    v = input[0]
-    p = input[1]
+    gravity = 9.8
+    masscart = 1.0
+    masspole = 0.1
+    total_mass = (masspole + masscart)
+    length = 0.5  # actually half the pole's length
+    polemass_length = (masspole * length)
+    force_mag = 10.0
+    tau = 0.02  # seconds between state updates
+    x = input[0]
+    x_dot = input[1]
+    theta = input[2]
+    theta_dot = input[3]
     z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
-    if case == 0:  # v <= 0 && p <= 0
-        v_prime = -(0.85 + 0.05) * v
-        p_prime = 0
-    if case == 1:  # v <= 0 && p >= 4 && action = 1
-        v_prime = -4
-        p_prime = p
-    if case == 2:  # v >=0 && p >= 4 && action = 1
-        v_prime = -(0.9 + 0.05) * v - 4
-        p_prime = p
-    v_second = v_prime - 9.81
-    p_second = p_prime + 1 * v_prime
-    gurobi_model.addConstr(z[0] == v_second, name=f"dyna_constr_1")
-    gurobi_model.addConstr(z[1] == p_second, name=f"dyna_constr_2")
+    force_mag = 10.0
+    force = force_mag if action_ego == 1 else -force_mag
+    costheta = math.cos(theta)
+    sintheta = math.sin(theta)
+    temp = (force + polemass_length * theta_dot ** 2 * sintheta) / total_mass
+    thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0 / 3.0 - masspole * costheta ** 2 / total_mass))
+    xacc = temp - polemass_length * thetaacc * costheta / total_mass
+    x_prime = x + tau * x_dot
+    x_dot_prime = x_dot + tau * xacc
+    theta_prime = theta + tau * theta_dot
+    theta_dot_prime = theta_dot + tau * thetaacc
+    gurobi_model.addConstr(z[0] == x_prime, name=f"dyna_constr_1")
+    gurobi_model.addConstr(z[1] == x_dot_prime, name=f"dyna_constr_2")
+    gurobi_model.addConstr(z[2] == theta_prime, name=f"dyna_constr_3")
+    gurobi_model.addConstr(z[3] == theta_dot_prime, name=f"dyna_constr_4")
     return z
 
 
@@ -157,7 +158,7 @@ def main():
     if mode == 2:
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
-        # trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-03_11-52-42e5nav0w_/checkpoint_9/checkpoint-9")
+        trainer.restore("checkpoint saved at /home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-03_14-02-48ynltrgiw/checkpoint_8/checkpoint-8")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         layers = []
@@ -185,7 +186,7 @@ def main():
     root = tuple(x_results)
     graph.root = root
     graph.store_in_fringe(root)
-    template_2d = np.array([[1, 0], [0, 1]])
+    template_2d = np.array([[1, 0, 0, 0], [0, 0, 1, 0]])
     vertices = windowed_projection(template, x_results, template_2d)
     vertices_list = []
     vertices_list.append([vertices])
@@ -205,7 +206,7 @@ def main():
         # vertices = windowed_projection(template, x_results)
         # vertices_list.append([vertices])
         vertices_container = []
-        x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container)
+        x_primes = post(x, graph, mode, nn, output_flag, 0, template, vertices_container)
         vertices_list.append(vertices_container)
         for x_prime in x_primes:
 
@@ -214,7 +215,7 @@ def main():
                 frontier.append(((t + 1), x_prime))
 
     print(f"T={t}")
-    show_polygon_list2(vertices_list, "p", "v")  # show_polygon_list2(vertices_list)
+    show_polygon_list2(vertices_list, "x_lead-x_ego", "x_ego")  # show_polygon_list2(vertices_list)
 
 
 def contained(x: tuple, y: tuple):
@@ -235,7 +236,7 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         input = generate_input_region(gurobi_model, template, x)
         generate_mock_guard(gurobi_model, input, 0, t=0)
         # apply dynamic
-        x_prime = apply_dynamic(input, gurobi_model, 0, t=t)  # 0
+        x_prime = apply_dynamic(input, gurobi_model, 0)  # 0
         found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
         if found_successor:
             post.append(tuple(x_prime_results))
@@ -244,7 +245,7 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         gurobi_model.setParam('OutputFlag', output_flag)
         input = generate_input_region(gurobi_model, template, x)
         generate_mock_guard(gurobi_model, input, 0, t=1)  # # apply dynamic
-        x_prime = apply_dynamic(input, gurobi_model, 0, t=t)  # 0
+        x_prime = apply_dynamic(input, gurobi_model, 0)  # 0
         found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
         if found_successor:
             post.append(tuple(x_prime_results))
@@ -253,45 +254,33 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         gurobi_model.setParam('OutputFlag', output_flag)
         input = generate_input_region(gurobi_model, template, x)
         generate_mock_guard(gurobi_model, input, 1)  # # apply dynamic  #
-        x_prime = apply_dynamic(input, gurobi_model, 1, t=t)  # 1
+        x_prime = apply_dynamic(input, gurobi_model, 1)  # 1
         found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
         if found_successor:
             post.append(tuple(x_prime_results))
     if mode == 1 or mode == 2:
-        # case 0
+        # deceleration
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
         input = generate_input_region(gurobi_model, template, x)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
-        feasible = True
+        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
         if feasible:
             # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 0, case=0)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+            x_prime = apply_dynamic(input, gurobi_model, 0)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
             if found_successor:
                 post.append(tuple(x_prime_results))
-        # # case 1
-        # gurobi_model = grb.Model()
-        # gurobi_model.setParam('OutputFlag', output_flag)
-        # input = generate_input_region(gurobi_model, template, x)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        # if feasible:
-        #     # apply dynamic
-        #     x_prime = apply_dynamic(input, gurobi_model, 1, case=1)
-        #     found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        #     if found_successor:
-        #         post.append(tuple(x_prime_results))
-        # # case 2
-        # gurobi_model = grb.Model()
-        # gurobi_model.setParam('OutputFlag', output_flag)
-        # input = generate_input_region(gurobi_model, template, x)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        # if feasible:
-        #     # apply dynamic
-        #     x_prime = apply_dynamic(input, gurobi_model, 1, case=2)
-        #     found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
-        #     if found_successor:
-        #         post.append(tuple(x_prime_results))
+        # # acceleration
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = generate_input_region(gurobi_model, template, x)
+        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
+        if feasible:
+            # apply dynamic
+            x_prime = apply_dynamic(input, gurobi_model, 1)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime)
+            if found_successor:
+                post.append(tuple(x_prime_results))
     return post
 
 
@@ -304,10 +293,12 @@ def windowed_projection(template, x_results, template_2d):
 
 
 def get_template(mode=0):
-    v = e(env_input_size, 0)
-    p = e(env_input_size, 1)
+    x = e(env_input_size, 0)
+    x_dot = e(env_input_size, 1)
+    theta = e(env_input_size, 2)
+    theta_dot = e(env_input_size, 3)
     if mode == 0:  # box directions with intervals
-        input_boundaries = [0, -0, 10, -10]
+        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
         # optimise in a direction
         template = []
         for dimension in range(env_input_size):
@@ -327,14 +318,14 @@ def e(n, i):
     return np.array(result)
 
 
-def h_repr_to_plot(graph, gurobi_model, template, vertices_list, x_prime, t):
+def h_repr_to_plot(graph, gurobi_model, template, vertices_list, x_prime):
     x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
     added = False
     if x_prime_results is not None:
         x_prime_tuple = tuple(x_prime_results)
         added = graph.store_in_fringe(x_prime_tuple)
         if added:
-            template_2d = np.array([[1, 0], [0, 1]])
+            template_2d = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
             vertices = windowed_projection(template, x_prime_results, template_2d)
             vertices_list.append(vertices)
             # template2d_speed = np.array([[1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]])

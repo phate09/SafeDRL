@@ -13,7 +13,7 @@ import intervals as I
 
 
 class BouncingBall(gym.Env):
-    def __init__(self,config):
+    def __init__(self, config):
         self.v = 0  # velocity
         self.c = 0  # cost/hit counter
         self.p = 0  # position
@@ -34,6 +34,8 @@ class BouncingBall(gym.Env):
                 self.v = -(0.9 + random.uniform(0, 0.1)) * self.v - 4
             elif -4 <= self.v < 0:  # while going down within reach
                 self.v = -4
+            else:
+                self.v = self.v
         elif self.p == 0 and self.v < 0:  # bounce
             self.v = -(0.85 + random.uniform(0, 0.12)) * self.v
             if self.v <= 1:
