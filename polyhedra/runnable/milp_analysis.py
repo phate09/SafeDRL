@@ -200,7 +200,7 @@ def main():
     gurobi_model.setParam('OutputFlag', output_flag)
     graph = GraphExplorer(None)
 
-    input_boundaries, template = get_template(3)
+    input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
     _, template = get_template(1)
