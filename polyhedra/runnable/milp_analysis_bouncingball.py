@@ -38,6 +38,7 @@ def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
 
 
 def generate_guard(gurobi_model: grb.Model, input, case=0):
+    eps = 1e-6
     if case == 0:  # v <= 0 && p <= 0
         gurobi_model.addConstr(input[1] <= 0, name=f"cond1")
         gurobi_model.addConstr(input[0] <= 0, name=f"cond2")
@@ -47,8 +48,9 @@ def generate_guard(gurobi_model: grb.Model, input, case=0):
     if case == 2:  # v_prime > 0 and p_prime > 4
         gurobi_model.addConstr(input[1] >= 0, name=f"cond1")
         gurobi_model.addConstr(input[0] >= 4, name=f"cond2")
-    if case == 3:
-        gurobi_model.addConstr(input[0] >= 0, name=f"cond2")
+    if case == 3:  # ball out of reach and not bounce
+        gurobi_model.addConstr(input[0] <= 4 - eps, name=f"cond1")
+        gurobi_model.addConstr(input[0] >= 0 + eps, name=f"cond2")
     gurobi_model.update()
     gurobi_model.optimize()
     # assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -210,14 +212,13 @@ def main():
     input = generate_input_region(gurobi_model, template, input_boundaries)
     # _, template = get_template(1)
     x_results = optimise(template, gurobi_model, input)
-    # input_boundaries, template = get_template(1)
     if x_results is None:
         print("Model unsatisfiable")
         return
     root = tuple(x_results)
     graph.root = root
     graph.store_in_fringe(root)
-    template_2d = np.array([[1, 0], [0, 1]])
+    template_2d = np.array([[0, 1], [1, 0]])
     vertices = windowed_projection(template, x_results, template_2d)
     vertices_time = []
     vertices_list = []
@@ -231,7 +232,7 @@ def main():
     frontier = [(0, root)]
     while len(frontier) != 0:
         t, x = frontier.pop()
-        if t > 200:
+        if t > 60:
             break
         if any([contained(x, s) for s in seen]):
             continue
@@ -239,7 +240,7 @@ def main():
         # vertices = windowed_projection(template, x_results)
         # vertices_list.append([vertices])
         vertices_container = []
-        x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container)
+        x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container,template_2d)
         vertices_list.append(vertices_container)
         for v in vertices_container:
             vertices_time.append((t + 1, v[0, 0]))
@@ -267,7 +268,7 @@ def contained(x: tuple, y: tuple):
     return True
 
 
-def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
+def post(x, graph, mode, nn, output_flag, t, template, timestep_container,template_2d):
     post = []
 
     def standard_op():
@@ -284,44 +285,64 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
         if feasible0:  # action is irrelevant in this case
             # apply dynamic
             x_prime = apply_dynamic2(z, gurobi_model, case=0)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
             if found_successor:
                 post.append(tuple(x_prime_results))
 
         # case 1 : ball going down and hit
         gurobi_model, z, input = standard_op()
         feasible11 = generate_guard(gurobi_model, z, case=1)
-        feasible12 = False
         if feasible11:
             feasible12 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible12:
                 # apply dynamic
                 x_prime = apply_dynamic2(z, gurobi_model, case=1)
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
                 if found_successor:
                     post.append(tuple(x_prime_results))
         # case 2 : ball going up and hit
         gurobi_model, z, input = standard_op()
         feasible21 = generate_guard(gurobi_model, z, case=2)
-        feasible22 = False
         if feasible21:
             feasible22 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible22:
                 # apply dynamic
                 x_prime = apply_dynamic2(z, gurobi_model, case=2)
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
                 if found_successor:
                     post.append(tuple(x_prime_results))
-        # case 3
-        if not (feasible0 or feasible12 or feasible22):  # if neither of the 3 apply
-            gurobi_model, z, input = standard_op()
-            feasible = generate_guard(gurobi_model, z, case=3)  # third case, nothing happens, just forward the values
-            if feasible:
+        # case 1 alt : ball going down and NO hit
+        gurobi_model, z, input = standard_op()
+        feasible11_alt = generate_guard(gurobi_model, z, case=1)
+        if feasible11_alt:
+            feasible12_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
+            if feasible12_alt:
                 # apply dynamic
-                x_prime = apply_dynamic2(z, gurobi_model, case=3)
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
                 if found_successor:
                     post.append(tuple(x_prime_results))
+        # case 2 alt : ball going up and NO hit
+        gurobi_model, z, input = standard_op()
+        feasible21_alt = generate_guard(gurobi_model, z, case=2)
+        if feasible21_alt:
+            feasible22_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
+            if feasible22_alt:
+                # apply dynamic
+                x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
+                if found_successor:
+                    post.append(tuple(x_prime_results))
+        # case 3 : ball out of reach and not bounce
+        gurobi_model, z, input = standard_op()
+        feasible3 = generate_guard(gurobi_model, z, case=3)  # out of reach
+        if feasible3:  # action is irrelevant in this case
+            # apply dynamic
+            x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
+            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
+            if found_successor:
+                post.append(tuple(x_prime_results))
+
     return post
 
 
@@ -337,7 +358,7 @@ def get_template(mode=0):
     p = e(env_input_size, 0)
     v = e(env_input_size, 1)
     if mode == 0:  # box directions with intervals
-        input_boundaries = [10, -10, 0, -0]
+        input_boundaries = [0, 0, 10, 10]
         # optimise in a direction
         template = []
         for dimension in range(env_input_size):
@@ -347,7 +368,7 @@ def get_template(mode=0):
         return input_boundaries, template
     if mode == 1:  # directions to easily find fixed point
         input_boundaries = [20]
-        template = np.array([v, p])
+        template = np.array([v, -v, -p])
         return input_boundaries, template
 
 
@@ -357,14 +378,13 @@ def e(n, i):
     return np.array(result)
 
 
-def h_repr_to_plot(graph, gurobi_model, template, vertices_list, x_prime, t):
+def h_repr_to_plot(graph, gurobi_model, template, vertices_list, x_prime, t, template_2d):
     x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
     added = False
     if x_prime_results is not None:
         x_prime_tuple = tuple(x_prime_results)
         added = graph.store_in_fringe(x_prime_tuple)
         if added:
-            template_2d = np.array([[1, 0], [0, 1]])
             vertices = windowed_projection(template, x_prime_results, template_2d)
             vertices_list.append(vertices)
             # template2d_speed = np.array([[1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]])
