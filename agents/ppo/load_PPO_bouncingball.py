@@ -7,7 +7,7 @@ from environment.bouncing_ball_old import BouncingBall
 
 ray.init()
 config, trainer = get_PPO_trainer(use_gpu=0)
-trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")  # 5e-2 ~19.8 delta x
+trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")  # ~980 score
 policy = trainer.get_policy()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 layers = []
@@ -17,12 +17,13 @@ for l in sequential_nn:
 sequential_nn2 = torch.nn.Sequential(*layers)
 env = BouncingBall()
 state = env.reset()
+env.p = 10
 # env.x_lead = 30
 # env.x_ego = 0
 # env.v_lead = 28
 # env.v_ego = 36
 # min_distance = 9999
-# state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
+state = np.array([env.p, env.v])
 state_np = np.array(state)
 cumulative_reward = 0
 print(state_np)
@@ -51,6 +52,7 @@ print("all good")
 print(f"cumulative_reward:{cumulative_reward}")
 ray.shutdown()
 import plotly.graph_objects as go
+
 fig = go.Figure()
 trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
 fig.add_trace(trace1)

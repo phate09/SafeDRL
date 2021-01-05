@@ -3,6 +3,7 @@ import numpy as np
 import pypoman
 import ray
 import torch
+from gurobipy import max_
 
 from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential
@@ -36,18 +37,18 @@ def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
         gurobi_model.addConstr((input[0] - input[1]) >= 20 + epsilon, name=f"cond1_{t}")
 
 
-def generate_guard(gurobi_model: grb.Model, input, action_ego=0, case=0):
+def generate_guard(gurobi_model: grb.Model, input, case=0):
     if case == 0:  # v <= 0 && p <= 0
-        gurobi_model.addConstr(input[0] <= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] <= 0, name=f"cond2")
-    if case == 1:
-        gurobi_model.addConstr(input[0] <= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] >= 4, name=f"cond2")
-    if case == 2:
-        gurobi_model.addConstr(input[0] >= 0, name=f"cond1")
-        gurobi_model.addConstr(input[1] >= 4, name=f"cond2")
+        gurobi_model.addConstr(input[1] <= 0, name=f"cond1")
+        gurobi_model.addConstr(input[0] <= 0, name=f"cond2")
+    if case == 1:  # v_prime <= 0 and p_prime > 4
+        gurobi_model.addConstr(input[1] <= 0, name=f"cond1")
+        gurobi_model.addConstr(input[0] >= 4, name=f"cond2")
+    if case == 2:  # v_prime > 0 and p_prime > 4
+        gurobi_model.addConstr(input[1] >= 0, name=f"cond1")
+        gurobi_model.addConstr(input[0] >= 4, name=f"cond2")
     if case == 3:
-        gurobi_model.addConstr(input[1] >= 0, name=f"cond2")
+        gurobi_model.addConstr(input[0] >= 0, name=f"cond2")
     gurobi_model.update()
     gurobi_model.optimize()
     # assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -102,36 +103,57 @@ def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, a
     return gurobi_model.status == 2
 
 
-def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, case=0):
+def apply_dynamic(input, gurobi_model: grb.Model):
     '''
 
     :param input:
     :param gurobi_model:
-    :param action_ego:
     :param t:
     :return:
     '''
 
-    v = input[0]
-    p = input[1]
+    p = input[0]
+    v = input[1]
     dt = 0.1
     z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
+    # pos_max = gurobi_model.addMVar(shape=(1,), lb=float("-inf"), name=f"pos_max")
+    v_second = v - 9.81 * dt
+    p_second = p + dt * v_second
+    gurobi_model.addConstr(z[1] == v_second, name=f"dyna_constr_1")
+    # gurobi_model.addConstr(pos_max == grb.max_([p_second, 0]), name=f"dyna_constr_2")
+    # gurobi_model.addConstr(z[1] == p_second, name=f"dyna_constr_2")
+    max_switch = gurobi_model.addMVar(lb=0, ub=1, shape=p_second.shape, vtype=grb.GRB.INTEGER, name=f"max_switch")
+    M = 10e6
+    # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+    gurobi_model.addConstr(z[0] >= p_second)
+    gurobi_model.addConstr(z[0] <= p_second + M * max_switch)
+    gurobi_model.addConstr(z[0] >= 0)
+    gurobi_model.addConstr(z[0] <= M - M * max_switch)
+
+    return z
+
+
+def apply_dynamic2(input_prime, gurobi_model: grb.Model, case):
+    p_prime = input_prime[0]
+    v_prime = input_prime[1]
+    z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
+    v_second = v_prime
+    p_second = p_prime
     if case == 0:  # v <= 0 && p <= 0
-        v_prime = -(0.85) * v
-        p_prime = 0
+        v_second = -(0.90) * v_prime
+        p_second = 0
     if case == 1:  # v <= 0 && p >= 4 && action = 1
-        v_prime = -4
-        p_prime = p
+        v_second = v_prime - 4
+        p_second = 4
     if case == 2:  # v >=0 && p >= 4 && action = 1
-        v_prime = -(0.9 + 0.05) * v - 4
-        p_prime = p
+        v_second = -(0.9) * v_prime - 4
+        p_second = 4
     if case == 3:  # p>=0
-        v_prime = v
-        p_prime = p
-    v_second = v_prime - 9.81 * dt
-    p_second = p_prime + dt * v_prime
-    gurobi_model.addConstr(z[0] == v_second, name=f"dyna_constr_1")
-    gurobi_model.addConstr(z[1] == p_second, name=f"dyna_constr_2")
+        v_second = v_prime
+        p_second = p_prime
+
+    gurobi_model.addConstr(z[1] == v_second, name=f"dyna_constr2_1")
+    gurobi_model.addConstr(z[0] == p_second, name=f"dyna_constr2_2")
     return z
 
 
@@ -167,7 +189,7 @@ def main():
     if mode == 2:
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
-        # trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-03_11-52-42e5nav0w_/checkpoint_9/checkpoint-9")
+        trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         layers = []
@@ -200,7 +222,7 @@ def main():
     vertices_time = []
     vertices_list = []
     vertices_list.append([vertices])
-    vertices_time = [[0, vertices[0, 1]]]
+    vertices_time = [[0, vertices[0, 0]]]
     # vertices = windowed_projection(template, x_results, template2d_speed)
     # vertices_list.append([vertices])
 
@@ -220,7 +242,7 @@ def main():
         x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container)
         vertices_list.append(vertices_container)
         for v in vertices_container:
-            vertices_time.append((t, v[0, 1]))
+            vertices_time.append((t + 1, v[0, 0]))
         for x_prime in x_primes:
 
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
@@ -247,55 +269,59 @@ def contained(x: tuple, y: tuple):
 
 def post(x, graph, mode, nn, output_flag, t, template, timestep_container):
     post = []
+
+    def standard_op():
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = generate_input_region(gurobi_model, template, x)
+        z = apply_dynamic(input, gurobi_model)
+        return gurobi_model, z, input
+
     if mode == 1 or mode == 2:
         # case 0
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        feasible = generate_guard(gurobi_model, input, action_ego=0, case=0)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
-        if feasible:
+        gurobi_model, z, input = standard_op()
+        feasible0 = generate_guard(gurobi_model, z, case=0)  # bounce
+        if feasible0:  # action is irrelevant in this case
             # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 0, case=0)
+            x_prime = apply_dynamic2(z, gurobi_model, case=0)
             found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
             if found_successor:
                 post.append(tuple(x_prime_results))
+
+        # case 1 : ball going down and hit
+        gurobi_model, z, input = standard_op()
+        feasible11 = generate_guard(gurobi_model, z, case=1)
+        feasible12 = False
+        if feasible11:
+            feasible12 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
+            if feasible12:
+                # apply dynamic
+                x_prime = apply_dynamic2(z, gurobi_model, case=1)
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                if found_successor:
+                    post.append(tuple(x_prime_results))
+        # case 2 : ball going up and hit
+        gurobi_model, z, input = standard_op()
+        feasible21 = generate_guard(gurobi_model, z, case=2)
+        feasible22 = False
+        if feasible21:
+            feasible22 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
+            if feasible22:
+                # apply dynamic
+                x_prime = apply_dynamic2(z, gurobi_model, case=2)
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                if found_successor:
+                    post.append(tuple(x_prime_results))
         # case 3
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        feasible = generate_guard(gurobi_model, input, action_ego=0, case=3)
-        # feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=0)
-        if feasible:
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 0, case=3)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
-            if found_successor:
-                post.append(tuple(x_prime_results))
-        # case 1
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        feasible = generate_guard(gurobi_model, input, action_ego=0, case=1)
-        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        if feasible:
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 1, case=1)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
-            if found_successor:
-                post.append(tuple(x_prime_results))
-        # case 2
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = generate_input_region(gurobi_model, template, x)
-        feasible = generate_guard(gurobi_model, input, action_ego=0, case=2)
-        feasible = generate_nn_guard(gurobi_model, input, nn, action_ego=1)
-        if feasible:
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, 1, case=2)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
-            if found_successor:
-                post.append(tuple(x_prime_results))
+        if not (feasible0 or feasible12 or feasible22):  # if neither of the 3 apply
+            gurobi_model, z, input = standard_op()
+            feasible = generate_guard(gurobi_model, z, case=3)  # third case, nothing happens, just forward the values
+            if feasible:
+                # apply dynamic
+                x_prime = apply_dynamic2(z, gurobi_model, case=3)
+                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t)
+                if found_successor:
+                    post.append(tuple(x_prime_results))
     return post
 
 
@@ -308,10 +334,10 @@ def windowed_projection(template, x_results, template_2d):
 
 
 def get_template(mode=0):
-    v = e(env_input_size, 0)
-    p = e(env_input_size, 1)
+    p = e(env_input_size, 0)
+    v = e(env_input_size, 1)
     if mode == 0:  # box directions with intervals
-        input_boundaries = [0, -0, 10, -10]
+        input_boundaries = [10, -10, 0, -0]
         # optimise in a direction
         template = []
         for dimension in range(env_input_size):
