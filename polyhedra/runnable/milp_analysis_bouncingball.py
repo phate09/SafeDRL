@@ -1,14 +1,13 @@
+from collections import defaultdict
+
 import gurobi as grb
 import numpy as np
 import pypoman
 import ray
 import torch
-from gurobipy import max_
 
 from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.graph_explorer import GraphExplorer
-from polyhedra.net_methods import generate_nn_torch
 from polyhedra.plot_utils import show_polygon_list2
 
 env_input_size = 2
@@ -23,18 +22,6 @@ def generate_input_region(gurobi_model, templates, boundaries):
             multiplication += template[i] * input[i]
         gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
     return input
-
-
-def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
-    if action_ego == 0:  # decelerate
-        if t == 0:
-            gurobi_model.addConstr(input[3] >= 36, name=f"cond2_{t}")
-        else:
-            gurobi_model.addConstr((input[0] - input[1]) <= 20, name=f"cond1_{t}")
-    else:  # accelerate
-        epsilon = 1e-4
-        gurobi_model.addConstr(input[3] <= 36 - epsilon, name=f"cond2_{t}")
-        gurobi_model.addConstr((input[0] - input[1]) >= 20 + epsilon, name=f"cond1_{t}")
 
 
 def generate_guard(gurobi_model: grb.Model, input, case=0):
@@ -80,20 +67,6 @@ def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, a
             gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
             gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
             gurobi_vars.append(v)
-            # gurobi_model.update()
-            # gurobi_model.optimize()
-            # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-            """
-            y = Relu(x)
-            0 <= z <= 1, z is integer
-            y >= x
-            y <= x + Mz
-            y >= 0
-            y <= M - Mz"""
-    # gurobi_model.update()
-    # gurobi_model.optimize()
-    # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-    # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
     last_layer = gurobi_vars[-1]
     if action_ego == 0:
         gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
@@ -179,84 +152,57 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
     window_template = np.vstack([template_input, template_2d, -template_2d])  # max and min
     window_boundaries = np.stack((window_boundaries[0], window_boundaries[1], -window_boundaries[2], -window_boundaries[3]))
     window_boundaries = np.concatenate((x_results, window_boundaries))
-    # windowed_projection_max = np.maximum(window_boundaries, projection)
-    # windowed_projection_min = np.minimum(window_boundaries, projection)
-    # windowed_projection = np.concatenate((windowed_projection_max.squeeze(), windowed_projection_min.squeeze()), axis=0)
     return window_template, window_boundaries
 
 
 def main():
     output_flag = False
-    mode = 2  # 0 hardcoded guard, 1 nn guard, 2 trained nn
-    if mode == 2:
-        ray.init(local_mode=True)
-        config, trainer = get_PPO_trainer(use_gpu=0)
-        trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
-        policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        layers = []
-        for l in sequential_nn:
-            layers.append(l)
-
-        nn = torch.nn.Sequential(*layers)
-    elif mode == 1:
-        nn = generate_nn_torch(six_dim=True, min_distance=20, max_distance=22)  # min_speed=30,max_speed=36
-    else:
-        nn = None
+    ray.init(local_mode=True)
+    config, trainer = get_PPO_trainer(use_gpu=0)
+    trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
+    policy = trainer.get_policy()
+    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+    layers = []
+    for l in sequential_nn:
+        layers.append(l)
+    nn = torch.nn.Sequential(*layers)
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
-    graph = GraphExplorer(None)
-
     input_boundaries, template = get_template(0)
 
-    input = generate_input_region(gurobi_model, template, input_boundaries)
-    # _, template = get_template(1)
-    x_results = optimise(template, gurobi_model, input)
-    if x_results is None:
-        print("Model unsatisfiable")
-        return
-    root = tuple(x_results)
-    graph.root = root
-    graph.store_in_fringe(root)
+    start1 = np.array([7, -7, 0, 0])
+    # start2 = np.array([0, 0, -7, 10])
     template_2d = np.array([[0, 1], [1, 0]])
-    vertices = windowed_projection(template, x_results, template_2d)
-    vertices_time = []
-    vertices_list = []
-    vertices_list.append([vertices])
-    vertices_time = [[0, vertices[0, 0]]]
-    # vertices = windowed_projection(template, x_results, template2d_speed)
-    # vertices_list.append([vertices])
-
-    # show_polygon_list2(vertices_list)
+    vertices_list = defaultdict(list)
     seen = []
-    frontier = [(0, root)]
+    frontier = []
+    frontier.append((0, tuple(start1)))
+    # frontier.append((0, tuple(start2)))
     while len(frontier) != 0:
         t, x = frontier.pop()
-        if t > 60:
+        if t > 200:
             break
         if any([contained(x, s) for s in seen]):
             continue
+        vertices = windowed_projection(template, np.array(x), template_2d)
+        vertices_list[t].append(vertices)
         seen.append(x)
-        # vertices = windowed_projection(template, x_results)
-        # vertices_list.append([vertices])
-        vertices_container = []
-        x_primes = post(x, graph, mode, nn, output_flag, t, template, vertices_container,template_2d)
-        vertices_list.append(vertices_container)
-        for v in vertices_container:
-            vertices_time.append((t + 1, v[0, 0]))
+        x_primes = post(x, nn, output_flag, t, template)
+        # for v in vertices_container:
+        #     vertices_time.append((t + 1, v[0, 0]))
         for x_prime in x_primes:
-
+            x_prime = tuple(np.array(x_prime).round(3))  # todo should we round to prevent numerical errors?
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
             if not any([contained(x_prime, y) for u, y in frontier]):
                 frontier.append(((t + 1), x_prime))
 
     print(f"T={t}")
     show_polygon_list2(vertices_list, "p", "v")  # show_polygon_list2(vertices_list)
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    trace1 = go.Scatter(x=[x[0] for x in vertices_time], y=[x[1] for x in vertices_time], mode='markers', )
-    fig.add_trace(trace1)
-    fig.show()
+    # import plotly.graph_objects as go
+    # fig = go.Figure()
+    # trace1 = go.Scatter(x=[x[0] for x in vertices_time], y=[x[1] for x in vertices_time], mode='markers', )
+    # fig.add_trace(trace1)
+    # fig.show()
 
 
 def contained(x: tuple, y: tuple):
@@ -268,7 +214,7 @@ def contained(x: tuple, y: tuple):
     return True
 
 
-def post(x, graph, mode, nn, output_flag, t, template, timestep_container,template_2d):
+def post(x, nn, output_flag, t, template):
     post = []
 
     def standard_op():
@@ -278,75 +224,74 @@ def post(x, graph, mode, nn, output_flag, t, template, timestep_container,templa
         z = apply_dynamic(input, gurobi_model)
         return gurobi_model, z, input
 
-    if mode == 1 or mode == 2:
-        # case 0
-        gurobi_model, z, input = standard_op()
-        feasible0 = generate_guard(gurobi_model, z, case=0)  # bounce
-        if feasible0:  # action is irrelevant in this case
+    # case 0
+    gurobi_model, z, input = standard_op()
+    feasible0 = generate_guard(gurobi_model, z, case=0)  # bounce
+    if feasible0:  # action is irrelevant in this case
+        # apply dynamic
+        x_prime = apply_dynamic2(z, gurobi_model, case=0)
+        found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+        if found_successor:
+            post.append(tuple(x_prime_results))
+
+    # case 1 : ball going down and hit
+    gurobi_model, z, input = standard_op()
+    feasible11 = generate_guard(gurobi_model, z, case=1)
+    if feasible11:
+        feasible12 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
+        if feasible12:
             # apply dynamic
-            x_prime = apply_dynamic2(z, gurobi_model, case=0)
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
+            x_prime = apply_dynamic2(z, gurobi_model, case=1)
+            found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
             if found_successor:
                 post.append(tuple(x_prime_results))
-
-        # case 1 : ball going down and hit
-        gurobi_model, z, input = standard_op()
-        feasible11 = generate_guard(gurobi_model, z, case=1)
-        if feasible11:
-            feasible12 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
-            if feasible12:
-                # apply dynamic
-                x_prime = apply_dynamic2(z, gurobi_model, case=1)
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
-                if found_successor:
-                    post.append(tuple(x_prime_results))
-        # case 2 : ball going up and hit
-        gurobi_model, z, input = standard_op()
-        feasible21 = generate_guard(gurobi_model, z, case=2)
-        if feasible21:
-            feasible22 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
-            if feasible22:
-                # apply dynamic
-                x_prime = apply_dynamic2(z, gurobi_model, case=2)
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
-                if found_successor:
-                    post.append(tuple(x_prime_results))
-        # case 1 alt : ball going down and NO hit
-        gurobi_model, z, input = standard_op()
-        feasible11_alt = generate_guard(gurobi_model, z, case=1)
-        if feasible11_alt:
-            feasible12_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
-            if feasible12_alt:
-                # apply dynamic
-                x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
-                if found_successor:
-                    post.append(tuple(x_prime_results))
-        # case 2 alt : ball going up and NO hit
-        gurobi_model, z, input = standard_op()
-        feasible21_alt = generate_guard(gurobi_model, z, case=2)
-        if feasible21_alt:
-            feasible22_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
-            if feasible22_alt:
-                # apply dynamic
-                x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
-                found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
-                if found_successor:
-                    post.append(tuple(x_prime_results))
-        # case 3 : ball out of reach and not bounce
-        gurobi_model, z, input = standard_op()
-        feasible3 = generate_guard(gurobi_model, z, case=3)  # out of reach
-        if feasible3:  # action is irrelevant in this case
+    # case 2 : ball going up and hit
+    gurobi_model, z, input = standard_op()
+    feasible21 = generate_guard(gurobi_model, z, case=2)
+    if feasible21:
+        feasible22 = generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
+        if feasible22:
+            # apply dynamic
+            x_prime = apply_dynamic2(z, gurobi_model, case=2)
+            found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+            if found_successor:
+                post.append(tuple(x_prime_results))
+    # case 1 alt : ball going down and NO hit
+    gurobi_model, z, input = standard_op()
+    feasible11_alt = generate_guard(gurobi_model, z, case=1)
+    if feasible11_alt:
+        feasible12_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
+        if feasible12_alt:
             # apply dynamic
             x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
-            found_successor, x_prime_results = h_repr_to_plot(graph, gurobi_model, template, timestep_container, x_prime, t,template_2d)
+            found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
             if found_successor:
                 post.append(tuple(x_prime_results))
+    # case 2 alt : ball going up and NO hit
+    gurobi_model, z, input = standard_op()
+    feasible21_alt = generate_guard(gurobi_model, z, case=2)
+    if feasible21_alt:
+        feasible22_alt = generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
+        if feasible22_alt:
+            # apply dynamic
+            x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
+            found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+            if found_successor:
+                post.append(tuple(x_prime_results))
+    # case 3 : ball out of reach and not bounce
+    gurobi_model, z, input = standard_op()
+    feasible3 = generate_guard(gurobi_model, z, case=3)  # out of reach
+    if feasible3:  # action is irrelevant in this case
+        # apply dynamic
+        x_prime = apply_dynamic2(z, gurobi_model, case=3)  # normal dynamic
+        found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+        if found_successor:
+            post.append(tuple(x_prime_results))
 
     return post
 
 
-def windowed_projection(template, x_results, template_2d):
+def windowed_projection(template, x_results: np.ndarray, template_2d):
     ub_lb_window_boundaries = np.array([1000, 1000, -100, -100])
     window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
     vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (window_A, window_b), canonicalize=False)
@@ -378,19 +323,9 @@ def e(n, i):
     return np.array(result)
 
 
-def h_repr_to_plot(graph, gurobi_model, template, vertices_list, x_prime, t, template_2d):
+def h_repr_to_plot(gurobi_model, template, x_prime):
     x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
-    added = False
-    if x_prime_results is not None:
-        x_prime_tuple = tuple(x_prime_results)
-        added = graph.store_in_fringe(x_prime_tuple)
-        if added:
-            vertices = windowed_projection(template, x_prime_results, template_2d)
-            vertices_list.append(vertices)
-            # template2d_speed = np.array([[1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]])
-            # vertices = windowed_projection(template, x_prime_results, template2d_speed)
-            # vertices_list.append(vertices)
-    return added, x_prime_results
+    return x_prime_results is not None, x_prime_results
 
 
 if __name__ == '__main__':

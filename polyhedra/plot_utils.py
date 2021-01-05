@@ -56,7 +56,7 @@ def show_polygon_list(polygon_vertices_list):  # x_prime_vertices, x_vertices
 def show_polygon_list2(polygon_vertices_list, y_axis_title="x_ego", x_axis_title="x_lead"):
     traces = []
     for timestep in polygon_vertices_list:
-        principal_components_list = transform_vertices2(timestep)
+        principal_components_list = transform_vertices2(polygon_vertices_list[timestep])
         traces.append(compute_polygon_trace(principal_components_list))
     fig = go.Figure()
     for trace in traces:
