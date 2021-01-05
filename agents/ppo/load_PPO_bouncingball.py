@@ -17,7 +17,7 @@ for l in sequential_nn:
 sequential_nn2 = torch.nn.Sequential(*layers)
 env = BouncingBall()
 state = env.reset()
-env.p = 10
+env.p = 7
 # env.x_lead = 30
 # env.x_ego = 0
 # env.v_lead = 28

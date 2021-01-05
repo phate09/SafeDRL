@@ -170,7 +170,7 @@ def main():
     gurobi_model.setParam('OutputFlag', output_flag)
     input_boundaries, template = get_template(0)
 
-    start1 = np.array([7, -7, 0, 0])
+    start1 = np.array([9, -8, 0, 0.1])
     # start2 = np.array([0, 0, -7, 10])
     template_2d = np.array([[0, 1], [1, 0]])
     vertices_list = defaultdict(list)
@@ -178,9 +178,11 @@ def main():
     frontier = []
     frontier.append((0, tuple(start1)))
     # frontier.append((0, tuple(start2)))
+    max_t = 0
     while len(frontier) != 0:
         t, x = frontier.pop()
-        if t > 200:
+        max_t = max(max_t, t)
+        if t > 500:
             break
         if any([contained(x, s) for s in seen]):
             continue
@@ -191,12 +193,12 @@ def main():
         # for v in vertices_container:
         #     vertices_time.append((t + 1, v[0, 0]))
         for x_prime in x_primes:
-            x_prime = tuple(np.array(x_prime).round(3))  # todo should we round to prevent numerical errors?
+            x_prime = tuple(np.array(x_prime).round(4))  # todo should we round to prevent numerical errors?
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
             if not any([contained(x_prime, y) for u, y in frontier]):
                 frontier.append(((t + 1), x_prime))
 
-    print(f"T={t}")
+    print(f"T={max_t}")
     show_polygon_list2(vertices_list, "p", "v")  # show_polygon_list2(vertices_list)
     # import plotly.graph_objects as go
     # fig = go.Figure()
