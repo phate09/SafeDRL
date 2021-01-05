@@ -158,7 +158,7 @@ def main():
     if mode == 2:
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
-        trainer.restore("checkpoint saved at /home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-03_14-02-48ynltrgiw/checkpoint_8/checkpoint-8")
+        trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-03_14-02-48ynltrgiw/checkpoint_8/checkpoint-8")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         layers = []

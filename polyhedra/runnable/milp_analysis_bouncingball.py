@@ -125,7 +125,7 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, case=0):
     if case == 2:  # v >=0 && p >= 4 && action = 1
         v_prime = -(0.9 + 0.05) * v - 4
         p_prime = p
-    if case == 3:
+    if case == 3:  # p>=0
         v_prime = v
         p_prime = p
     v_second = v_prime - 9.81 * dt
