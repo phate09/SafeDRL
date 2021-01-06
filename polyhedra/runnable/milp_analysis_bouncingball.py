@@ -23,7 +23,6 @@ def generate_input_region(gurobi_model, templates, boundaries):
         gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
     return input
 
-
 def generate_guard(gurobi_model: grb.Model, input, case=0):
     eps = 1e-6
     if case == 0:  # v <= 0 && p <= 0
@@ -171,6 +170,13 @@ def main():
     input_boundaries, template = get_template(0)
 
     start1 = np.array([9, -8, 0, 0.1])
+    # input = generate_input_region(gurobi_model, template, input_boundaries)
+    # # _, template = get_template(1)
+    # x_results = optimise(template, gurobi_model, input)
+    # # input_boundaries, template = get_template(1)
+    # if x_results is None:
+    #     print("Model unsatisfiable")
+    #     return
     # start2 = np.array([0, 0, -7, 10])
     template_2d = np.array([[0, 1], [1, 0]])
     vertices_list = defaultdict(list)
@@ -190,8 +196,6 @@ def main():
         vertices_list[t].append(vertices)
         seen.append(x)
         x_primes = post(x, nn, output_flag, t, template)
-        # for v in vertices_container:
-        #     vertices_time.append((t + 1, v[0, 0]))
         for x_prime in x_primes:
             x_prime = tuple(np.array(x_prime).round(4))  # todo should we round to prevent numerical errors?
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
@@ -315,7 +319,7 @@ def get_template(mode=0):
         return input_boundaries, template
     if mode == 1:  # directions to easily find fixed point
         input_boundaries = [20]
-        template = np.array([v, -v, -p])
+        template = np.array([v + p, -v - p, -p])
         return input_boundaries, template
 
 
