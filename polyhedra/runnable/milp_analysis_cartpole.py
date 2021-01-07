@@ -8,7 +8,7 @@ import ray
 import torch
 
 from agents.ppo.train_PPO_cartpole import get_PPO_trainer
-from agents.ray_utils import convert_ray_policy_to_sequential
+from agents.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
 from environment.cartpole_ray import CartPoleEnv
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
@@ -27,18 +27,6 @@ def generate_input_region(gurobi_model, templates, boundaries):
             multiplication += template[i] * input[i]
         gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
     return input
-
-
-def generate_mock_guard(gurobi_model: grb.Model, input, action_ego=0, t=0):
-    if action_ego == 0:  # decelerate
-        if t == 0:
-            gurobi_model.addConstr(input[3] >= 36, name=f"cond2_{t}")
-        else:
-            gurobi_model.addConstr((input[0] - input[1]) <= 20, name=f"cond1_{t}")
-    else:  # accelerate
-        epsilon = 1e-4
-        gurobi_model.addConstr(input[3] <= 36 - epsilon, name=f"cond2_{t}")
-        gurobi_model.addConstr((input[0] - input[1]) >= 20 + epsilon, name=f"cond1_{t}")
 
 
 def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
@@ -124,24 +112,32 @@ def create_temp_var(gurobi_model, expression: grb.MLinExpr, name):
     return temp_var
 
 
-def get_sin_cos_table(n_split=24, action=0):
+def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
     sin_cos_table = []
-    start_theta = -12
-    end_theta = 12
-    start_theta_dot = -10
-    end_theta_dot = 10
-    split_theta, step_theta = np.linspace(start_theta, end_theta, endpoint=False, retstep=True, num=n_split)
-    split_theta_dot, step_theta_dot = np.linspace(start_theta_dot, end_theta_dot, endpoint=False, retstep=True, num=n_split)
+    # start_theta = -12
+    # end_theta = 12
+    # start_theta_dot = -10
+    # end_theta_dot = 10
+    step_theta = 0.02
+    step_theta_dot = 0.05
+    split_theta = np.arange(min_theta, max_theta, step_theta)
+    if len(split_theta)==0:
+        split_theta=np.array([min_theta])
+    split_theta_dot = np.arange(min_theta_dot, max_theta_dot, step_theta)
+    if len(split_theta_dot)==0:
+        split_theta_dot=np.array([min_theta_dot])
+    # split_theta, step_theta = np.linspace(start_theta, end_theta, endpoint=False, retstep=True, num=n_split)
+    # split_theta_dot, step_theta_dot = np.linspace(start_theta_dot, end_theta_dot, endpoint=False, retstep=True, num=n_split)
     env = CartPoleEnv(None)
     force = env.force_mag if action == 1 else -env.force_mag
 
     for t_dot in split_theta_dot:
         lb_theta_dot = t_dot
-        ub_theta_dot = min(t_dot + step_theta_dot, end_theta_dot)
+        ub_theta_dot = min(t_dot + step_theta_dot, max_theta_dot)
         theta_dot = interval([lb_theta_dot, ub_theta_dot])
         for s in split_theta:
-            lb = s * 2 * math.pi / 360
-            ub = min(s + step_theta, end_theta) * 2 * math.pi / 360
+            lb = s
+            ub = min(s + step_theta, max_theta)
             theta = interval([lb, ub])
             sintheta = imath.sin(theta)
             costheta = imath.cos(theta)
@@ -163,7 +159,6 @@ def optimise(templates, gurobi_model: grb.Model, x_prime):
             return None
         result = gurobi_model.ObjVal
         results.append(result)
-    print(results)
     return np.array(results)
 
 
@@ -182,9 +177,10 @@ def main():
     output_flag = False
     ray.init(local_mode=True)
     config, trainer = get_PPO_trainer(use_gpu=0)
-    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-03_14-02-48ynltrgiw/checkpoint_8/checkpoint-8")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-03_14-02-48ynltrgiw/checkpoint_8/checkpoint-8")
+    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_07-43-24zjknadb4/checkpoint_21/checkpoint-21")
     policy = trainer.get_policy()
-    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+    sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
     layers = []
     for l in sequential_nn:
         layers.append(l)
@@ -196,14 +192,13 @@ def main():
     input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    # _, template = get_template(1)
+    _, template = get_template(1)
     x_results = optimise(template, gurobi_model, input)
-    # input_boundaries, template = get_template(1)
     if x_results is None:
         print("Model unsatisfiable")
         return
     root = tuple(x_results)
-    template_2d = np.array([[1, 0, 0, 0], [0, 0, 1, 0]])
+    template_2d = np.array([[0, 0, 1, 0], [0, 0, 0, 1]])
     vertices_list = defaultdict(list)
     # vertices = windowed_projection(template, x_results, template2d_speed)
     # vertices_list.append([vertices])
@@ -212,12 +207,19 @@ def main():
     seen = []
     frontier = [(0, root)]
     max_t = 0
+    num_already_visited = 0
+    safe_zone = (12 * 2 * math.pi / 360, 12 * 2 * math.pi / 360, 100, 100)
     while len(frontier) != 0:
         t, x = frontier.pop()
         max_t = max(max_t, t)
         if t > 200:
             break
+        if not contained(x, safe_zone):
+            print(f"Unsafe state found at timestep t={t}")
+            print(x)
+            break
         if any([contained(x, s) for s in seen]):
+            num_already_visited += 1
             continue
         vertices = windowed_projection(template, np.array(x), template_2d)
         vertices_list[t].append(vertices)
@@ -228,9 +230,13 @@ def main():
             frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
             if not any([contained(x_prime, y) for u, y in frontier]):
                 frontier.append(((t + 1), x_prime))
+                print(x_prime)
+            else:
+                num_already_visited += 1
 
     print(f"T={max_t}")
-    show_polygon_list2(vertices_list, "x_lead-x_ego", "x_ego")  # show_polygon_list2(vertices_list)
+    print(f"The algorithm skipped {num_already_visited} already visited states")
+    show_polygon_list2(vertices_list, "theta_dot", "theta")  # show_polygon_list2(vertices_list)
 
 
 def contained(x: tuple, y: tuple):
@@ -256,8 +262,9 @@ def generate_angle_guard(gurobi_model: grb.Model, input, angle_interval, theta_d
 
 def post(x, nn, output_flag, t, template):
     post = []
+    max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(output_flag, template, x)
     for action in range(2):
-        sin_cos_table = get_sin_cos_table(action=action)
+        sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=action)
         for angle_interval, theta_dot, thetaacc_interval, xacc_interval in sin_cos_table:
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
@@ -278,6 +285,25 @@ def post(x, nn, output_flag, t, template):
     return post
 
 
+def get_theta_bounds(output_flag, template, x):
+    gurobi_model = grb.Model()
+    gurobi_model.setParam('OutputFlag', output_flag)
+    input = generate_input_region(gurobi_model, template, x)
+    gurobi_model.setObjective(input[2].sum(), grb.GRB.MAXIMIZE)
+    gurobi_model.optimize()
+    max_theta = gurobi_model.getVars()[2].X
+    gurobi_model.setObjective(input[2].sum(), grb.GRB.MINIMIZE)
+    gurobi_model.optimize()
+    min_theta = gurobi_model.getVars()[2].X
+    gurobi_model.setObjective(input[3].sum(), grb.GRB.MAXIMIZE)
+    gurobi_model.optimize()
+    max_theta_dot = gurobi_model.getVars()[3].X
+    gurobi_model.setObjective(input[3].sum(), grb.GRB.MINIMIZE)
+    gurobi_model.optimize()
+    min_theta_dot = gurobi_model.getVars()[3].X
+    return max_theta, min_theta, max_theta_dot, min_theta_dot
+
+
 def windowed_projection(template, x_results, template_2d):
     ub_lb_window_boundaries = np.array([1000, 1000, -100, -100])
     window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
@@ -292,7 +318,8 @@ def get_template(mode=0):
     theta = e(env_input_size, 2)
     theta_dot = e(env_input_size, 3)
     if mode == 0:  # box directions with intervals
-        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
+        # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
+        input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
         # optimise in a direction
         template = []
         for dimension in range(env_input_size):
@@ -302,7 +329,7 @@ def get_template(mode=0):
         return input_boundaries, template
     if mode == 1:  # directions to easily find fixed point
         input_boundaries = [20]
-        template = np.array([x, x_dot])
+        template = np.array([theta, -theta, theta_dot, -theta_dot])
         return input_boundaries, template
 
 

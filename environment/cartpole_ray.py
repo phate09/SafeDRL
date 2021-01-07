@@ -80,7 +80,7 @@ class CartPoleEnv(gym.Env):
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation
         # is still within bounds.
-        high = np.array([self.x_threshold * 2,
+        high = np.array([np.finfo(np.float32).max,
                          np.finfo(np.float32).max,
                          self.theta_threshold_radians * 2,
                          np.finfo(np.float32).max],
@@ -128,14 +128,15 @@ class CartPoleEnv(gym.Env):
         self.state = (x, x_dot, theta, theta_dot)
 
         done = bool(
-            x < -self.x_threshold
-            or x > self.x_threshold
-            or theta < -self.theta_threshold_radians
+            # x < -self.x_threshold
+            # or x > self.x_threshold
+            theta < -self.theta_threshold_radians
             or theta > self.theta_threshold_radians
         )
 
         if not done:
             reward = 1.0
+            reward -= 0.5 * (x ** 2)
         elif self.steps_beyond_done is None:
             # Pole just fell!
             self.steps_beyond_done = 0

@@ -38,7 +38,7 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 def get_PPO_trainer(use_gpu=1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": CartPoleEnv,  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config,"
+              "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config,"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
@@ -49,12 +49,12 @@ def get_PPO_trainer(use_gpu=1):
               "evaluation_interval": 10,
               "use_gae": True,  #
               "lambda": 0.95,  # gae lambda param
-              "num_envs_per_worker": 10,
+              "num_envs_per_worker": 5,
               "train_batch_size": 4000,
               "evaluation_num_episodes": 20,
-              "rollout_fragment_length": 1000,
+              "rollout_fragment_length": 100,
               "framework": "torch",
-              "horizon": 1000}
+              "horizon": 2000}
     trainer = ppo.PPOTrainer(config=config)
     return config, trainer
 
@@ -62,13 +62,14 @@ def get_PPO_trainer(use_gpu=1):
 if __name__ == "__main__":
     ray.init(local_mode=False, include_dashboard=True)
     config, trainer = get_PPO_trainer()
+    # trainer.load_checkpoint("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_06-09-370a1g0qd0/checkpoint_19/checkpoint-19")
     i = 0
     while True:
         train_result = trainer.train()
         print(
             f"i:{i} episode_reward_max:{train_result['episode_reward_max']:.2E}, episode_reward_min:{train_result['episode_reward_min']:.2E}, episode_reward_mean:{train_result['episode_reward_mean']:.2E}, episode_len_mean:{train_result['episode_len_mean']}")
         i += 1
-        if train_result["episode_reward_mean"] > 900:
+        if train_result["episode_reward_mean"] > 1900:
             print("Termination condition satisfied")
             break
         if i % 10 == 0:
