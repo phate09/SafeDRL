@@ -124,7 +124,6 @@ class CartPoleEnv(gym.Env):
             x = x + self.tau * x_dot
             theta_dot = theta_dot + self.tau * thetaacc
             theta = theta + self.tau * theta_dot
-
         self.state = (x, x_dot, theta, theta_dot)
 
         done = bool(
@@ -136,7 +135,7 @@ class CartPoleEnv(gym.Env):
 
         if not done:
             reward = 1.0
-            reward -= 0.5 * (x ** 2)
+            reward -= 0.5 * (theta ** 2)
         elif self.steps_beyond_done is None:
             # Pole just fell!
             self.steps_beyond_done = 0
@@ -156,6 +155,7 @@ class CartPoleEnv(gym.Env):
 
     def reset(self):
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
+        self.state[0] = self.np_random.uniform(-1000, 1000)
         self.steps_beyond_done = None
         return np.array(self.state)
 
