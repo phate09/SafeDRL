@@ -1,6 +1,8 @@
 from typing import List
 import plotly.graph_objects as go
 import numpy as np
+import pypoman
+
 from mosaic.utils import compute_trace_polygons, PolygonSort
 
 
@@ -63,6 +65,38 @@ def show_polygon_list2(polygon_vertices_list, y_axis_title="x_ego", x_axis_title
         fig.add_trace(trace)
     fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
     fig.show()
+
+
+def show_polygon_list3(polygon_vertices_list, x_axis_title, y_axis_title, template, template2d):
+    traces = []
+    for timestep in polygon_vertices_list:
+        principal_components_list = transform_vertices2([windowed_projection(template, x, template2d)
+                                                         for x in polygon_vertices_list[timestep]])
+        traces.append(compute_polygon_trace(principal_components_list))
+    fig = go.Figure()
+    for trace in traces:
+        fig.add_trace(trace)
+    fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
+    fig.show()
+
+
+def create_window_boundary(template_input, x_results, template_2d, window_boundaries):
+    assert len(window_boundaries) == 4
+    window_template = np.vstack([template_input, template_2d, -template_2d])  # max and min
+    window_boundaries = np.stack((window_boundaries[0], window_boundaries[1], -window_boundaries[2], -window_boundaries[3]))
+    window_boundaries = np.concatenate((x_results, window_boundaries))
+    # windowed_projection_max = np.maximum(window_boundaries, projection)
+    # windowed_projection_min = np.minimum(window_boundaries, projection)
+    # windowed_projection = np.concatenate((windowed_projection_max.squeeze(), windowed_projection_min.squeeze()), axis=0)
+    return window_template, window_boundaries
+
+
+def windowed_projection(template, x_results, template_2d):
+    ub_lb_window_boundaries = np.array([1000, 1000, -100, -100])
+    window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
+    vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (window_A, window_b), canonicalize=False)
+    vertices = np.vstack(vertices)
+    return vertices
 
 
 def compute_polygon_trace(principalComponents: List[List]):

@@ -1,19 +1,19 @@
 import math
 from collections import defaultdict
 from typing import Tuple, List
-
+import progressbar
 import gurobi as grb
 import numpy as np
 import pypoman
 import ray
 import torch
-
+from pynput.keyboard import Listener
 from agents.ppo.train_PPO_cartpole import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
 from environment.cartpole_ray import CartPoleEnv
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
-from polyhedra.plot_utils import show_polygon_list2
+from polyhedra.plot_utils import show_polygon_list2, show_polygon_list3
 from interval import interval, imath
 
 env_input_size = 4
@@ -21,13 +21,17 @@ env_input_size = 4
 
 def generate_input_region(gurobi_model, templates, boundaries):
     input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), name="input")
+    generate_region_constraints(gurobi_model, templates, input, boundaries)
+    return input
+
+
+def generate_region_constraints(gurobi_model, templates, input, boundaries):
     for j, template in enumerate(templates):
         gurobi_model.update()
         multiplication = 0
         for i in range(env_input_size):
             multiplication += template[i] * input[i]
         gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-    return input
 
 
 def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
@@ -163,26 +167,35 @@ def optimise(templates, gurobi_model: grb.Model, x_prime):
     return np.array(results)
 
 
-def create_window_boundary(template_input, x_results, template_2d, window_boundaries):
-    assert len(window_boundaries) == 4
-    window_template = np.vstack([template_input, template_2d, -template_2d])  # max and min
-    window_boundaries = np.stack((window_boundaries[0], window_boundaries[1], -window_boundaries[2], -window_boundaries[3]))
-    window_boundaries = np.concatenate((x_results, window_boundaries))
-    # windowed_projection_max = np.maximum(window_boundaries, projection)
-    # windowed_projection_min = np.minimum(window_boundaries, projection)
-    # windowed_projection = np.concatenate((windowed_projection_max.squeeze(), windowed_projection_min.squeeze()), axis=0)
-    return window_template, window_boundaries
+def check_unsafe(template, bnds, unsafe_zone):
+    for A, b in unsafe_zone:
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', False)
+        input = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name="input")
+        generate_region_constraints(gurobi_model, template, input, bnds)
+        generate_region_constraints(gurobi_model, A, input, b)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        if gurobi_model.status == 2:
+            return True
+    return False
 
 
 def main():
     output_flag = False
     ray.init(local_mode=True)
     config, trainer = get_PPO_trainer(use_gpu=0)
-    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_10-57-537gv8ekj4/checkpoint_18/checkpoint-18")
-    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_07-43-24zjknadb4/checkpoint_21/checkpoint-21")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_17-13-476oom2etf/checkpoint_20/checkpoint-20")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-08_16-19-23tg3bxrcz/checkpoint_18/checkpoint-18")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_150/checkpoint-150")
+    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_170/checkpoint-170")
     policy = trainer.get_policy()
-    sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
-    layers = []
+    # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
+    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+    l0 = torch.nn.Linear(4, 2, bias=False)
+    l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
+    layers = [l0]
     for l in sequential_nn:
         layers.append(l)
 
@@ -193,7 +206,7 @@ def main():
     input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    # _, template = get_template(1)
+    _, template = get_template(2)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
@@ -209,35 +222,43 @@ def main():
     frontier = [(0, root)]
     max_t = 0
     num_already_visited = 0
-    safe_zone = (100, 100, 100, 100, 12 * 2 * math.pi / 360, 12 * 2 * math.pi / 360, 100, 100)
-    while len(frontier) != 0:
-        t, x = frontier.pop(0)
-        max_t = max(max_t, t)
-        if t > 100:
-            break
-        if not contained(x, safe_zone):
-            print(f"Unsafe state found at timestep t={t}")
-            print(x)
-            break
-        if any([contained(x, s) for s in seen]):
-            num_already_visited += 1
-            continue
-        vertices = windowed_projection(template, np.array(x), template_2d)
-        vertices_list[t].append(vertices)
-        seen.append(x)
-        x_primes = post_milp(x, nn, output_flag, t, template)
-        for x_prime in x_primes:
-            x_prime = tuple(np.array(x_prime).round(4))  # todo should we round to prevent numerical errors?
-            frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
-            if not any([contained(x_prime, y) for u, y in frontier]):
-                frontier.append(((t + 1), x_prime))
-                print(x_prime)
-            else:
+    safe_angle = 0.21  # 12 * 2 * math.pi / 360
+    theta = [e(4, 2)]
+    neg_theta = [-e(4, 2)]
+    unsafe_zone = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
+    widgets = [progressbar.Bar(), progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
+               progressbar.Variable('last_visited_state')]
+    with progressbar.ProgressBar(widgets=widgets) as bar:
+        while len(frontier) != 0:
+            t, x = frontier.pop(0)
+            bar.update(value=bar.value + 1, seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x))
+            max_t = max(max_t, t)
+            if t > 100:
+                break
+            if any([contained(x, s) for s in seen]):
                 num_already_visited += 1
+                continue
+            # vertices = windowed_projection(template, np.array(x), template_2d)
+            vertices_list[t].append(np.array(x))
+            if check_unsafe(template, x, unsafe_zone):
+                print(f"Unsafe state found at timestep t={t}")
+                print(x)
+                break
 
+            seen.append(x)
+            x_primes = post_milp(x, nn, output_flag, t, template)
+            for x_prime in x_primes:
+                x_prime = tuple(np.ceil(np.array(x_prime) * 32) / 32)  # todo should we round to prevent numerical errors?
+                frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
+                if not any([contained(x_prime, y) for u, y in frontier]):
+                    frontier.append(((t + 1), x_prime))
+                    # print(x_prime)
+                else:
+                    num_already_visited += 1
     print(f"T={max_t}")
     print(f"The algorithm skipped {num_already_visited} already visited states")
-    show_polygon_list2(vertices_list, "theta_dot", "theta")  # show_polygon_list2(vertices_list)
+    # show_polygon_list2(vertices_list, "theta_dot", "theta")  # show_polygon_list2(vertices_list)
+    show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)  # show_polygon_list2(vertices_list)
 
 
 def contained(x: tuple, y: tuple):
@@ -380,20 +401,13 @@ def get_theta_bounds(output_flag, template, x):
     return max_theta, min_theta, max_theta_dot, min_theta_dot
 
 
-def windowed_projection(template, x_results, template_2d):
-    ub_lb_window_boundaries = np.array([1000, 1000, -100, -100])
-    window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
-    vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (window_A, window_b), canonicalize=False)
-    vertices = np.vstack(vertices)
-    return vertices
-
-
 def get_template(mode=0):
     x = e(env_input_size, 0)
     x_dot = e(env_input_size, 1)
     theta = e(env_input_size, 2)
     theta_dot = e(env_input_size, 3)
     if mode == 0:  # box directions with intervals
+        # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
         input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
         # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
         # optimise in a direction
@@ -405,6 +419,10 @@ def get_template(mode=0):
         return input_boundaries, template
     if mode == 1:  # directions to easily find fixed point
         input_boundaries = [20]
+        template = np.array([theta, -theta, theta_dot, -theta_dot, theta + theta_dot, -(theta + theta_dot), (theta - theta_dot), -(theta - theta_dot)])  # x_dot, -x_dot,theta_dot - theta
+        return input_boundaries, template
+    if mode == 2:
+        input_boundaries = None
         template = np.array([theta, -theta, theta_dot, -theta_dot])
         return input_boundaries, template
 
