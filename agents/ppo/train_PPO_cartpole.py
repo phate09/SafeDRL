@@ -68,7 +68,7 @@ def get_PPO_trainer(use_gpu=1):
 if __name__ == "__main__":
     ray.init(local_mode=False, include_dashboard=True)
     config, trainer = get_PPO_trainer()
-    # trainer.load_checkpoint("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-08_16-19-23tg3bxrcz/checkpoint_18/checkpoint-18")
+    trainer.load_checkpoint("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
     i = 0
     while True:
         train_result = trainer.train()

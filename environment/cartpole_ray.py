@@ -157,7 +157,8 @@ class CartPoleEnv(gym.Env):
 
     def reset(self):
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
-        # self.state[0] = self.np_random.uniform(-1000, 1000)
+        self.state[3] = self.np_random.uniform(-0.5, 0.5)
+        self.state[2] = self.np_random.uniform(-0.2, 0.2)
         self.steps_beyond_done = None
         return np.array(self.state)
 

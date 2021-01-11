@@ -1,5 +1,7 @@
 import math
+import time
 from collections import defaultdict
+from itertools import cycle
 from typing import Tuple, List
 import progressbar
 import gurobi as grb
@@ -123,8 +125,8 @@ def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action
     # end_theta = 12
     # start_theta_dot = -10
     # end_theta_dot = 10
-    step_theta = 0.02
-    step_theta_dot = 0.05
+    step_theta = 0.01
+    step_theta_dot = 0.01
     split_theta = np.arange(min_theta, max_theta, step_theta)
     if len(split_theta) == 0:
         split_theta = np.array([min_theta])
@@ -182,14 +184,16 @@ def check_unsafe(template, bnds, unsafe_zone):
 
 
 def main():
-    output_flag = False
     ray.init(local_mode=True)
     config, trainer = get_PPO_trainer(use_gpu=0)
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_17-13-476oom2etf/checkpoint_20/checkpoint-20")
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-08_16-19-23tg3bxrcz/checkpoint_18/checkpoint-18")
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_150/checkpoint-150")
-    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_170/checkpoint-170")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_170/checkpoint-170")
+    # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_200/checkpoint-200")
+    trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
+
     policy = trainer.get_policy()
     # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
     sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
@@ -198,67 +202,85 @@ def main():
     layers = [l0]
     for l in sequential_nn:
         layers.append(l)
-
+    ray.shutdown()
     nn = torch.nn.Sequential(*layers)
+    template_2d = np.array([[0, 0, 1, 0], [0, 0, 0, 1]])
+    output_flag = False
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
-
     input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    _, template = get_template(2)
+    _, template = get_template(1)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
         return
     root = tuple(x_results)
-    template_2d = np.array([[0, 0, 1, 0], [0, 0, 0, 1]])
-    vertices_list = defaultdict(list)
-    # vertices = windowed_projection(template, x_results, template2d_speed)
-    # vertices_list.append([vertices])
+    max_t, num_already_visited, vertices_list = main_loop(nn, template, output_flag, root, template_2d)
+    print(f"T={max_t}")
+    print(f"The algorithm skipped {num_already_visited} already visited states")
+    # show_polygon_list2(vertices_list, "theta_dot", "theta")  # show_polygon_list2(vertices_list)
 
-    # show_polygon_list2(vertices_list)
+
+def main_loop(nn, template, output_flag, root, template_2d):
+    vertices_list = defaultdict(list)
+    ray.init(local_mode=True, log_to_driver=False)
     seen = []
     frontier = [(0, root)]
     max_t = 0
     num_already_visited = 0
-    safe_angle = 0.21  # 12 * 2 * math.pi / 360
+    safe_angle = 0.5  # 12 * 2 * math.pi / 360
     theta = [e(4, 2)]
     neg_theta = [-e(4, 2)]
     unsafe_zone = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
-    widgets = [progressbar.Bar(), progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
+    widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
                progressbar.Variable('last_visited_state')]
+    proc_ids = []
+    n_workers = 8
+    last_time_plot = time.time()
     with progressbar.ProgressBar(widgets=widgets) as bar:
-        while len(frontier) != 0:
-            t, x = frontier.pop(0)
-            bar.update(value=bar.value + 1, seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x))
-            max_t = max(max_t, t)
-            if t > 100:
-                break
-            if any([contained(x, s) for s in seen]):
-                num_already_visited += 1
-                continue
-            # vertices = windowed_projection(template, np.array(x), template_2d)
-            vertices_list[t].append(np.array(x))
-            if check_unsafe(template, x, unsafe_zone):
-                print(f"Unsafe state found at timestep t={t}")
-                print(x)
-                break
+        while len(frontier) != 0 or len(proc_ids) != 0:
 
-            seen.append(x)
-            x_primes = post_milp(x, nn, output_flag, t, template)
-            for x_prime in x_primes:
-                x_prime = tuple(np.ceil(np.array(x_prime) * 32) / 32)  # todo should we round to prevent numerical errors?
-                frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
-                if not any([contained(x_prime, y) for u, y in frontier]):
-                    frontier.append(((t + 1), x_prime))
-                    # print(x_prime)
-                else:
+            if time.time() - last_time_plot >= 60 * 2:
+                show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)
+                last_time_plot = time.time()
+            while len(proc_ids) < n_workers and len(frontier) != 0:
+                t, x = frontier.pop(0)
+                max_t = max(max_t, t)
+                if max_t > 100:
+                    break
+                if any([contained(x, s) for s in seen]):
                     num_already_visited += 1
-    print(f"T={max_t}")
-    print(f"The algorithm skipped {num_already_visited} already visited states")
-    # show_polygon_list2(vertices_list, "theta_dot", "theta")  # show_polygon_list2(vertices_list)
+                    continue
+                vertices_list[t].append(np.array(x))
+                if check_unsafe(template, x, unsafe_zone):
+                    print(f"Unsafe state found at timestep t={t}")
+                    print(x)
+                    return max_t, num_already_visited, vertices_list
+
+                seen.append(x)
+
+                proc_ids.append(post_milp_remote.remote(x, nn, output_flag, t, template))
+            bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x))
+            ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
+            x_primes_list = ray.get(ready_ids)
+            for x_primes in x_primes_list:
+                for x_prime in x_primes:
+                    x_prime = tuple(np.ceil(np.array(x_prime) * 32) / 32)  # todo should we round to prevent numerical errors?
+                    frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
+                    if not any([contained(x_prime, y) for u, y in frontier]):
+                        frontier.append(((t + 1), x_prime))
+                        # print(x_prime)
+                    else:
+                        num_already_visited += 1
     show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)  # show_polygon_list2(vertices_list)
+    return max_t, num_already_visited, vertices_list
+
+
+@ray.remote
+def post_milp_remote(x, nn, output_flag, t, template):
+    return post_milp(x, nn, output_flag, t, template)
 
 
 def contained(x: tuple, y: tuple):
@@ -332,7 +354,7 @@ def generate_angle_milp(gurobi_model: grb.Model, input, sin_cos_table: List[Tupl
     gurobi_model.addConstr(xacc <= xacc_ub, name=f"xacc_guard2")
 
     gurobi_model.update()
-    # gurobi_model.optimize()
+    gurobi_model.optimize()
     # assert gurobi_model.status == 2, "LP wasn't optimally solved"
     return thetaacc, xacc
 
@@ -366,12 +388,18 @@ def post_milp(x, nn, output_flag, t, template):
     """milp method"""
     post = []
     max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(output_flag, template, x)
-    for action in range(2):
+    for expected_action in range(2):
+        # for case in range(2):  # positive/negative side of theta
+        #     action = expected_action if case == 0 else (expected_action + 1) % 2  # invert the action in the case where the angle is negative
+        action = expected_action
         sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=action)
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
+        gurobi_model.setParam('Threads', 2)
         input = generate_input_region(gurobi_model, template, x)
-        feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=action)
+        # feasible_positive, positive_input = make_positive_case(gurobi_model, input, case)
+        # if feasible_positive:
+        feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=expected_action)
         if feasible_action:
             thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
             # apply dynamic
@@ -380,6 +408,23 @@ def post_milp(x, nn, output_flag, t, template):
             if found_successor:
                 post.append(tuple(x_prime_results))
     return post
+
+
+def make_positive_case(gurobi_model, input, case):
+    if case == 0:
+        gurobi_model.addConstr(input[2] >= 0)
+        return True, input
+    else:
+        gurobi_model.addConstr(input[2] <= 0)  # mirror input in case of negative angle
+        z = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), name="input_positive")
+        gurobi_model.addConstr(z[0] == -input[0])
+        gurobi_model.addConstr(z[1] == -input[1])
+        gurobi_model.addConstr(z[2] == -input[2])
+        gurobi_model.addConstr(z[3] == -input[3])
+
+    gurobi_model.update()
+    gurobi_model.optimize()
+    return gurobi_model.status == 2, z
 
 
 def get_theta_bounds(output_flag, template, x):
@@ -408,7 +453,7 @@ def get_template(mode=0):
     theta_dot = e(env_input_size, 3)
     if mode == 0:  # box directions with intervals
         # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
-        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
+        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, -0.01, 0.05, -0.01]
         # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
         # optimise in a direction
         template = []
