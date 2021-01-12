@@ -22,7 +22,7 @@ env_input_size = 4
 
 
 def generate_input_region(gurobi_model, templates, boundaries):
-    input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), name="input")
+    input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
     generate_region_constraints(gurobi_model, templates, input, boundaries)
     return input
 
@@ -96,7 +96,7 @@ def apply_dynamic(input, gurobi_model: grb.Model, action_ego, thetaacc, xacc, ca
     :return:
     '''
 
-    tau = 0.02  # seconds between state updates
+    tau = 0.001  # seconds between state updates
     x = input[0]
     x_dot = input[1]
     theta = input[2]
@@ -120,37 +120,56 @@ def create_temp_var(gurobi_model, expression: grb.MLinExpr, name):
 
 
 def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
-    sin_cos_table = []
-    # start_theta = -12
-    # end_theta = 12
-    # start_theta_dot = -10
-    # end_theta_dot = 10
-    step_theta = 0.01
-    step_theta_dot = 0.01
-    split_theta = np.arange(min_theta, max_theta, step_theta)
-    if len(split_theta) == 0:
-        split_theta = np.array([min_theta])
-    split_theta_dot = np.arange(min_theta_dot, max_theta_dot, step_theta)
-    if len(split_theta_dot) == 0:
-        split_theta_dot = np.array([min_theta_dot])
+    assert min_theta < max_theta
+    assert min_theta_dot < max_theta_dot
+    step_theta = 0.1
+    step_theta_dot = 0.1
+    min_theta = max(min_theta, -math.pi / 2)
+    max_theta = min(max_theta, math.pi / 2)
+    split_theta1 = np.arange(min(min_theta, 0), min(max_theta, 0), step_theta)
+    split_theta2 = np.arange(max(min_theta, 0), max(max_theta, 0), step_theta)
+    # if len(split_theta1) == 0:
+    #     split_theta = np.array([min_theta])
+    split_theta = np.concatenate([split_theta1, split_theta2])
+    split_theta_dot1 = np.arange(min(min_theta_dot, 0), min(max_theta_dot, 0), step_theta)
+    split_theta_dot2 = np.arange(max(min_theta_dot, 0), max(max_theta_dot, 0), step_theta)
+    # if len(split_theta_dot) == 0:
+    #     split_theta_dot = np.array([min_theta_dot])
+    split_theta_dot = np.concatenate([split_theta_dot1, split_theta_dot2])
     # split_theta, step_theta = np.linspace(start_theta, end_theta, endpoint=False, retstep=True, num=n_split)
     # split_theta_dot, step_theta_dot = np.linspace(start_theta_dot, end_theta_dot, endpoint=False, retstep=True, num=n_split)
     env = CartPoleEnv(None)
     force = env.force_mag if action == 1 else -env.force_mag
 
+    split = []
     for t_dot in split_theta_dot:
-        lb_theta_dot = t_dot
-        ub_theta_dot = min(t_dot + step_theta_dot, max_theta_dot)
-        theta_dot = interval([lb_theta_dot, ub_theta_dot])
-        for s in split_theta:
-            lb = s
-            ub = min(s + step_theta, max_theta)
-            theta = interval([lb, ub])
-            sintheta = imath.sin(theta)
-            costheta = imath.cos(theta)
-            temp = (force + env.polemass_length * theta_dot ** 2 * sintheta) / env.total_mass
-            thetaacc = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
-            xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
+        for theta in split_theta:
+            lb_theta_dot = t_dot
+            ub_theta_dot = min(t_dot + step_theta_dot, max_theta_dot)
+            lb = theta
+            ub = min(theta + step_theta, max_theta)
+            split.append((interval([lb_theta_dot, ub_theta_dot]), interval([lb, ub])))
+    sin_cos_table = []
+    while (len(split)):
+        theta_dot, theta = split.pop()
+        sintheta = imath.sin(theta)
+        costheta = imath.cos(theta)
+        temp = (force + env.polemass_length * theta_dot ** 2 * sintheta) / env.total_mass
+        thetaacc: interval = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
+        xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
+        if thetaacc[0].sup - thetaacc[0].inf > 0.3:
+            # split theta theta_dot
+            mid_theta = (theta[0].sup + theta[0].inf) / 2
+            mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
+            theta_1 = interval([theta[0].inf, mid_theta])
+            theta_2 = interval([mid_theta, theta[0].sup])
+            theta_dot_1 = interval([theta_dot[0].inf, mid_theta_dot])
+            theta_dot_2 = interval([mid_theta_dot, theta_dot[0].sup])
+            split.append((theta_1, theta_dot_1))
+            split.append((theta_1, theta_dot_2))
+            split.append((theta_2, theta_dot_1))
+            split.append((theta_2, theta_dot_2))
+        else:
             sin_cos_table.append((theta, theta_dot, thetaacc, xacc))
     return sin_cos_table
 
@@ -211,7 +230,7 @@ def main():
     input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    _, template = get_template(1)
+    _, template = get_template(4)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
@@ -233,26 +252,22 @@ def main_loop(nn, template, output_flag, root, template_2d):
     safe_angle = 0.5  # 12 * 2 * math.pi / 360
     theta = [e(4, 2)]
     neg_theta = [-e(4, 2)]
-    unsafe_zone = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
+    unsafe_zone = [(neg_theta, np.array([-safe_angle]))]  # , (theta, np.array([-safe_angle]))
     widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
                progressbar.Variable('last_visited_state')]
     proc_ids = []
     n_workers = 8
-    last_time_plot = time.time()
+    last_time_plot = None
     with progressbar.ProgressBar(widgets=widgets) as bar:
         while len(frontier) != 0 or len(proc_ids) != 0:
-
-            if time.time() - last_time_plot >= 60 * 2:
-                show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)
-                last_time_plot = time.time()
             while len(proc_ids) < n_workers and len(frontier) != 0:
                 t, x = frontier.pop(0)
-                max_t = max(max_t, t)
                 if max_t > 100:
                     break
                 if any([contained(x, s) for s in seen]):
                     num_already_visited += 1
                     continue
+                max_t = max(max_t, t)
                 vertices_list[t].append(np.array(x))
                 if check_unsafe(template, x, unsafe_zone):
                     print(f"Unsafe state found at timestep t={t}")
@@ -262,6 +277,9 @@ def main_loop(nn, template, output_flag, root, template_2d):
                 seen.append(x)
 
                 proc_ids.append(post_milp_remote.remote(x, nn, output_flag, t, template))
+            if last_time_plot is None or time.time() - last_time_plot >= 60 * 2:
+                show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)
+                last_time_plot = time.time()
             bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x))
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
             x_primes_list = ray.get(ready_ids)
@@ -359,55 +377,146 @@ def generate_angle_milp(gurobi_model: grb.Model, input, sin_cos_table: List[Tupl
     return thetaacc, xacc
 
 
-def post(x, nn, output_flag, t, template):
-    post = []
-    max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(output_flag, template, x)
-    for action in range(2):
-        sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=action)
-        for angle_interval, theta_dot, thetaacc_interval, xacc_interval in sin_cos_table:
-            gurobi_model = grb.Model()
-            gurobi_model.setParam('OutputFlag', output_flag)
-            input = generate_input_region(gurobi_model, template, x)
-            feasible_angle = generate_angle_guard(gurobi_model, input, angle_interval, theta_dot)
-            if feasible_angle:
-                # sintheta = gurobi_model.addMVar(shape=(1,), lb=sin_interval[0].inf, ub=sin_interval[0].sup, name="sin_theta")
-                # costheta = gurobi_model.addMVar(shape=(1,), lb=cos_interval[0].inf, ub=cos_interval[0].sup, name="cos_theta")
-                thetaacc = gurobi_model.addMVar(shape=(1,), lb=thetaacc_interval[0].inf, ub=thetaacc_interval[0].sup, name="thetaacc")
-                xacc = gurobi_model.addMVar(shape=(1,), lb=xacc_interval[0].inf, ub=xacc_interval[0].sup, name="xacc")
-                feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=action)
-                if feasible_action:
-                    # apply dynamic
-                    x_prime = apply_dynamic(input, gurobi_model, action, thetaacc=thetaacc, xacc=xacc)
-                    found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
-                    if found_successor:
-                        post.append(tuple(x_prime_results))
-    return post
+#
+# def post(x, nn, output_flag, t, template):
+#     post = []
+#     max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(output_flag, template, x)
+#     for action in range(2):
+#         sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=action)
+#         for angle_interval, theta_dot, thetaacc_interval, xacc_interval in sin_cos_table:
+#             gurobi_model = grb.Model()
+#             gurobi_model.setParam('OutputFlag', output_flag)
+#             input = generate_input_region(gurobi_model, template, x)
+#             feasible_angle = generate_angle_guard(gurobi_model, input, angle_interval, theta_dot)
+#             if feasible_angle:
+#                 # sintheta = gurobi_model.addMVar(shape=(1,), lb=sin_interval[0].inf, ub=sin_interval[0].sup, name="sin_theta")
+#                 # costheta = gurobi_model.addMVar(shape=(1,), lb=cos_interval[0].inf, ub=cos_interval[0].sup, name="cos_theta")
+#                 thetaacc = gurobi_model.addMVar(shape=(1,), lb=thetaacc_interval[0].inf, ub=thetaacc_interval[0].sup, name="thetaacc")
+#                 xacc = gurobi_model.addMVar(shape=(1,), lb=xacc_interval[0].inf, ub=xacc_interval[0].sup, name="xacc")
+#                 feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=action)
+#                 if feasible_action:
+#                     # apply dynamic
+#                     x_prime = apply_dynamic(input, gurobi_model, action, thetaacc=thetaacc, xacc=xacc)
+#                     found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+#                     if found_successor:
+#                         post.append(tuple(x_prime_results))
+#     return post
 
 
 def post_milp(x, nn, output_flag, t, template):
     """milp method"""
     post = []
-    max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(output_flag, template, x)
-    for expected_action in range(2):
-        # for case in range(2):  # positive/negative side of theta
-        #     action = expected_action if case == 0 else (expected_action + 1) % 2  # invert the action in the case where the angle is negative
-        action = expected_action
-        sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=action)
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        gurobi_model.setParam('Threads', 2)
-        input = generate_input_region(gurobi_model, template, x)
-        # feasible_positive, positive_input = make_positive_case(gurobi_model, input, case)
-        # if feasible_positive:
-        feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=expected_action)
-        if feasible_action:
-            thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
-            # apply dynamic
-            x_prime = apply_dynamic(input, gurobi_model, action, thetaacc=thetaacc, xacc=xacc)
-            found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
-            if found_successor:
-                post.append(tuple(x_prime_results))
+
+    # positive case action 0
+    # chosen_action = expected_action if case == 0 else (expected_action + 1) % 2  # invert the action in the case where the angle is negative
+    chosen_action = 0
+    case = 0  # positive
+
+    gurobi_model = grb.Model()
+    gurobi_model.setParam('OutputFlag', output_flag)
+    gurobi_model.setParam('Threads', 2)
+    input = generate_input_region(gurobi_model, template, x)
+    gurobi_model.addConstr(input[3] <= 2)
+    gurobi_model.addConstr(input[3] >= -2)
+    gurobi_model.addConstr(input[2] >= -math.pi / 2)
+    gurobi_model.addConstr(input[2] <= math.pi / 2)
+    max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(gurobi_model, input)
+    sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
+    # gurobi_model.addConstr(input[2] >= 0)  # positive case
+    feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
+    if feasible_action:
+        thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
+        # apply dynamic
+        x_prime = apply_dynamic(input, gurobi_model, chosen_action, thetaacc=thetaacc, xacc=xacc)
+        # gurobi_model.addConstr(x_prime[3] <= 0.625)
+        gurobi_model.addConstr(x_prime[3] <= 2)
+        gurobi_model.addConstr(x_prime[3] >= -2)
+        gurobi_model.addConstr(x_prime[2] >= -math.pi / 2)
+        gurobi_model.addConstr(x_prime[2] <= math.pi / 2)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+        if found_successor:
+            post.append(tuple(x_prime_results))
+
+    # positive case action 1
+    chosen_action = 1
+    case = 0  # positive
+    gurobi_model = grb.Model()
+    gurobi_model.setParam('OutputFlag', output_flag)
+    gurobi_model.setParam('Threads', 2)
+    input = generate_input_region(gurobi_model, template, x)
+    gurobi_model.addConstr(input[3] <= 2)
+    gurobi_model.addConstr(input[3] >= -2)
+    gurobi_model.addConstr(input[2] >= -math.pi / 2)
+    gurobi_model.addConstr(input[2] <= math.pi / 2)
+    max_theta, min_theta, max_theta_dot, min_theta_dot = get_theta_bounds(gurobi_model, input)
+    sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
+    # gurobi_model.addConstr(input[2] >= 0)  # positive case
+    feasible_action = generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
+    if feasible_action:
+        thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
+        # apply dynamic
+        x_prime = apply_dynamic(input, gurobi_model, chosen_action, thetaacc=thetaacc, xacc=xacc)
+        gurobi_model.addConstr(x_prime[3] <= 2)
+        gurobi_model.addConstr(x_prime[3] >= -2)
+        gurobi_model.addConstr(x_prime[2] >= -math.pi / 2)
+        gurobi_model.addConstr(x_prime[2] <= math.pi / 2)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+        if found_successor:
+            post.append(tuple(x_prime_results))
+
+    # # negative case action 0
+    # chosen_action = 0
+    # executed_action = 1
+    # sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
+    # gurobi_model = grb.Model()
+    # gurobi_model.setParam('OutputFlag', output_flag)
+    # gurobi_model.setParam('Threads', 2)
+    # input = generate_input_region(gurobi_model, template, x)
+    # gurobi_model.addConstr(input[2] <= 0)  # negative case
+    # reverse_input = make_reverse_var(gurobi_model, input)
+    # feasible_action = generate_nn_guard(gurobi_model, reverse_input, nn, action_ego=chosen_action)
+    # if feasible_action:
+    #     thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
+    #     # apply dynamic
+    #     x_prime = apply_dynamic(input, gurobi_model, executed_action, thetaacc=thetaacc, xacc=xacc)
+    #     found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+    #     if found_successor:
+    #         post.append(tuple(x_prime_results))
+    #
+    # # negative case action 1
+    # chosen_action = 1
+    # executed_action = 0
+    # sin_cos_table = get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
+    # gurobi_model = grb.Model()
+    # gurobi_model.setParam('OutputFlag', output_flag)
+    # gurobi_model.setParam('Threads', 2)
+    # input = generate_input_region(gurobi_model, template, x)
+    # gurobi_model.addConstr(input[2] <= 0)  # negative case
+    # reverse_input = make_reverse_var(gurobi_model, input)
+    # feasible_action = generate_nn_guard(gurobi_model, reverse_input, nn, action_ego=chosen_action)
+    # if feasible_action:
+    #     thetaacc, xacc = generate_angle_milp(gurobi_model, input, sin_cos_table)
+    #     # apply dynamic
+    #     x_prime = apply_dynamic(input, gurobi_model, executed_action, thetaacc=thetaacc, xacc=xacc)
+    #     found_successor, x_prime_results = h_repr_to_plot(gurobi_model, template, x_prime)
+    #     if found_successor:
+    #         post.append(tuple(x_prime_results))
+
     return post
+
+
+def make_reverse_var(gurobi_model, input):
+    z = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), name="input_positive")
+    gurobi_model.addConstr(z[0] == input[0])
+    gurobi_model.addConstr(z[1] == input[1])
+    gurobi_model.addConstr(z[2] == -input[2])
+    gurobi_model.addConstr(z[3] == input[3])
+    gurobi_model.update()
+    return z
 
 
 def make_positive_case(gurobi_model, input, case):
@@ -427,19 +536,19 @@ def make_positive_case(gurobi_model, input, case):
     return gurobi_model.status == 2, z
 
 
-def get_theta_bounds(output_flag, template, x):
-    gurobi_model = grb.Model()
-    gurobi_model.setParam('OutputFlag', output_flag)
-    input = generate_input_region(gurobi_model, template, x)
+def get_theta_bounds(gurobi_model, input):
     gurobi_model.setObjective(input[2].sum(), grb.GRB.MAXIMIZE)
     gurobi_model.optimize()
     max_theta = gurobi_model.getVars()[2].X
+
     gurobi_model.setObjective(input[2].sum(), grb.GRB.MINIMIZE)
     gurobi_model.optimize()
     min_theta = gurobi_model.getVars()[2].X
+
     gurobi_model.setObjective(input[3].sum(), grb.GRB.MAXIMIZE)
     gurobi_model.optimize()
     max_theta_dot = gurobi_model.getVars()[3].X
+
     gurobi_model.setObjective(input[3].sum(), grb.GRB.MINIMIZE)
     gurobi_model.optimize()
     min_theta_dot = gurobi_model.getVars()[3].X
@@ -453,7 +562,7 @@ def get_template(mode=0):
     theta_dot = e(env_input_size, 3)
     if mode == 0:  # box directions with intervals
         # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
-        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, -0.01, 0.05, -0.01]
+        input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
         # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
         # optimise in a direction
         template = []
@@ -469,6 +578,19 @@ def get_template(mode=0):
     if mode == 2:
         input_boundaries = None
         template = np.array([theta, -theta, theta_dot, -theta_dot])
+        return input_boundaries, template
+    if mode == 3:
+        input_boundaries = None
+        template = np.array([theta, theta_dot, -theta_dot])
+        return input_boundaries, template
+    if mode == 4:
+        input_boundaries = [0.09375, 0.625, 0.625, 0.0625, 0.1875]
+        # input_boundaries = [0.09375, 0.5, 0.5, 0.0625, 0.09375]
+        template = np.array([theta, theta_dot, -theta_dot, theta + theta_dot, (theta - theta_dot)])
+        return input_boundaries, template
+    if mode == 5:
+        input_boundaries = [0.125, 0.0625, 0.1875]
+        template = np.array([theta, theta + theta_dot, (theta - theta_dot)])
         return input_boundaries, template
 
 

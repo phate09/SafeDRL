@@ -92,7 +92,7 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
 
 
 def windowed_projection(template, x_results, template_2d):
-    ub_lb_window_boundaries = np.array([1000, 1000, -100, -100])
+    ub_lb_window_boundaries = np.array([5, 5, -5, -5])
     window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
     vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (window_A, window_b), canonicalize=False)
     vertices = np.vstack(vertices)

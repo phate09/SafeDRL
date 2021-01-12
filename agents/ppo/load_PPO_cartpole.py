@@ -24,7 +24,7 @@ for l in sequential_nn:
 nn = torch.nn.Sequential(*layers)
 env = CartPoleEnv(None)
 
-plot_index = 1
+plot_index = 3
 position_list = []
 env.render()
 for i in range(5):
