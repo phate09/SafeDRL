@@ -1,22 +1,19 @@
 import math
 import time
 from collections import defaultdict
-from itertools import cycle
 from typing import Tuple, List
-import progressbar
+
 import gurobi as grb
 import numpy as np
-import pypoman
+import progressbar
 import ray
 import torch
-from pynput.keyboard import Listener
-from agents.ppo.train_PPO_cartpole import get_PPO_trainer
-from agents.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
-from environment.cartpole_ray import CartPoleEnv
-from polyhedra.graph_explorer import GraphExplorer
-from polyhedra.net_methods import generate_nn_torch
-from polyhedra.plot_utils import show_polygon_list2, show_polygon_list3
 from interval import interval, imath
+
+from agents.ppo.train_PPO_cartpole import get_PPO_trainer
+from agents.ray_utils import convert_ray_policy_to_sequential
+from environment.cartpole_ray import CartPoleEnv
+from polyhedra.plot_utils import show_polygon_list3
 
 env_input_size = 4
 
@@ -230,7 +227,7 @@ def main():
     input_boundaries, template = get_template(0)
 
     input = generate_input_region(gurobi_model, template, input_boundaries)
-    _, template = get_template(4)
+    _, template = get_template(1)
     x_results = optimise(template, gurobi_model, input)
     if x_results is None:
         print("Model unsatisfiable")
@@ -244,7 +241,7 @@ def main():
 
 def main_loop(nn, template, output_flag, root, template_2d):
     vertices_list = defaultdict(list)
-    ray.init(local_mode=True, log_to_driver=False)
+    ray.init(local_mode=False, log_to_driver=False)
     seen = []
     frontier = [(0, root)]
     max_t = 0
@@ -254,7 +251,7 @@ def main_loop(nn, template, output_flag, root, template_2d):
     neg_theta = [-e(4, 2)]
     unsafe_zone = [(neg_theta, np.array([-safe_angle]))]  # , (theta, np.array([-safe_angle]))
     widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
-               progressbar.Variable('last_visited_state')]
+               progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
     proc_ids = []
     n_workers = 8
     last_time_plot = None
@@ -280,12 +277,12 @@ def main_loop(nn, template, output_flag, root, template_2d):
             if last_time_plot is None or time.time() - last_time_plot >= 60 * 2:
                 show_polygon_list3(vertices_list, "theta", "theta_dot", template, template_2d)
                 last_time_plot = time.time()
-            bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x))
+            bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
             ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
             x_primes_list = ray.get(ready_ids)
             for x_primes in x_primes_list:
                 for x_prime in x_primes:
-                    x_prime = tuple(np.ceil(np.array(x_prime) * 32) / 32)  # todo should we round to prevent numerical errors?
+                    x_prime = tuple(np.ceil(np.array(x_prime) * 256) / 256)  # todo should we round to prevent numerical errors?
                     frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
                     if not any([contained(x_prime, y) for u, y in frontier]):
                         frontier.append(((t + 1), x_prime))
@@ -308,6 +305,7 @@ def contained(x: tuple, y: tuple):
         if x[i] > y[i]:
             return False
     return True
+
 
 
 def generate_angle_guard(gurobi_model: grb.Model, input, theta_interval, theta_dot_interval):
