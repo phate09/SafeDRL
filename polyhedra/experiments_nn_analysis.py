@@ -15,6 +15,7 @@ from polyhedra.plot_utils import show_polygon_list3
 
 class Experiment():
     def __init__(self, env_input_size: int):
+        self.rounding_value = 256
         self.get_nn_fn = None
         self.plot_fn = None
         self.post_fn_remote = None
@@ -30,6 +31,7 @@ class Experiment():
         self.time_horizon = 100
         self.use_bfs = True  # use Depth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
+        self.use_rounding = True
 
     def run_experiment(self, local_mode=False):
         assert self.get_nn_fn is not None
@@ -83,7 +85,7 @@ class Experiment():
                         print(x)
                         return max_t, num_already_visited, vertices_list, True
                     seen.append(x)
-                    proc_ids.append(self.post_fn_remote.remote(self,x, nn, self.output_flag, t, template))
+                    proc_ids.append(self.post_fn_remote.remote(self, x, nn, self.output_flag, t, template))
                 if last_time_plot is None or time.time() - last_time_plot >= self.plotting_time_interval:
                     self.plot_fn(vertices_list, template, template_2d)
                     last_time_plot = time.time()
@@ -92,7 +94,8 @@ class Experiment():
                 x_primes_list = ray.get(ready_ids)
                 for x_primes in x_primes_list:
                     for x_prime in x_primes:
-                        x_prime = tuple(np.ceil(np.array(x_prime) * 256) / 256)  # todo should we round to prevent numerical errors?
+                        if self.use_rounding:
+                            x_prime = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
                         frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
                         if not any([contained(x_prime, y) for u, y in frontier]):
                             frontier.append(((t + 1), x_prime))

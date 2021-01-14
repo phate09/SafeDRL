@@ -87,20 +87,15 @@ class CartpoleExperiment(Experiment):
         assert min_theta_dot < max_theta_dot
         step_theta = 0.1
         step_theta_dot = 0.1
+        step_thetaacc = 0.3
         min_theta = max(min_theta, -math.pi / 2)
         max_theta = min(max_theta, math.pi / 2)
         split_theta1 = np.arange(min(min_theta, 0), min(max_theta, 0), step_theta)
         split_theta2 = np.arange(max(min_theta, 0), max(max_theta, 0), step_theta)
-        # if len(split_theta1) == 0:
-        #     split_theta = np.array([min_theta])
         split_theta = np.concatenate([split_theta1, split_theta2])
         split_theta_dot1 = np.arange(min(min_theta_dot, 0), min(max_theta_dot, 0), step_theta)
         split_theta_dot2 = np.arange(max(min_theta_dot, 0), max(max_theta_dot, 0), step_theta)
-        # if len(split_theta_dot) == 0:
-        #     split_theta_dot = np.array([min_theta_dot])
         split_theta_dot = np.concatenate([split_theta_dot1, split_theta_dot2])
-        # split_theta, step_theta = np.linspace(start_theta, end_theta, endpoint=False, retstep=True, num=n_split)
-        # split_theta_dot, step_theta_dot = np.linspace(start_theta_dot, end_theta_dot, endpoint=False, retstep=True, num=n_split)
         env = CartPoleEnv(None)
         force = env.force_mag if action == 1 else -env.force_mag
 
@@ -120,7 +115,7 @@ class CartpoleExperiment(Experiment):
             temp = (force + env.polemass_length * theta_dot ** 2 * sintheta) / env.total_mass
             thetaacc: interval = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
             xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
-            if thetaacc[0].sup - thetaacc[0].inf > 0.3:
+            if thetaacc[0].sup - thetaacc[0].inf > step_thetaacc:
                 # split theta theta_dot
                 mid_theta = (theta[0].sup + theta[0].inf) / 2
                 mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
