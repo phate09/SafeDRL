@@ -29,6 +29,8 @@ class CartpoleExperiment(Experiment):
         theta = [self.e(4, 2)]
         neg_theta = [-self.e(4, 2)]
         self.unsafe_zone: List[Tuple] = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
+        # self.use_rounding = False
+        self.rounding_value = 1024
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
