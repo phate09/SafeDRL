@@ -29,7 +29,7 @@ class StoppingCarExperiment(Experiment):
         distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
         # self.use_bfs = True
         # self.n_workers = 1
-        # self.rounding_value = 1024
+        self.rounding_value = 1024 * 8
         self.use_rounding = False
         self.unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
 

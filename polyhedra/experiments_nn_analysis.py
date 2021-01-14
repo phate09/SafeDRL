@@ -15,7 +15,7 @@ from polyhedra.plot_utils import show_polygon_list3
 
 class Experiment():
     def __init__(self, env_input_size: int):
-        self.rounding_value = 256
+        self.rounding_value = 1024
         self.get_nn_fn = None
         self.plot_fn = None
         self.post_fn_remote = None
