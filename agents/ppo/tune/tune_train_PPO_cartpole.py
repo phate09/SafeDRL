@@ -38,7 +38,20 @@ class TorchCustomModel(TorchModelV2, nn.Module):
         return torch.reshape(self.torch_sub_model.value_function(), [-1])
 
 
-def get_PPO_config(seed, use_gpu=1):
+class MyCallback(Callback):
+    def on_train_result(self, iteration, trials, trial, result, **info):
+        result = info["result"]
+        if result["episode_reward_mean"] > 6500:
+            phase = 1
+        else:
+            phase = 0
+        trainer = info["trainer"]
+        trainer.workers.foreach_worker(
+            lambda ev: ev.foreach_env(
+                lambda env: env.set_phase(phase)))
+
+
+def get_PPO_config(seed, use_gpu: float = 1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": CartPoleEnv,  #
               "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
@@ -46,9 +59,9 @@ def get_PPO_config(seed, use_gpu=1):
               "lr": 5e-4,
               "num_gpus": use_gpu,
               "vf_clip_param": 100000,
-              "grad_clip": 2500,
-              # "clip_rewards": 5,
-              "num_workers": 7,  # parallelism
+              "grad_clip": 200,
+              "clip_rewards": 100,
+              "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,
@@ -67,7 +80,7 @@ def get_PPO_config(seed, use_gpu=1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"cost_fn": tune.grid_search([0, 1]),
+              "env_config": {"cost_fn": tune.grid_search([0, 1, 2]),
                              "tau": tune.grid_search([0.001, 0.02, 0.005]),
                              "seed": seed}
               }
@@ -80,17 +93,18 @@ if __name__ == "__main__":
     np.random.seed(seed)
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
-    config = get_PPO_config(use_gpu=1, seed=seed)
+    config = get_PPO_config(use_gpu=0.5, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 1e8, "episode_reward_mean": 7950},
+        stop={"info/num_steps_trained": 2e7, "episode_reward_mean": 7950},
         config=config,
         name=f"tune_PPO_cartpole",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
+        callbacks=[MyCallback()],
         # resume="PROMPT",
-        verbose=3,
+        verbose=1,
     )
     ray.shutdown()

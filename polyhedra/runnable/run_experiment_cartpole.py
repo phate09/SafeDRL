@@ -1,6 +1,9 @@
 from typing import List, Tuple
 
+from ray.rllib.agents.ppo import ppo
+
 from agents.ppo.train_PPO_cartpole import get_PPO_trainer
+from agents.ppo.tune.tune_train_PPO_cartpole import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 import ray
@@ -249,7 +252,7 @@ class CartpoleExperiment(Experiment):
             template = np.array([theta, theta + theta_dot, (theta - theta_dot)])
             return input_boundaries, template
 
-    def get_nn(self):
+    def get_nn_old(self):
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
@@ -259,6 +262,24 @@ class CartpoleExperiment(Experiment):
         # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_170/checkpoint-170")
         # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_200/checkpoint-200")
         trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
+
+        policy = trainer.get_policy()
+        # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        l0 = torch.nn.Linear(4, 2, bias=False)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
+        layers = [l0]
+        for l in sequential_nn:
+            layers.append(l)
+        ray.shutdown()
+        nn = torch.nn.Sequential(*layers)
+        return nn
+
+    def get_nn(self):
+        ray.init(local_mode=True)
+        config = get_PPO_config(1234)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
 
         policy = trainer.get_policy()
         # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
