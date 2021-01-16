@@ -28,7 +28,7 @@ class StoppingCar(gym.Env):
             random.seed(config["seed"])
         else:
             self.cost_function_index = 0
-            random.seed = 0
+            random.seed(0)
 
     def reset(self):
         self.y_lead = self.y_ego = 0

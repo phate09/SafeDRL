@@ -40,7 +40,7 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 
 def get_PPO_config(seed, use_gpu=1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
-    config = {"env": CartPoleEnv,  #
+    config = {"env": BouncingBall,  #
               "model": {"custom_model": "my_model", "fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
@@ -48,7 +48,7 @@ def get_PPO_config(seed, use_gpu=1):
               "vf_clip_param": 100000,
               "grad_clip": 300,
               # "clip_rewards": 5,
-              "num_workers": 8,  # parallelism
+              "num_workers": 7,  # parallelism
               "num_envs_per_worker": 2,
               "batch_mode": "complete_episodes",
               "evaluation_interval": 10,
@@ -66,9 +66,7 @@ def get_PPO_config(seed, use_gpu=1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"cost_fn": tune.grid_search([0, 1]),
-                             "tau": tune.grid_search([0.001, 0.02, 0.005]),
-                             "seed": seed}
+              "env_config": {"seed": seed}
               }
     return config
 
@@ -89,7 +87,7 @@ if __name__ == "__main__":
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
-        resume="PROMPT",
+        # resume="PROMPT",
         verbose=3,
     )
     ray.shutdown()

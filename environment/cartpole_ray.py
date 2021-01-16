@@ -92,8 +92,10 @@ class CartPoleEnv(gym.Env):
         if config is not None:
             self.seed(config["seed"])
             self.tau = config["tau"]
+            self.cost_fn = config["cost_fn"]
         else:
             self.seed()
+            self.cost_fn = 0
         self.viewer = None
         self.state = None
 
@@ -139,9 +141,10 @@ class CartPoleEnv(gym.Env):
 
         if not done:
             reward = 1.0
-            reward -= 0.5 * (theta ** 2)
-            reward -= 0.5 * (theta_dot ** 2)
-            reward -= 0.1 * (x_dot ** 2)
+            if self.cost_fn == 0:
+                reward -= 0.5 * (theta ** 2)
+                reward -= 0.5 * (theta_dot ** 2)
+                reward -= 0.1 * (x_dot ** 2)
         elif self.steps_beyond_done is None:
             # Pole just fell!
             self.steps_beyond_done = 0
@@ -161,8 +164,8 @@ class CartPoleEnv(gym.Env):
 
     def reset(self):
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
-        self.state[3] = self.np_random.uniform(-0.5, 0.5)
-        self.state[2] = self.np_random.uniform(-0.2, 0.2)
+        # self.state[3] = self.np_random.uniform(-0.5, 0.5)
+        # self.state[2] = self.np_random.uniform(-0.2, 0.2)
         self.steps_beyond_done = None
         return np.array(self.state)
 

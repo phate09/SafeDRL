@@ -48,7 +48,7 @@ def get_PPO_config(seed, use_gpu=1):
               "vf_clip_param": 100000,
               "grad_clip": 2500,
               "clip_rewards": 5,
-              "num_workers": 8,  # parallelism
+              "num_workers": 7,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,

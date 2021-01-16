@@ -1,6 +1,9 @@
 from typing import List, Tuple
 
+from ray.rllib.agents.ppo import ppo
+
 from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
+from agents.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 import ray
@@ -202,10 +205,24 @@ class BouncingBallExperiment(Experiment):
             template = np.array([v + p, -v - p, -p])
             return input_boundaries, template
 
-    def get_nn(self):
+    def get_nn_old(self):
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
+        policy = trainer.get_policy()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        layers = []
+        for l in sequential_nn:
+            layers.append(l)
+        nn = torch.nn.Sequential(*layers)
+        ray.shutdown()
+        return nn
+
+    def get_nn(self):
+        ray.init(local_mode=True)
+        config = get_PPO_config(1234)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore("/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         layers = []

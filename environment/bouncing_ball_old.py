@@ -19,7 +19,10 @@ class BouncingBall(gym.Env):
         self.p = 0  # position
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
-        random.seed = 0
+        if config is not None:
+            random.seed(config["seed"])
+        else:
+            random.seed(0)
 
     def reset(self):
         self.p = 7 + random.uniform(0, 3)
@@ -39,7 +42,7 @@ class BouncingBall(gym.Env):
                 done = True
                 # cost += -1000
         if v_prime <= 0 and p_prime > 4 and action == 1:
-            v_prime = v_prime-4
+            v_prime = v_prime - 4
             p_prime = 4
         if v_prime > 0 and p_prime > 4 and action == 1:
             v_prime = -(0.9) * v_prime - 4

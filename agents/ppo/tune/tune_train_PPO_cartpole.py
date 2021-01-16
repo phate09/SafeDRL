@@ -48,7 +48,7 @@ def get_PPO_config(seed, use_gpu=1):
               "vf_clip_param": 100000,
               "grad_clip": 2500,
               # "clip_rewards": 5,
-              "num_workers": 8,  # parallelism
+              "num_workers": 7,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,
@@ -84,13 +84,13 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": 7950},
+        stop={"info/num_steps_trained": 1e8, "episode_reward_mean": 7950},
         config=config,
         name=f"tune_PPO_cartpole",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
-        resume="PROMPT",
+        # resume="PROMPT",
         verbose=3,
     )
     ray.shutdown()
