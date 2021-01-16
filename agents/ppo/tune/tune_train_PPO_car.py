@@ -48,7 +48,7 @@ def get_PPO_config(seed, use_gpu=1):
               "vf_clip_param": 100000,
               "grad_clip": 2500,
               "clip_rewards": 5,
-              "num_workers": 3,  # parallelism
+              "num_workers": 8,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,
@@ -60,7 +60,7 @@ def get_PPO_config(seed, use_gpu=1):
               "sgd_minibatch_size": 1024,
               "rollout_fragment_length": 200,
               "framework": "torch",
-              "horizon": 8000,
+              "horizon": 1000,
               "seed": seed,
               "evaluation_config": {
                   # Example: overriding env_config, exploration, etc:
@@ -79,11 +79,11 @@ if __name__ == "__main__":
     np.random.seed(seed)
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
-    config = get_PPO_config(use_gpu=0.5, seed=seed)
+    config = get_PPO_config(use_gpu=1, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": 7950},
+        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -5e1},
         config=config,
         name=f"tune_PPO_stopping_car",
         checkpoint_freq=10,

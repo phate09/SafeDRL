@@ -1,6 +1,9 @@
 from typing import List, Tuple
 
+from ray.rllib.agents.ppo import ppo
+
 from agents.ppo.train_PPO_car import get_PPO_trainer
+from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 import ray
@@ -101,7 +104,7 @@ class StoppingCarExperiment(Experiment):
 
     @staticmethod
     def plot(vertices_list, template, template_2d):
-        # Experiment.generic_plot("x_ego", "x_lead-x_ego", vertices_list, template, template_2d)
+        Experiment.generic_plot("x_ego", "x_lead-x_ego", vertices_list, template, template_2d)
         pass
 
     def get_template(self, mode=0):
@@ -198,10 +201,27 @@ class StoppingCarExperiment(Experiment):
                     template.append(t4)
             return input_boundaries, np.array(template)
 
-    def get_nn(self):
+    def get_nn_old(self):
         ray.init(local_mode=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
+        policy = trainer.get_policy()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        l0 = torch.nn.Linear(6, 2, bias=False)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+        layers = [l0]
+        for l in sequential_nn:
+            layers.append(l)
+
+        nn = torch.nn.Sequential(*layers)
+        ray.shutdown()
+        return nn
+
+    def get_nn(self):
+        ray.init(local_mode=True)
+        config = get_PPO_config(1234)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_e6ed1_00000_0_cost_fn=0_2021-01-15_19-57-40/checkpoint_440/checkpoint-440")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         l0 = torch.nn.Linear(6, 2, bias=False)

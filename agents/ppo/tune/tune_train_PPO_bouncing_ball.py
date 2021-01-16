@@ -41,26 +41,25 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 def get_PPO_config(seed, use_gpu=1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": CartPoleEnv,  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
+              "model": {"custom_model": "my_model", "fcnet_hiddens": [32, 32], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
               "vf_clip_param": 100000,
-              "grad_clip": 2500,
+              "grad_clip": 300,
               # "clip_rewards": 5,
               "num_workers": 8,  # parallelism
-              "num_envs_per_worker": 10,
-              "batch_mode": "truncate_episodes",
+              "num_envs_per_worker": 2,
+              "batch_mode": "complete_episodes",
               "evaluation_interval": 10,
               "evaluation_num_episodes": 20,
               "use_gae": True,  #
               "lambda": 0.95,  # gae lambda param
               "num_sgd_iter": 10,
-              "train_batch_size": 4000,
-              "sgd_minibatch_size": 1024,
-              "rollout_fragment_length": 200,
+              "train_batch_size": 4096,
+              "rollout_fragment_length": 256,
               "framework": "torch",
-              "horizon": 8000,
+              "horizon": 1000,
               "seed": seed,
               "evaluation_config": {
                   # Example: overriding env_config, exploration, etc:
@@ -84,9 +83,9 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": 7950},
+        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": 900},
         config=config,
-        name=f"tune_PPO_cartpole",
+        name=f"tune_PPO_bouncing_ball",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
