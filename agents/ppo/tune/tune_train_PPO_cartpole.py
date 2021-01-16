@@ -40,15 +40,15 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 
 def get_PPO_config(seed, use_gpu=1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
-    config = {"env": StoppingCar,  #
+    config = {"env": CartPoleEnv,  #
               "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
               "vf_clip_param": 100000,
               "grad_clip": 2500,
-              "clip_rewards": 5,
-              "num_workers": 3,  # parallelism
+              # "clip_rewards": 5,
+              "num_workers": 8,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,
@@ -68,6 +68,7 @@ def get_PPO_config(seed, use_gpu=1):
                   "explore": False
               },
               "env_config": {"cost_fn": tune.grid_search([0, 1]),
+                             "tau": tune.grid_search([0.001, 0.02, 0.005]),
                              "seed": seed}
               }
     return config
@@ -85,7 +86,7 @@ if __name__ == "__main__":
         "PPO",
         stop={"info/num_steps_trained": 2e8, "episode_reward_mean": 7950},
         config=config,
-        name=f"tune_PPO_stopping_car",
+        name=f"tune_PPO_cartpole",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
