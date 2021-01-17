@@ -1,17 +1,34 @@
 import ray
 import torch.nn
 import numpy as np
+from ray.rllib.agents.ppo import ppo
+
 from agents.ppo.train_PPO_cartpole import get_PPO_trainer
+from agents.ppo.tune.tune_train_PPO_cartpole import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
 from environment.bouncing_ball_old import BouncingBall
 from environment.cartpole_ray import CartPoleEnv
 
 ray.init()
-config, trainer = get_PPO_trainer(use_gpu=0)
-# trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_10-57-537gv8ekj4/checkpoint_18/checkpoint-18")
-# trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_07-43-24zjknadb4/checkpoint_21/checkpoint-21")
-# trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
-trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
+# config, trainer = get_PPO_trainer(use_gpu=0)
+# # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_10-57-537gv8ekj4/checkpoint_18/checkpoint-18")
+# # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_07-43-24zjknadb4/checkpoint_21/checkpoint-21")
+# # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
+# trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
+# policy = trainer.get_policy()
+# # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
+# sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+# l0 = torch.nn.Linear(4, 2, bias=False)
+# l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
+# layers = [l0]
+# for l in sequential_nn:
+#     layers.append(l)
+#
+# nn = torch.nn.Sequential(*layers)
+config = get_PPO_config(1234)
+trainer = ppo.PPOTrainer(config=config)
+trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
@@ -20,7 +37,6 @@ l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=
 layers = [l0]
 for l in sequential_nn:
     layers.append(l)
-
 nn = torch.nn.Sequential(*layers)
 env = CartPoleEnv(None)
 
@@ -37,7 +53,7 @@ for i in range(5):
     cumulative_reward = 0
     print(state_np)
     position_list.append(state_np[plot_index])
-    for i in range(1000):
+    for i in range(8000):
         state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)
         # state = torch.from_numpy(state_np).float().unsqueeze(0)
         action_score = nn(state_reduced)
@@ -47,7 +63,7 @@ for i in range(5):
         # assert action == action2
         print(f"action: {action}")
         state_np, reward, done, _ = env.step(action)
-        env.render()
+        # env.render()
         position_list.append(state_np[plot_index])
         # min_distance = min(state_np[7], min_distance)
         cumulative_reward += reward

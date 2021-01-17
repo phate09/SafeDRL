@@ -59,7 +59,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "lr": 5e-4,
               "num_gpus": use_gpu,
               "vf_clip_param": 100000,
-              "grad_clip": 200,
+              "grad_clip": 2500,
               "clip_rewards": 100,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,

@@ -289,8 +289,8 @@ class CartpoleExperiment(Experiment):
         layers = [l0]
         for l in sequential_nn:
             layers.append(l)
-        ray.shutdown()
         nn = torch.nn.Sequential(*layers)
+        ray.shutdown()
         return nn
 
 
