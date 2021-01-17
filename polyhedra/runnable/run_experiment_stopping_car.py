@@ -1,18 +1,15 @@
 from typing import List, Tuple
 
+import gurobi as grb
+import numpy as np
+import ray
+import torch
 from ray.rllib.agents.ppo import ppo
 
 from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
-import ray
-import gurobi as grb
-import math
-import numpy as np
-import torch
-from interval import interval, imath
-from environment.stopping_car import StoppingCar
 
 
 class StoppingCarExperiment(Experiment):
@@ -32,9 +29,16 @@ class StoppingCarExperiment(Experiment):
         distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
         # self.use_bfs = True
         # self.n_workers = 1
-        self.rounding_value = 1024 * 8
+        self.rounding_value = 2 ** 10
         self.use_rounding = False
+        self.time_horizon = 400
         self.unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
+        self.input_epsilon = 0
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_14b68_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_11-56-58/checkpoint_31/checkpoint-31" #safe both with and without epsilon of 0.1
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_14b68_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_11-56-58/checkpoint_37/checkpoint-37" #not determined
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_12-37-27/checkpoint_24/checkpoint-24"  # safe at t=216
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_12-37-27/checkpoint_36/checkpoint-36"  # not determined
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00002_2_cost_fn=0,epsilon_input=0_2021-01-17_12-38-53/checkpoint_40/checkpoint-40"  #
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -45,7 +49,13 @@ class StoppingCarExperiment(Experiment):
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('Threads', 2)
             input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-            feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
+            observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
+            gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
+            gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
+            gurobi_model.addConstr(observation[0] <= input[2] - input[3] + self.input_epsilon / 2, name=f"obs_constr11")
+            gurobi_model.addConstr(observation[0] >= input[2] - input[3] - self.input_epsilon / 2, name=f"obs_constr12")
+            feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
+            # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
             if feasible_action:
                 # apply dynamic
                 x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=self.env_input_size)
@@ -207,13 +217,14 @@ class StoppingCarExperiment(Experiment):
         trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        l0 = torch.nn.Linear(6, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
-        layers = [l0]
-        for l in sequential_nn:
-            layers.append(l)
-
-        nn = torch.nn.Sequential(*layers)
+        # l0 = torch.nn.Linear(6, 2, bias=False)
+        # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+        # layers = [l0]
+        # for l in sequential_nn:
+        #     layers.append(l)
+        #
+        # nn = torch.nn.Sequential(*layers)
+        nn = sequential_nn
         ray.shutdown()
         return nn
 
@@ -221,16 +232,17 @@ class StoppingCarExperiment(Experiment):
         ray.init(local_mode=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
-        trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_e6ed1_00000_0_cost_fn=0_2021-01-15_19-57-40/checkpoint_440/checkpoint-440")
+        trainer.restore(self.nn_path)
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        l0 = torch.nn.Linear(6, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
-        layers = [l0]
-        for l in sequential_nn:
-            layers.append(l)
-
-        nn = torch.nn.Sequential(*layers)
+        # l0 = torch.nn.Linear(6, 2, bias=False)
+        # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+        # layers = [l0]
+        # for l in sequential_nn:
+        #     layers.append(l)
+        #
+        # nn = torch.nn.Sequential(*layers)
+        nn = sequential_nn
         ray.shutdown()
         return nn
 

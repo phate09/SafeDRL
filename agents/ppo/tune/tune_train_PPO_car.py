@@ -48,9 +48,9 @@ def get_PPO_config(seed, use_gpu=1):
               "vf_clip_param": 100000,
               "grad_clip": 2500,
               "clip_rewards": 5,
-              "num_workers": 7,  # parallelism
+              "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
-              "batch_mode": "truncate_episodes",
+              "batch_mode": "complete_episodes",
               "evaluation_interval": 10,
               "evaluation_num_episodes": 20,
               "use_gae": True,  #
@@ -58,7 +58,7 @@ def get_PPO_config(seed, use_gpu=1):
               "num_sgd_iter": 10,
               "train_batch_size": 4000,
               "sgd_minibatch_size": 1024,
-              "rollout_fragment_length": 200,
+              "rollout_fragment_length": 1000,
               "framework": "torch",
               "horizon": 1000,
               "seed": seed,
@@ -67,8 +67,8 @@ def get_PPO_config(seed, use_gpu=1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"cost_fn": tune.grid_search([0, 1]),
-                             "seed": seed}
+              "env_config": {"cost_fn": tune.grid_search([0]),
+                             "epsilon_input": tune.grid_search([0, 0.1])}
               }
     return config
 
@@ -79,17 +79,18 @@ if __name__ == "__main__":
     np.random.seed(seed)
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
-    config = get_PPO_config(use_gpu=1, seed=seed)
+    config = get_PPO_config(use_gpu=0.5, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -5e1},
+        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -2e1},
         config=config,
         name=f"tune_PPO_stopping_car",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
-        resume="PROMPT",
-        verbose=3,
+        # resume="PROMPT",
+        verbose=1,
+        num_samples=10
     )
     ray.shutdown()

@@ -6,6 +6,7 @@ from gym import spaces
 import numpy as np
 import random
 import torch
+from gym.utils import seeding
 
 
 class StoppingCar(gym.Env):
@@ -23,22 +24,26 @@ class StoppingCar(gym.Env):
         self.v_set = 30  # speed to drive at if no cars ahead
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
+        self.epsilon_input = 0
+        self.cost_function_index = 0
+        self.seed()
         if config is not None:
             self.cost_function_index = config["cost_fn"]
-            random.seed(config["seed"])
-        else:
-            self.cost_function_index = 0
-            random.seed(0)
+            self.epsilon_input = config["epsilon_input"]
 
     def reset(self):
         self.y_lead = self.y_ego = 0
-        self.v_lead = random.uniform(20, 36)
-        self.v_ego = random.uniform(20, 36)
-        self.x_ego = random.uniform(0, 0)
-        self.x_lead = random.uniform(20, 60)
+        self.v_lead = self.np_random.uniform(20, 36)
+        self.v_ego = self.np_random.uniform(20, 36)
+        self.x_ego = self.np_random.uniform(0, 0)
+        self.x_lead = self.np_random.uniform(20, 60)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
         return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def step(self, action_ego):
         if action_ego == 0:
@@ -51,8 +56,8 @@ class StoppingCar(gym.Env):
         self.v_lead += self.y_lead * self.dt
         self.x_lead += self.v_lead * self.dt
         self.x_ego += self.v_ego * self.dt
-        delta_x = self.x_lead - self.x_ego
-        delta_v = self.v_lead - self.v_ego
+        delta_x = (self.x_lead - self.x_ego) + np.random.uniform(-self.epsilon_input, self.epsilon_input) / 2
+        delta_v = (self.v_lead - self.v_ego) + np.random.uniform(-self.epsilon_input, self.epsilon_input) / 2
         cost = 0
         done = False
         if self.cost_function_index == 0:

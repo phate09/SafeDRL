@@ -88,15 +88,12 @@ class CartPoleEnv(gym.Env):
 
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
-
+        self.seed()
+        self.cost_fn = 0
         if config is not None:
-            self.seed(config["seed"])
             self.tau = config["tau"]
             self.cost_fn = config["cost_fn"]
 
-        else:
-            self.seed()
-            self.cost_fn = 0
         self.viewer = None
         self.state = None
 
