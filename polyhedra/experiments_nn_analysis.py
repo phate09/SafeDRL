@@ -1,3 +1,4 @@
+import datetime
 import math
 import time
 from collections import defaultdict
@@ -29,7 +30,7 @@ class Experiment():
         self.n_workers = 8
         self.plotting_time_interval = 60 * 2
         self.time_horizon = 100
-        self.use_bfs = True  # use Depth-first-search or Depth-first-search
+        self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
         self.use_rounding = True
 
@@ -43,6 +44,7 @@ class Experiment():
         assert self.analysis_template is not None
         assert self.unsafe_zone is not None
         self.local_mode = local_mode
+        experiment_start_time = time.time()
         if local_mode:
             print("Running the experiment in LOCAL MODE")
         nn: torch.nn.Sequential = self.get_nn_fn()
@@ -57,6 +59,8 @@ class Experiment():
             print("The agent is safe")
         else:
             print(f"It could not be determined if the agent is safe or not within {self.time_horizon} steps. Increase 'time_horizon' to increase the number of steps to analyse")
+        experiment_end_time = time.time()
+        print(f"Total verification time {str(datetime.timedelta(seconds=round((experiment_end_time - experiment_start_time))))}")
 
     def main_loop(self, nn, template, root_list: List[Tuple], template_2d):
         vertices_list = defaultdict(list)
@@ -87,7 +91,8 @@ class Experiment():
                     seen.append(x)
                     proc_ids.append(self.post_fn_remote.remote(self, x, nn, self.output_flag, t, template))
                 if last_time_plot is None or time.time() - last_time_plot >= self.plotting_time_interval:
-                    self.plot_fn(vertices_list, template, template_2d)
+                    if last_time_plot is not None:
+                        self.plot_fn(vertices_list, template, template_2d)
                     last_time_plot = time.time()
                 bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
                 ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)

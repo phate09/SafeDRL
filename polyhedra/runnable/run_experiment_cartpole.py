@@ -34,6 +34,15 @@ class CartpoleExperiment(Experiment):
         self.unsafe_zone: List[Tuple] = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
         # self.use_rounding = False
         self.rounding_value = 1024
+        self.time_horizon = 200
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00002_2_cost_fn=2,tau=0.001_2021-01-16_20-33-36/checkpoint_3334/checkpoint-3334"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00003_3_cost_fn=0,tau=0.02_2021-01-16_23-08-42/checkpoint_190/checkpoint-190"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00004_4_cost_fn=1,tau=0.02_2021-01-16_23-14-15/checkpoint_3334/checkpoint-3334" #not determined
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00005_5_cost_fn=2,tau=0.02_2021-01-16_23-27-15/checkpoint_3334/checkpoint-3334" #not determined
+        # self.tau = 0.001
+        self.tau = 0.02
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -50,7 +59,7 @@ class CartpoleExperiment(Experiment):
             if feasible_action:
                 thetaacc, xacc = CartpoleExperiment.generate_angle_milp(gurobi_model, input, sin_cos_table)
                 # apply dynamic
-                x_prime = CartpoleExperiment.apply_dynamic(input, gurobi_model, thetaacc=thetaacc, xacc=xacc, env_input_size=self.env_input_size)
+                x_prime = self.apply_dynamic(input, gurobi_model, thetaacc=thetaacc, xacc=xacc, env_input_size=self.env_input_size)
                 gurobi_model.update()
                 gurobi_model.optimize()
                 found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
@@ -58,8 +67,7 @@ class CartpoleExperiment(Experiment):
                     post.append(tuple(x_prime_results))
         return post
 
-    @staticmethod
-    def apply_dynamic(input, gurobi_model: grb.Model, thetaacc, xacc, env_input_size):
+    def apply_dynamic(self, input, gurobi_model: grb.Model, thetaacc, xacc, env_input_size):
         '''
 
         :param costheta: gurobi variable containing the range of costheta values
@@ -70,7 +78,7 @@ class CartpoleExperiment(Experiment):
         :return:
         '''
 
-        tau = 0.001  # seconds between state updates
+        tau = self.tau  # 0.001  # seconds between state updates
         x = input[0]
         x_dot = input[1]
         theta = input[2]
@@ -88,8 +96,8 @@ class CartpoleExperiment(Experiment):
 
     @staticmethod
     def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
-        assert min_theta < max_theta
-        assert min_theta_dot < max_theta_dot
+        assert min_theta <= max_theta, f"min_theta = {min_theta},max_theta={max_theta}"
+        assert min_theta_dot <= max_theta_dot, f"min_theta_dot = {min_theta_dot},max_theta_dot={max_theta_dot}"
         step_theta = 0.1
         step_theta_dot = 0.1
         step_thetaacc = 0.3
@@ -279,7 +287,7 @@ class CartpoleExperiment(Experiment):
         ray.init(local_mode=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
-        trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+        trainer.restore(self.nn_path)
 
         policy = trainer.get_policy()
         # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()

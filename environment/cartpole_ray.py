@@ -93,6 +93,7 @@ class CartPoleEnv(gym.Env):
             self.seed(config["seed"])
             self.tau = config["tau"]
             self.cost_fn = config["cost_fn"]
+
         else:
             self.seed()
             self.cost_fn = 0
