@@ -1,15 +1,7 @@
-import random
-import sys
-from typing import Tuple
-
-import mpmath
-import sympy
-from mpmath import iv, pi
 import gym
-from gym import spaces, logger
-from gym.utils import seeding
 import numpy as np
-import intervals as I
+from gym import spaces
+from gym.utils import seeding
 
 
 class BouncingBall(gym.Env):
@@ -19,22 +11,22 @@ class BouncingBall(gym.Env):
         self.p = 0  # position
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
+        self.dt = 0.1
+        self.seed()
         if config is not None:
-            random.seed(config["seed"])
-        else:
-            random.seed(0)
+            self.dt = config["tau"]
 
     def reset(self):
-        self.p = 7 + random.uniform(0, 3)
+        self.p = 7 + self.np_random.uniform(0, 3)
         self.v = 0
         return np.array((self.p, self.v))
 
     def step(self, action):
         done = False
-        dt = 0.1
+
         cost = 0
-        v_prime = self.v - 9.81 * dt
-        p_prime = max(self.p + dt * v_prime, 0)
+        v_prime = self.v - 9.81 * self.dt
+        p_prime = max(self.p + self.dt * v_prime, 0)
         if v_prime <= 0 and p_prime <= 0:
             v_prime = -(0.90) * v_prime
             p_prime = 0
@@ -55,6 +47,10 @@ class BouncingBall(gym.Env):
         if not done:
             cost += 1
         return np.array((self.p, self.v)), cost, done, {}
+
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
 
 if __name__ == '__main__':
