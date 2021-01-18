@@ -30,6 +30,7 @@ class BouncingBallExperiment(Experiment):
         self.analysis_template: np.ndarray = template
         self.time_horizon = 500
         self.unsafe_zone: List[Tuple] = []
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -222,7 +223,7 @@ class BouncingBallExperiment(Experiment):
         ray.init(local_mode=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
-        trainer.restore("/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36")
+        trainer.restore(self.nn_path)
         policy = trainer.get_policy()
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         layers = []
