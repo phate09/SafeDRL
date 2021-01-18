@@ -81,8 +81,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
                   "explore": False
               },
               "env_config": {"cost_fn": tune.grid_search([0, 1, 2]),
-                             "tau": tune.grid_search([0.001, 0.02, 0.005]),
-                             "seed": seed}
+                             "tau": tune.grid_search([0.001, 0.02, 0.005])}
               }
     return config
 

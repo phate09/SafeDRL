@@ -16,6 +16,7 @@ from polyhedra.plot_utils import show_polygon_list3
 
 class Experiment():
     def __init__(self, env_input_size: int):
+        self.before_start_fn = None
         self.rounding_value = 1024
         self.get_nn_fn = None
         self.plot_fn = None
@@ -73,6 +74,8 @@ class Experiment():
                    progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
         proc_ids = []
         last_time_plot = None
+        if self.before_start_fn is not None:
+            self.before_start_fn(nn)
         with progressbar.ProgressBar(widgets=widgets) as bar:
             while len(frontier) != 0 or len(proc_ids) != 0:
                 while len(proc_ids) < self.n_workers and len(frontier) != 0:
@@ -167,6 +170,21 @@ class Experiment():
         result = [0] * n
         result[i] = 1
         return np.array(result)
+
+    @staticmethod
+    def octagon(n):
+        template = []
+        for i in range(n):
+            x = Experiment.e(n, i)
+            template.append(x)
+            template.append(-x)
+            for j in range(0, i):
+                y = Experiment.e(n, j)
+                template.append(x + y)
+                template.append(x - y)
+                template.append(y - x)
+                template.append(-y - x)
+        return np.stack(template)
 
     def h_repr_to_plot(self, gurobi_model, template, x_prime):
         x_prime_results = self.optimise(template, gurobi_model, x_prime)  # h representation
