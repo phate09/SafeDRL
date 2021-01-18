@@ -9,6 +9,7 @@ class ORACartpoleExperiment(CartpoleExperiment):
     def __init__(self):
         super().__init__()
         self.post_fn_remote = self.post_milp
+        self.time_horizon = 300
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -34,6 +35,7 @@ class ORACartpoleExperiment(CartpoleExperiment):
                 if found_successor:
                     post.append(tuple(x_prime_results))
         return post
+
 
 if __name__ == '__main__':
     experiment = ORACartpoleExperiment()
