@@ -204,7 +204,7 @@ class BouncingBallExperiment(Experiment):
             return input_boundaries, template
 
     def get_nn_old(self):
-        ray.init(local_mode=True)
+        ray.init(ignore_reinit_error=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
         policy = trainer.get_policy()
@@ -217,7 +217,7 @@ class BouncingBallExperiment(Experiment):
         return nn
 
     def get_nn(self):
-        ray.init(local_mode=True)
+        ray.init(ignore_reinit_error=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -227,7 +227,7 @@ class BouncingBallExperiment(Experiment):
         for l in sequential_nn:
             layers.append(l)
         nn = torch.nn.Sequential(*layers)
-        ray.shutdown()
+        # ray.shutdown()
         return nn
 
 

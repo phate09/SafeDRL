@@ -2,6 +2,7 @@ import datetime
 import math
 import time
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import Tuple, List
 
 import gurobi as grb
@@ -17,6 +18,7 @@ from polyhedra.plot_utils import show_polygon_list3
 class Experiment():
     def __init__(self, env_input_size: int):
         self.before_start_fn = None
+        self.update_progress_fn = None
         self.rounding_value = 1024
         self.get_nn_fn = None
         self.plot_fn = None
@@ -34,6 +36,8 @@ class Experiment():
         self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
         self.use_rounding = True
+        self.show_progressbar = True
+        self.show_progress_plot = True
 
     def run_experiment(self, local_mode=False):
         assert self.get_nn_fn is not None
@@ -54,18 +58,24 @@ class Experiment():
         print(f"T={max_t}")
 
         print(f"The algorithm skipped {num_already_visited} already visited states")
+        safe = None
         if unsafe:
             print("The agent is unsafe")
+            safe = False
         elif max_t < self.time_horizon:
             print("The agent is safe")
+            safe = True
         else:
             print(f"It could not be determined if the agent is safe or not within {self.time_horizon} steps. Increase 'time_horizon' to increase the number of steps to analyse")
+            safe = None
         experiment_end_time = time.time()
-        print(f"Total verification time {str(datetime.timedelta(seconds=round((experiment_end_time - experiment_start_time))))}")
+        elapsed_seconds = round((experiment_end_time - experiment_start_time))
+        print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
+        return elapsed_seconds, safe, max_t
 
     def main_loop(self, nn, template, root_list: List[Tuple], template_2d):
         vertices_list = defaultdict(list)
-        ray.init(local_mode=self.local_mode, log_to_driver=False)
+        ray.init(local_mode=self.local_mode, log_to_driver=False, ignore_reinit_error=True)
         seen = []
         frontier = [(0, x) for x in root_list]
         max_t = 0
@@ -76,7 +86,7 @@ class Experiment():
         last_time_plot = None
         if self.before_start_fn is not None:
             self.before_start_fn(nn)
-        with progressbar.ProgressBar(widgets=widgets) as bar:
+        with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar:
             while len(frontier) != 0 or len(proc_ids) != 0:
                 while len(proc_ids) < self.n_workers and len(frontier) != 0:
                     t, x = frontier.pop(0) if self.use_bfs else frontier.pop()
@@ -97,7 +107,10 @@ class Experiment():
                     if last_time_plot is not None:
                         self.plot_fn(vertices_list, template, template_2d)
                     last_time_plot = time.time()
-                bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
+                if self.update_progress_fn is not None:
+                    self.update_progress_fn(n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, max_t=max_t)
+                if self.show_progressbar:
+                    bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
                 ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
                 x_primes_list = ray.get(ready_ids)
                 for x_primes in x_primes_list:

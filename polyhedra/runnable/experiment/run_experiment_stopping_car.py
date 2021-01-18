@@ -212,7 +212,7 @@ class StoppingCarExperiment(Experiment):
             return input_boundaries, np.array(template)
 
     def get_nn_old(self):
-        ray.init(local_mode=True)
+        ray.init(ignore_reinit_error=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
         policy = trainer.get_policy()
@@ -225,11 +225,11 @@ class StoppingCarExperiment(Experiment):
         #
         # nn = torch.nn.Sequential(*layers)
         nn = sequential_nn
-        ray.shutdown()
+        # ray.shutdown()
         return nn
 
     def get_nn(self):
-        ray.init(local_mode=True)
+        ray.init(ignore_reinit_error=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -243,7 +243,7 @@ class StoppingCarExperiment(Experiment):
         #
         # nn = torch.nn.Sequential(*layers)
         nn = sequential_nn
-        ray.shutdown()
+        # ray.shutdown()
         return nn
 
 
