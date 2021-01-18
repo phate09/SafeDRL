@@ -10,8 +10,9 @@ def _iter():
     for problem in ["bouncing_ball"]:  # , "stopping_car", "cartpole"
         for method in ["standard"]:  # , "ora"
             if problem == "bouncing_ball":
-                for tau in [0.1, 0.05]:  # {"tau": tune.grid_search([0.1, 0.05])}
-                    nn_paths = ["/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00000_0_tau=0.1_2021-01-17_14-46-10/checkpoint_114/checkpoint-114",
+                for tau in [0.1]:  # {"tau": tune.grid_search([0.1, 0.05])}
+                    nn_paths = ["/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36",
+                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00000_0_tau=0.1_2021-01-17_14-46-10/checkpoint_114/checkpoint-114",
                                 "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00001_1_tau=0.05_2021-01-17_14-46-10/checkpoint_457/checkpoint-457",
                                 "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00002_2_tau=0.1_2021-01-17_14-55-31/checkpoint_223/checkpoint-223",
                                 "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00003_3_tau=0.05_2021-01-17_15-13-50/checkpoint_139/checkpoint-139",
@@ -77,6 +78,7 @@ def update_progress(n_workers, seen, frontier, num_already_visited, max_t):
 
 def run_parameterised_experiment(config):
     # Hyperparameters
+    trial_dir = tune.get_trial_dir()
     problem, method, other_config = config["main_params"]
     n_workers = config["n_workers"]
     if problem == "bouncing_ball":
@@ -85,6 +87,7 @@ def run_parameterised_experiment(config):
         experiment.tau = other_config["tau"]
         experiment.n_workers = n_workers
         experiment.show_progressbar = False
+        experiment.save_dir = trial_dir
         experiment.update_progress_fn = update_progress
         elapsed_seconds, safe, max_t = experiment.run_experiment()
     elif problem == "stopping_car":
@@ -93,6 +96,7 @@ def run_parameterised_experiment(config):
         experiment.input_epsilon = other_config["epsilon"]
         experiment.n_workers = n_workers
         experiment.show_progressbar = False
+        experiment.save_dir = trial_dir
         experiment.update_progress_fn = update_progress
         elapsed_seconds, safe, max_t = experiment.run_experiment()
     else:
@@ -101,6 +105,7 @@ def run_parameterised_experiment(config):
         experiment.tau = other_config["tau"]
         experiment.n_workers = n_workers
         experiment.show_progressbar = False
+        experiment.save_dir = trial_dir
         experiment.update_progress_fn = update_progress
         elapsed_seconds, safe, max_t = experiment.run_experiment()
     safe_value = 0
@@ -114,7 +119,7 @@ def run_parameterised_experiment(config):
 
 
 if __name__ == '__main__':
-    ray.init()
+    ray.init(local_mode=True)
     cpu = 7
     analysis = tune.run(
         run_parameterised_experiment,

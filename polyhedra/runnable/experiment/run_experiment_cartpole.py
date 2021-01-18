@@ -218,9 +218,8 @@ class CartpoleExperiment(Experiment):
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return thetaacc, xacc
 
-    @staticmethod
-    def plot(vertices_list, template, template_2d):
-        Experiment.generic_plot("theta", "theta_dot", vertices_list, template, template_2d)
+    def plot(self, vertices_list, template, template_2d):
+        self.generic_plot("theta", "theta_dot", vertices_list, template, template_2d)
 
     def get_template(self, mode=0):
         x = Experiment.e(self.env_input_size, 0)

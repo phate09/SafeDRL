@@ -112,10 +112,8 @@ class StoppingCarExperiment(Experiment):
         gurobi_model.addConstr(z[5] == a_ego_prime, name=f"dyna_constr_6")
         return z
 
-    @staticmethod
-    def plot(vertices_list, template, template_2d):
-        Experiment.generic_plot("x_ego", "x_lead-x_ego", vertices_list, template, template_2d)
-        pass
+    def plot(self,vertices_list, template, template_2d):
+        self.generic_plot("x_ego", "x_lead-x_ego", vertices_list, template, template_2d)
 
     def get_template(self, mode=0):
         x_lead = Experiment.e(6, 0)

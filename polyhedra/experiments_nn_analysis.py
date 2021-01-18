@@ -1,5 +1,6 @@
 import datetime
 import math
+import os
 import time
 from collections import defaultdict
 from contextlib import nullcontext
@@ -38,6 +39,7 @@ class Experiment():
         self.use_rounding = True
         self.show_progressbar = True
         self.show_progress_plot = True
+        self.save_dir = None
 
     def run_experiment(self, local_mode=False):
         assert self.get_nn_fn is not None
@@ -100,6 +102,7 @@ class Experiment():
                     if self.check_unsafe(template, x):
                         print(f"Unsafe state found at timestep t={t}")
                         print(x)
+                        self.plot_fn(vertices_list, template, template_2d)
                         return max_t, num_already_visited, vertices_list, True
                     seen.append(x)
                     proc_ids.append(self.post_fn_remote.remote(self, x, nn, self.output_flag, t, template))
@@ -251,9 +254,16 @@ class Experiment():
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return gurobi_model.status == 2
 
-    @staticmethod
-    def generic_plot(title_x, title_y, vertices_list, template, template_2d):
-        show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
+    def generic_plot(self, title_x, title_y, vertices_list, template, template_2d):
+        fig = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
+        if self.show_progressbar:
+            fig.show()
+        if self.save_dir is not None:
+            fig.write_image(os.path.join(self.save_dir, "plot.svg"))
+            fig.write_image(os.path.join(self.save_dir, "plot.png"))
+            fig.write_image(os.path.join(self.save_dir, "plot.jpeg"))
+            fig.write_image(os.path.join(self.save_dir, "plot.pdf"))
+            fig.write_html(os.path.join(self.save_dir, "plot.html"), include_plotlyjs="cdn")
 
 
 def contained(x: tuple, y: tuple):

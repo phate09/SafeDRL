@@ -63,7 +63,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"tau": tune.grid_search([0.1, 0.05])}
+              # "env_config": {"tau": tune.grid_search([0.1, 0.05])}
               }
     return config
 

@@ -77,7 +77,7 @@ def show_polygon_list3(polygon_vertices_list, x_axis_title, y_axis_title, templa
     for trace in traces:
         fig.add_trace(trace)
     fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
-    fig.show()
+    return fig
 
 
 def create_window_boundary(template_input, x_results, template_2d, window_boundaries):

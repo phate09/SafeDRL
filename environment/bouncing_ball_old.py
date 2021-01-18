@@ -14,7 +14,7 @@ class BouncingBall(gym.Env):
         self.dt = 0.1
         self.seed()
         if config is not None:
-            self.dt = config["tau"]
+            self.dt = config.get(["tau"], 0.1)
 
     def reset(self):
         self.p = 7 + self.np_random.uniform(0, 3)
