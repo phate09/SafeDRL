@@ -14,11 +14,11 @@ class BouncingBall(gym.Env):
         self.dt = 0.1
         self.seed()
         if config is not None:
-            self.dt = config.get(["tau"], 0.1)
+            self.dt = config.get("tau", 0.1)
 
     def reset(self):
         self.p = 7 + self.np_random.uniform(0, 3)
-        self.v = 0
+        self.v = self.np_random.uniform(-1, 1)
         return np.array((self.p, self.v))
 
     def step(self, action):

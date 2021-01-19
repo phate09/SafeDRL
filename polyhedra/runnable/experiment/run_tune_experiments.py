@@ -11,27 +11,19 @@ def _iter():
         for method in ["standard"]:  # , "ora"
             if problem == "bouncing_ball":
                 for tau in [0.1]:  # {"tau": tune.grid_search([0.1, 0.05])}
-                    nn_paths = ["/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00000_0_tau=0.1_2021-01-17_14-46-10/checkpoint_114/checkpoint-114",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00001_1_tau=0.05_2021-01-17_14-46-10/checkpoint_457/checkpoint-457",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00002_2_tau=0.1_2021-01-17_14-55-31/checkpoint_223/checkpoint-223",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00003_3_tau=0.05_2021-01-17_15-13-50/checkpoint_139/checkpoint-139",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00004_4_tau=0.1_2021-01-17_15-15-24/checkpoint_297/checkpoint-297",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00005_5_tau=0.05_2021-01-17_15-23-02/checkpoint_925/checkpoint-925",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00006_6_tau=0.1_2021-01-17_15-38-38/checkpoint_87/checkpoint-87",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00007_7_tau=0.05_2021-01-17_15-45-25/checkpoint_69/checkpoint-69",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00008_8_tau=0.1_2021-01-17_15-50-09/checkpoint_83/checkpoint-83",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00009_9_tau=0.05_2021-01-17_15-57-00/checkpoint_897/checkpoint-897",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00010_10_tau=0.1_2021-01-17_16-21-05/checkpoint_234/checkpoint-234",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00011_11_tau=0.05_2021-01-17_16-40-13/checkpoint_897/checkpoint-897",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00012_12_tau=0.1_2021-01-17_16-55-18/checkpoint_250/checkpoint-250",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00013_13_tau=0.05_2021-01-17_17-14-35/checkpoint_447/checkpoint-447",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00014_14_tau=0.1_2021-01-17_17-36-01/checkpoint_310/checkpoint-310",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00015_15_tau=0.05_2021-01-17_17-41-56/checkpoint_898/checkpoint-898",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00016_16_tau=0.1_2021-01-17_18-00-09/checkpoint_157/checkpoint-157",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00017_17_tau=0.05_2021-01-17_18-12-21/checkpoint_899/checkpoint-899",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00018_18_tau=0.1_2021-01-17_18-36-24/checkpoint_699/checkpoint-699",
-                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_bd56c_00019_19_tau=0.05_2021-01-17_19-08-54/checkpoint_961/checkpoint-961"]
+                    nn_paths = [
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36",
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00000_0_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00001_1_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00002_2_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00003_3_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
+                                # "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10",
+                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00000_0_2021-01-19_00-19-23/checkpoint_10/checkpoint-10",
+                                "//home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00001_1_2021-01-19_00-19-23/checkpoint_20/checkpoint-20",
+                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00002_2_2021-01-19_00-20-06/checkpoint_10/checkpoint-10",
+                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00003_3_2021-01-19_00-20-45/checkpoint_10/checkpoint-10",
+                                "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00004_4_2021-01-19_00-20-52/checkpoint_20/checkpoint-20",
+                                ]
                     for nn_path in nn_paths:
                         yield problem, method, {"tau": tau, "nn_path": nn_path}
             elif problem == "stopping_car":

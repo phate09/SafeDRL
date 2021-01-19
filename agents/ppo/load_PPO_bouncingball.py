@@ -1,20 +1,33 @@
 import ray
 import torch.nn
 import numpy as np
+from ray.rllib.agents.ppo import ppo
+
 from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
+from agents.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from environment.bouncing_ball_old import BouncingBall
 
 ray.init()
-config, trainer = get_PPO_trainer(use_gpu=0)
-trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")  # ~980 score
+# config, trainer = get_PPO_trainer(use_gpu=0)
+# trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")  # ~980 score
+# policy = trainer.get_policy()
+# sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+# layers = []
+# for l in sequential_nn:
+#     layers.append(l)
+#
+# sequential_nn2 = torch.nn.Sequential(*layers)
+ray.init(ignore_reinit_error=True)
+config = get_PPO_config(1234)
+trainer = ppo.PPOTrainer(config=config)
+trainer.restore("/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10")
 policy = trainer.get_policy()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 layers = []
 for l in sequential_nn:
     layers.append(l)
-
-sequential_nn2 = torch.nn.Sequential(*layers)
+nn = torch.nn.Sequential(*layers)
 env = BouncingBall()
 state = env.reset()
 env.p = 7

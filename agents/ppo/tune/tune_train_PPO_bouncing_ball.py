@@ -35,6 +35,13 @@ class TorchCustomModel(TorchModelV2, nn.Module):
         return torch.reshape(self.torch_sub_model.value_function(), [-1])
 
 
+def stopper(trial_id, result):
+    if "evaluation" in result:
+        return result["evaluation"]["episode_reward_min"] > 800 and result["evaluation"]["episode_len_mean"] == 1000
+    else:
+        return False
+
+
 def get_PPO_config(seed, use_gpu: float = 1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": BouncingBall,  #
@@ -46,10 +53,10 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "grad_clip": 300,
               # "clip_rewards": 5,
               "num_workers": 3,  # parallelism
-              "num_envs_per_worker": 2,
-              "batch_mode": "complete_episodes",
+              "num_envs_per_worker": 4,
+              "batch_mode": "truncate_episodes",
               "evaluation_interval": 10,
-              "evaluation_num_episodes": 20,
+              "evaluation_num_episodes": 30,
               "use_gae": True,  #
               "lambda": 0.95,  # gae lambda param
               "num_sgd_iter": 10,
@@ -78,14 +85,16 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 5e6, "episode_reward_mean": 900},
+        stop=stopper,  # {"info/num_steps_trained": 5e6, "episode_reward_min": 850},
         config=config,
         name=f"tune_PPO_bouncing_ball",
         checkpoint_freq=10,
         checkpoint_at_end=True,
+        keep_checkpoints_num=5,
+        checkpoint_score_attr="episode_reward_mean",
         log_to_file=True,
         # resume="PROMPT",
         verbose=1,
-        num_samples=10
+        num_samples=5
     )
     ray.shutdown()

@@ -26,10 +26,12 @@ class BouncingBallExperiment(Experiment):
         _, template = self.get_template(0)
         self.analysis_template: np.ndarray = template
         self.time_horizon = 500
+        self.rounding_value = 2 ** 8
         p = Experiment.e(self.env_input_size, 0)
         v = Experiment.e(self.env_input_size, 1)
-        self.unsafe_zone: List[Tuple] = [([p, v], np.array([0, 1]))]
+        self.unsafe_zone: List[Tuple] = [([p, -v, v], np.array([0, 1, 0]))]
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -182,7 +184,7 @@ class BouncingBallExperiment(Experiment):
 
         return z
 
-    def plot(self,vertices_list, template, template_2d):
+    def plot(self, vertices_list, template, template_2d):
         self.generic_plot("v", "p", vertices_list, template, template_2d)
         # pass
 
