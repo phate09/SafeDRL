@@ -69,15 +69,17 @@ def show_polygon_list2(polygon_vertices_list, y_axis_title="x_ego", x_axis_title
 
 def show_polygon_list3(polygon_vertices_list, x_axis_title, y_axis_title, template, template2d):
     traces = []
+    projected_points = []
     for timestep in polygon_vertices_list:
         principal_components_list = transform_vertices2([windowed_projection(template, x, template2d)
                                                          for x in polygon_vertices_list[timestep]])
         traces.append(compute_polygon_trace(principal_components_list))
+        projected_points.append([tuple([(y[0], y[1]) for y in PolygonSort(x)]) for x in principal_components_list])
     fig = go.Figure()
     for trace in traces:
         fig.add_trace(trace)
     fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
-    return fig
+    return fig, projected_points
 
 
 def create_window_boundary(template_input, x_results, template_2d, window_boundaries):

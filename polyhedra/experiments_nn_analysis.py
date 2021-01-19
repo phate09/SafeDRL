@@ -1,3 +1,4 @@
+import csv
 import datetime
 import math
 import os
@@ -198,6 +199,15 @@ class Experiment():
                 template.append(-y - x)
         return np.stack(template)
 
+    @staticmethod
+    def box(n):
+        template = []
+        for i in range(n):
+            x = Experiment.e(n, i)
+            template.append(x)
+            template.append(-x)
+        return np.stack(template)
+
     def h_repr_to_plot(self, gurobi_model, template, x_prime):
         x_prime_results = self.optimise(template, gurobi_model, x_prime)  # h representation
         return x_prime_results is not None, x_prime_results
@@ -251,15 +261,27 @@ class Experiment():
         return gurobi_model.status == 2
 
     def generic_plot(self, title_x, title_y, vertices_list, template, template_2d):
-        fig = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
-        if self.show_progressbar:
+        fig, simple_vertices = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
+        if self.show_progress_plot:
             fig.show()
         if self.save_dir is not None:
-            fig.write_image(os.path.join(self.save_dir, "plot.svg"))
-            fig.write_image(os.path.join(self.save_dir, "plot.png"))
-            fig.write_image(os.path.join(self.save_dir, "plot.jpeg"))
-            fig.write_image(os.path.join(self.save_dir, "plot.pdf"))
+            width = 2560
+            height = 1440
+            scale = 1
+            fig.write_image(os.path.join(self.save_dir, "plot.svg"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.png"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.jpeg"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.pdf"), width=width, height=height, scale=scale)
             fig.write_html(os.path.join(self.save_dir, "plot.html"), include_plotlyjs="cdn")
+            with open(os.path.join(self.save_dir, "plot.csv"), 'w', newline='') as myfile:
+                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC)
+                for timestep in simple_vertices:
+                    for item in timestep:
+                        assert len(item) == 4
+                        for vertex in item:
+                            wr.writerow(vertex)
+                        wr.writerow(item[0])  # write back the first item
+                    wr.writerow("")
 
 
 def contained(x: tuple, y: tuple):
