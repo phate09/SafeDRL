@@ -90,7 +90,9 @@ class Experiment():
                 while len(proc_ids) < self.n_workers and len(frontier) != 0:
                     t, x = frontier.pop(0) if self.use_bfs else frontier.pop()
                     if max_t > self.time_horizon:
-                        break
+                        print(f"Reached horizon t={t}")
+                        self.plot_fn(vertices_list, template, template_2d)
+                        return max_t, num_already_visited, vertices_list, False
                     contained_flag = False
                     to_remove = []
                     for s in seen:
@@ -127,7 +129,11 @@ class Experiment():
                 for x_primes in x_primes_list:
                     for x_prime in x_primes:
                         if self.use_rounding:
-                            x_prime = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
+                            # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
+                            x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
+                            # x_prime_rounded should always be bigger than x_prime
+                            assert contained(x_prime, x_prime_rounded)
+                            x_prime = x_prime_rounded
                         frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
                         if not any([contained(x_prime, y) for u, y in frontier]):
                             frontier.append(((t + 1), x_prime))
@@ -136,6 +142,15 @@ class Experiment():
                             num_already_visited += 1
         self.plot_fn(vertices_list, template, template_2d)
         return max_t, num_already_visited, vertices_list, False
+
+    def round_tuple(self, x, rounding_value):
+        rounded_x = []
+        for val in x:
+            if val < 0:
+                rounded_x.append(-1 * math.floor(abs(val) * rounding_value)/rounding_value)
+            else:
+                rounded_x.append(math.ceil(abs(val) * rounding_value)/rounding_value)
+        return tuple(rounded_x)
 
     def generate_root_polytope(self):
         gurobi_model = grb.Model()
@@ -288,7 +303,7 @@ class Experiment():
                 wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC)
                 for timestep in simple_vertices:
                     for item in timestep:
-                        assert len(item) == 4
+                        # assert len(item) == 4
                         for vertex in item:
                             wr.writerow(vertex)
                         wr.writerow(item[0])  # write back the first item

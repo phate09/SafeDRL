@@ -30,13 +30,13 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 
 if __name__ == "__main__":
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
-    config = {"env": PendulumEnv, #
+    config = {"env": PendulumEnv,  #
               "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config,"custom_model": "my_model",
               "vf_share_layers": False,  # try different lrs
               "num_workers": 8,  # parallelism
               # "batch_mode": "complete_episodes", "use_gae": False,  #
               "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}
-    ray.init(local_mode=True, include_dashboard=True)
+    ray.init(local_mode=False, include_dashboard=True)
     trainer = ppo.PPOTrainer(config=config)
     while True:
         train_result = trainer.train()

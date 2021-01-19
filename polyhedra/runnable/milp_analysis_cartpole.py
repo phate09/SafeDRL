@@ -200,7 +200,7 @@ def check_unsafe(template, bnds, unsafe_zone):
 
 
 def main():
-    ray.init(local_mode=True)
+    ray.init(local_mode=False)
     config, trainer = get_PPO_trainer(use_gpu=0)
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
     # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_17-13-476oom2etf/checkpoint_20/checkpoint-20")

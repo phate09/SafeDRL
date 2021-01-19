@@ -19,7 +19,7 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
         Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
         observable_template = Experiment.octagon(2)
         self.env_input_size = 2
-        observable_result = self.optimise(observable_template, gurobi_model, observation)  # todo fix this
+        observable_result = self.optimise(observable_template, gurobi_model, observation)
         self.env_input_size = 6
         return observable_template, observable_result
 

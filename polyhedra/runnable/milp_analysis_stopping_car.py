@@ -180,7 +180,7 @@ def main():
     output_flag = False
     mode = 2  # 0 hardcoded guard, 1 nn guard, 2 trained nn
     if mode == 2:
-        ray.init(local_mode=True)
+        ray.init(local_mode=False)
         config, trainer = get_PPO_trainer(use_gpu=0)
         trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
         policy = trainer.get_policy()

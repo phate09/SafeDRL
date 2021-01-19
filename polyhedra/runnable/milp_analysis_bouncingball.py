@@ -156,7 +156,7 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
 
 def main():
     output_flag = False
-    ray.init(local_mode=True)
+    ray.init(local_mode=False)
     config, trainer = get_PPO_trainer(use_gpu=0)
     trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
     policy = trainer.get_policy()

@@ -47,7 +47,6 @@ class StoppingCarExperiment(Experiment):
         for chosen_action in range(2):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            gurobi_model.setParam('Threads', 2)
             input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
             observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
             gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
