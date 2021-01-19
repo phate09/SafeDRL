@@ -91,7 +91,18 @@ class Experiment():
                     t, x = frontier.pop(0) if self.use_bfs else frontier.pop()
                     if max_t > self.time_horizon:
                         break
-                    if any([contained(x, s) for s in seen]):
+                    contained_flag = False
+                    to_remove = []
+                    for s in seen:
+                        if contained(x, s):
+                            contained_flag = True
+                            break
+                        if contained(s, x):
+                            to_remove.append(s)
+                    for rem in to_remove:
+                        num_already_visited += 1
+                        seen.remove(rem)
+                    if contained_flag:
                         num_already_visited += 1
                         continue
                     max_t = max(max_t, t)

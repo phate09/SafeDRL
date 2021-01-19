@@ -28,8 +28,8 @@ class StoppingCar(gym.Env):
         self.cost_function_index = 0
         self.seed()
         if config is not None:
-            self.cost_function_index = config["cost_fn"]
-            self.epsilon_input = config["epsilon_input"]
+            self.cost_function_index = config.get("cost_fn", 0)
+            self.epsilon_input = config.get("epsilon_input", 0)
 
     def reset(self):
         self.y_lead = self.y_ego = 0

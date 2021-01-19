@@ -113,7 +113,7 @@ class StoppingCarExperiment(Experiment):
         return z
 
     def plot(self, vertices_list, template, template_2d):
-        self.generic_plot("x_ego", "x_lead-x_ego", vertices_list, template, template_2d)
+        self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
 
     def get_template(self, mode=0):
         x_lead = Experiment.e(6, 0)
@@ -250,5 +250,8 @@ if __name__ == '__main__':
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
+    experiment.input_boundaries = [40, -30, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
+    template = Experiment.box(experiment.env_input_size)
+    experiment.analysis_template = template  # standard
     experiment.time_horizon = 400
     experiment.run_experiment()
