@@ -260,7 +260,6 @@ class CartpoleExperiment(Experiment):
             return input_boundaries, template
 
     def get_nn_old(self):
-        ray.init(ignore_reinit_error=True)
         config, trainer = get_PPO_trainer(use_gpu=0)
         # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
         # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_17-13-476oom2etf/checkpoint_20/checkpoint-20")
@@ -283,7 +282,6 @@ class CartpoleExperiment(Experiment):
         return nn
 
     def get_nn(self):
-        ray.init(ignore_reinit_error=True)
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -302,5 +300,6 @@ class CartpoleExperiment(Experiment):
 
 
 if __name__ == '__main__':
+    ray.init()
     experiment = CartpoleExperiment()
     experiment.run_experiment()

@@ -41,7 +41,7 @@ class Experiment():
         self.show_progress_plot = True
         self.save_dir = None
 
-    def run_experiment(self, local_mode=False):
+    def run_experiment(self):
         assert self.get_nn_fn is not None
         assert self.plot_fn is not None
         assert self.post_fn_remote is not None
@@ -50,10 +50,7 @@ class Experiment():
         assert self.input_boundaries is not None
         assert self.analysis_template is not None
         assert self.unsafe_zone is not None
-        self.local_mode = local_mode
         experiment_start_time = time.time()
-        if local_mode:
-            print("Running the experiment in LOCAL MODE")
         nn: torch.nn.Sequential = self.get_nn_fn()
         root = self.generate_root_polytope()
         max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, [root], self.template_2d)
@@ -77,7 +74,6 @@ class Experiment():
 
     def main_loop(self, nn, template, root_list: List[Tuple], template_2d):
         vertices_list = defaultdict(list)
-        ray.init(local_mode=self.local_mode, log_to_driver=False, ignore_reinit_error=True)
         seen = []
         frontier = [(0, x) for x in root_list]
         max_t = 0

@@ -7,7 +7,7 @@ from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCa
 
 
 def _iter():
-    for problem in ["bouncing_ball"]:  # , "stopping_car", "cartpole"
+    for problem in ["cartpole"]:  # "bouncing_ball", "stopping_car",
         for method in ["standard"]:  # , "ora"
             if problem == "bouncing_ball":
                 for tau in [0.1]:  # {"tau": tune.grid_search([0.1, 0.05])}
@@ -85,7 +85,7 @@ def run_parameterised_experiment(config):
     elif problem == "stopping_car":
         experiment = StoppingCarExperiment()
         experiment.nn_path = other_config["nn_path"]
-        experiment.input_epsilon = other_config["epsilon"]
+        experiment.input_epsilon = other_config["epsilon_input"]
         experiment.n_workers = n_workers
         experiment.show_progressbar = False
         experiment.save_dir = trial_dir
