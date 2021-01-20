@@ -4,7 +4,7 @@ import time
 
 import ray
 from ray import tune
-
+import re
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.runnable.experiment.run_experiment_bouncing_ball import BouncingBallExperiment
 from polyhedra.runnable.experiment.run_experiment_cartpole import CartpoleExperiment
@@ -19,8 +19,8 @@ nn_paths_cartpole = ["/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEn
 
 folder_cartpole = [
 
-    "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43"
-    "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3334/checkpoint-3334"
+    "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43",
+    "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43"
     # "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_12-37-27",
     # "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_12-37-27",
     # "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00002_2_cost_fn=0,epsilon_input=0_2021-01-17_12-38-53",
@@ -45,9 +45,25 @@ folder_cartpole = [
 ]
 
 
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    '''
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    '''
+    return [atoi(c) for c in re.split(r'(\d+)', text)]
+
+
 def find_checkpoints(folder):
     list_subfolders_with_paths = [f.name for f in os.scandir(folder) if f.is_dir()]
-    result = [(x, os.path.join(os.path.join(folder, x), x.replace("_", "-"))) for x in sorted(list_subfolders_with_paths)]
+    if "_skip" in list_subfolders_with_paths:
+        list_subfolders_with_paths.remove("_skip")
+    list_subfolders_with_paths.sort(key=natural_keys)
+    result = [(x, os.path.join(os.path.join(folder, x), x.replace("_", "-"))) for x in list_subfolders_with_paths]
     return result
 
 
