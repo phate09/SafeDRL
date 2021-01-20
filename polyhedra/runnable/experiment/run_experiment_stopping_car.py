@@ -112,7 +112,10 @@ class StoppingCarExperiment(Experiment):
         return z
 
     def plot(self, vertices_list, template, template_2d):
-        self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
+        try:
+            self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
+        except:
+            print("Error in plotting")
 
     def get_template(self, mode=0):
         x_lead = Experiment.e(6, 0)

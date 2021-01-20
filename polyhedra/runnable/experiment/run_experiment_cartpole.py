@@ -28,13 +28,13 @@ class CartpoleExperiment(Experiment):
         self.input_template: np.ndarray = input_template
         _, template = self.get_template(1)
         self.analysis_template: np.ndarray = template
-        safe_angle = 0.5  # 12 * 2 * math.pi / 360
+        safe_angle = 12 * 2 * math.pi / 360
         theta = [self.e(4, 2)]
         neg_theta = [-self.e(4, 2)]
         self.unsafe_zone: List[Tuple] = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
         # self.use_rounding = False
         self.rounding_value = 1024
-        self.time_horizon = 200
+        self.time_horizon = 300
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090"
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00002_2_cost_fn=2,tau=0.001_2021-01-16_20-33-36/checkpoint_3334/checkpoint-3334"
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193"

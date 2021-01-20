@@ -27,7 +27,8 @@ ray.init()
 # nn = torch.nn.Sequential(*layers)
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
-trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+# trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_40/checkpoint-40")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
@@ -42,18 +43,19 @@ env = CartPoleEnv(None)
 
 plot_index = 3
 position_list = []
-env.render()
-for i in range(5):
+# env.render()
+n_trials = 30
+cumulative_reward = 0
+for i in range(n_trials):
     state = env.reset()
     # env.state[2] = 0.01
     # env.state[2] = 0.045
     # env.state[3] = -0.51
     state = np.array(env.state)
     state_np = np.array(state)
-    cumulative_reward = 0
     print(state_np)
     position_list.append(state_np[plot_index])
-    for i in range(8000):
+    for i in range(2000):
         state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)
         # state = torch.from_numpy(state_np).float().unsqueeze(0)
         action_score = nn(state_reduced)
@@ -76,7 +78,7 @@ for i in range(5):
 env.close()
 print("all good")
 # print(f"min_distance:{min_distance}")
-print(f"cumulative_reward:{cumulative_reward}")
+print(f"cumulative_reward:{cumulative_reward/n_trials}")
 ray.shutdown()
 import plotly.graph_objects as go
 

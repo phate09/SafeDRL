@@ -22,13 +22,14 @@ def transform_vertices(polygon_vertices_list):
 def transform_vertices2(polygon_vertices_list):
     result = []
     for vertices in polygon_vertices_list:
-        transformed_vertices = []
-        for vertex in vertices:
-            transformed_vertex = np.zeros(shape=(2,))
-            transformed_vertex[0] = vertex[0]
-            transformed_vertex[1] = vertex[1]
-            transformed_vertices.append(transformed_vertex)
-        result.append(transformed_vertices)
+        if vertices is not None:
+            transformed_vertices = []
+            for vertex in vertices:
+                transformed_vertex = np.zeros(shape=(2,))
+                transformed_vertex[0] = vertex[0]
+                transformed_vertex[1] = vertex[1]
+                transformed_vertices.append(transformed_vertex)
+            result.append(transformed_vertices)
     return result
 
 
@@ -97,6 +98,8 @@ def windowed_projection(template, x_results, template_2d):
     ub_lb_window_boundaries = np.array([1000, 1000, -1000, -1000])
     window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
     vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (window_A, window_b), canonicalize=False)
+    if len(vertices) == 0:
+        return None
     vertices = np.vstack(vertices)
     return vertices
 
