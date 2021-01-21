@@ -70,4 +70,4 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
 
 if __name__ == '__main__':
     experiment = ORAStoppingCarExperiment()
-    experiment.run_experiment(local_mode=False)
+    experiment.run_experiment()

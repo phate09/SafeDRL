@@ -39,7 +39,10 @@ class StoppingCarExperiment(Experiment):
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_12-37-27/checkpoint_24/checkpoint-24"  # safe at t=216
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_12-37-27/checkpoint_36/checkpoint-36"  # not determined
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00002_2_cost_fn=0,epsilon_input=0_2021-01-17_12-38-53/checkpoint_40/checkpoint-40"  # not determined
-        self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41" #safe
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41" #safe
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00000_0_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_39/checkpoint-39"
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
+
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -113,10 +116,10 @@ class StoppingCarExperiment(Experiment):
         return z
 
     def plot(self, vertices_list, template, template_2d):
-        try:
-            self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
-        except:
-            print("Error in plotting")
+        # try:
+        self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
+        # except:
+        #     print("Error in plotting")
 
     def get_template(self, mode=0):
         x_lead = Experiment.e(6, 0)
@@ -255,5 +258,7 @@ if __name__ == '__main__':
     experiment.show_progress_plot = False
     template = Experiment.octagon(experiment.env_input_size)
     experiment.analysis_template = template  # standard
-    experiment.time_horizon = 100
+    input_boundaries = [40, -30, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
+    experiment.input_boundaries = input_boundaries
+    experiment.time_horizon = 150
     experiment.run_experiment()

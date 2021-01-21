@@ -68,7 +68,7 @@ def get_PPO_config(seed, use_gpu=1):
                   "explore": False
               },
               "env_config": {"cost_fn": tune.grid_search([0]),
-                             "epsilon_input": tune.grid_search([0, 0.1])}
+                             "epsilon_input": tune.grid_search([0])} #
               }
     return config
 

@@ -19,7 +19,7 @@ class StoppingCar(gym.Env):
         self.y_ego = 0  # acceleration ego vehicle
         self.a_ego = 3  # deceleration/acceleration amount
         self.dt = .1  # delta time
-        self.d_default = 20  # minimum safe distance
+        self.d_default = 10  # minimum safe distance
         # self.t_gap = 1.4  # safe distance reaction time
         self.v_set = 30  # speed to drive at if no cars ahead
         self.action_space = spaces.Discrete(2)

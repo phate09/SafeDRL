@@ -16,7 +16,8 @@ config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65") # 5e-2 ~19.8 delta x
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_e6ed1_00000_0_cost_fn=0_2021-01-15_19-57-40/checkpoint_440/checkpoint-440")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41")
+# trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58")
 policy = trainer.get_policy()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 l0 = torch.nn.Linear(6, 2, bias=False)
@@ -43,7 +44,7 @@ for n in range(1):
     cumulative_reward = 0
     env.reset()
     env.x_ego = env.np_random.uniform(0, 10)
-    env.x_lead = env.np_random.uniform(40, 50)
+    env.x_lead = env.np_random.uniform(30, 40)
     env.v_lead = 28
     env.v_ego = 36
     state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
@@ -75,7 +76,7 @@ for n in range(1):
     print(f"cumulative_reward:{cumulative_reward}")
 print("all good")
 print(f"min_distance:{min_distance}")
-with open(os.path.join("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54", "simulation.csv"), 'w', newline='') as myfile:
+with open(os.path.join("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49", "simulation.csv"), 'w', newline='') as myfile:
     wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC)
     for i, item in enumerate(position_list):
         wr.writerow((x_list[i], item))
