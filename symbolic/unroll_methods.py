@@ -766,6 +766,11 @@ def get_n_states(storage: prism.state_storage.StateStorage, horizon: int):
 
 
 def softmax_interval(intervals: List[Tuple]):
+    '''
+    softmax of a, calculate interval by putting ub of a and lb of everything else. reverese for lb
+    :param intervals:
+    :return:
+    '''
     output_values = []
     variables = sympy.symbols(f'a0:{len(intervals)}')
     exp_sum = sum([sympy.exp(x) for x in variables])
