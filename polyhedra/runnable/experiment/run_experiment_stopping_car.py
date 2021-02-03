@@ -43,7 +43,6 @@ class StoppingCarExperiment(Experiment):
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00000_0_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_39/checkpoint-39"
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
 
-
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
         """milp method"""
@@ -121,7 +120,8 @@ class StoppingCarExperiment(Experiment):
         # except:
         #     print("Error in plotting")
 
-    def get_template(self, mode=0):
+    @staticmethod
+    def get_template(mode=0):
         x_lead = Experiment.e(6, 0)
         x_ego = Experiment.e(6, 1)
         v_lead = Experiment.e(6, 2)
@@ -214,6 +214,12 @@ class StoppingCarExperiment(Experiment):
                     template.append(t3)
                     template.append(t4)
             return input_boundaries, np.array(template)
+        if mode == 5:
+            input_boundaries = [20]
+
+            template = np.array([a_lead, -a_lead, -v_lead, v_lead, -(v_lead - v_ego), (v_lead - v_ego), -(x_lead - x_ego), (x_lead - x_ego)])
+            return input_boundaries, template
+
 
     def get_nn_old(self):
         config, trainer = get_PPO_trainer(use_gpu=0)

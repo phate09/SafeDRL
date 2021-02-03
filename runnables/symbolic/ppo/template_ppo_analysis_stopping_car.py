@@ -1,13 +1,18 @@
+import os
+from collections import defaultdict
+from typing import List, Tuple
+
 import ray
 import torch
 from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ray_utils import convert_DQN_ray_policy_to_sequential, convert_ray_policy_to_sequential
 import gurobi as grb
+import networkx
 
+from polyhedra.plot_utils import show_polygon_list3
 from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
 from symbolic import unroll_methods
-
-from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.experiments_nn_analysis import Experiment, contained
 import numpy as np
 
 
@@ -91,6 +96,27 @@ def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple, env
     return np.array(results)
 
 
+def check_unsafe(template, bnds, unsafe_zone, env_input_size):
+    for A, b in unsafe_zone:
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', False)
+        input = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name="input")
+        Experiment.generate_region_constraints(gurobi_model, template, input, bnds, env_input_size)
+        Experiment.generate_region_constraints(gurobi_model, A, input, b, env_input_size)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        if gurobi_model.status == 2:
+            return True
+    return False
+
+
+def find_contained(x, seen):
+    for i in seen:
+        if contained(x, i):
+            return True, i
+    return False, -1
+
+
 if __name__ == '__main__':
     ray.init(local_mode=False)
     nn = get_nn()
@@ -99,19 +125,59 @@ if __name__ == '__main__':
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
     env_input_size = 6
-    input_boundaries = [50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
-    x = input_boundaries
-    template = Experiment.box(env_input_size)
-    ranges_probs = None
-    for chosen_action in range(2):
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-        x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
-        if ranges_probs is None:
-            ranges = get_range_bounds(input, nn)
-            ranges_probs = unroll_methods.softmax_interval(ranges)
-            print(ranges)
-        x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
-        # todo create the tree
-        # todo connect the tree to prism
+    rounding_value = 1024
+    input_boundaries = tuple([50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0])
+    template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
+    distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
+    collision_distance = 10
+    unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
+    input_template = Experiment.box(env_input_size)
+    _, template = StoppingCarExperiment.get_template(1)
+    input = Experiment.generate_input_region(gurobi_model, input_template, input_boundaries, env_input_size)
+    root = tuple(optimise(template, gurobi_model, input, env_input_size))
+    vertices_list = defaultdict(list)
+    vertices_list[0].append(root)
+    frontier = [(0, root)]
+    seen = [root]
+    graph = networkx.DiGraph()
+
+    while len(frontier) != 0:
+        t, x = frontier.pop(0)
+        if t == 6:
+            break
+        ranges_probs = None
+        for chosen_action in range(2):
+            gurobi_model = grb.Model()
+            gurobi_model.setParam('OutputFlag', output_flag)
+            input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+            x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
+            if ranges_probs is None:
+                ranges = get_range_bounds(input, nn)
+                ranges_probs = unroll_methods.softmax_interval(ranges)
+                print(ranges_probs)
+            x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
+            successor = tuple(x_prime_results)
+            successor = Experiment.round_tuple(successor, rounding_value)
+            is_contained, contained_item = find_contained(successor, seen)
+            if not is_contained:
+                unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
+                if not unsafe:
+                    frontier.append((t + 1, successor))
+                    vertices_list[t].append(successor)
+                else:
+                    print("unsafe")
+                    print(successor)
+                    exit(0)
+                graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                seen.append(successor)
+            else:
+                print("skipped")
+                graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+
+    fig, simple_vertices = show_polygon_list3(vertices_list, "x_lead", "x_lead-x_ego", template, template_2d)
+    fig.show()
+    save_dir = "/home/edoardo/Development/SafeDRL/"
+    width = 2560
+    height = 1440
+    scale = 1
+    fig.write_image(os.path.join(save_dir, "plot.svg"), width=width, height=height, scale=scale)

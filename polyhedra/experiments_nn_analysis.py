@@ -142,8 +142,8 @@ class Experiment():
                             num_already_visited += 1
         self.plot_fn(vertices_list, template, template_2d)
         return max_t, num_already_visited, vertices_list, False
-
-    def round_tuple(self, x, rounding_value):
+    @staticmethod
+    def round_tuple(x, rounding_value):
         rounded_x = []
         for val in x:
             if val < 0:
