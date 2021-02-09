@@ -122,64 +122,60 @@ def find_contained(x, seen):
     return False, -1
 
 
+def merge_nodes(to_merge: list, merged_object: tuple, graph):
+    """Relabels the nodes so that the to_merge nodes point to the merged_object node"""
+    mapping = dict()
+    for node in graph.nodes:
+        if node in to_merge:
+            mapping[node] = merged_object
+        else:
+            mapping[node] = node
+    networkx.relabel_nodes(graph, mapping, False)  # merge inplace, without making a copy of the graph
+
+
 def recreate_prism_PPO(graph, root, max_t: int = None):
     gateway = JavaGateway(auto_field=True)
     mc = gateway.jvm.explicit.IMDPModelChecker(None)
     mdp = gateway.entry_point.reset_mdp()
     eval = gateway.jvm.prism.Evaluator.createForDoubleIntervals()
     mdp.setEvaluator(eval)
-    mdp.addState()
-    mdp.addState()
-    mdp.addState()
-    dist = gateway.jvm.explicit.Distribution(eval)
-    dist.add(1, gateway.jvm.common.Interval(0.2, 0.4))
-    dist.add(2, gateway.jvm.common.Interval(0.6, 0.8))
-    mdp.addActionLabelledChoice(0, dist, "a")
-    dist = gateway.jvm.explicit.Distribution(eval)
-    dist.add(1, gateway.jvm.common.Interval(0.1, 0.3))
-    dist.add(2, gateway.jvm.common.Interval(0.7, 0.9))
-    mdp.addActionLabelledChoice(0, dist, "b")
-    mdp.findDeadlocks(True)
-    mdp.exportToDotFile("imdppy.dot")
-    target = gateway.jvm.java.util.BitSet()
-    target.set(2)
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
-    print(f"minmin: {res.soln[0]}")
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
-    print(f"minmax: {res.soln[0]}")
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
-    print(f"maxmin: {res.soln[0]}")
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
-    print(f"maxmax: {res.soln[0]}")
+    filter_by_action = False
     gateway.entry_point.add_states(graph.number_of_nodes())
     path_length = networkx.shortest_path_length(graph, source=root)
     descendants_dict = defaultdict(bool)
     descendants_true = []
     for descendant in path_length.keys():
-        if max_t is None or path_length[descendant] <= max_t * 2:  # limit descendants to depth max_t
+        if max_t is None or path_length[descendant] <= max_t:  # limit descendants to depth max_t
             descendants_dict[descendant] = True
             descendants_true.append(descendant)
-    mapping = dict(zip(graph.nodes(), range(graph.number_of_nodes())))
+    mapping = dict(zip(graph.nodes(), range(graph.number_of_nodes())))  # mapping between each node and an integer
     with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants_dict) + 1).start() as bar:
-        for parent_id, successors in graph.adjacency():  # generate the edges
-            if descendants_dict[parent_id]:
-                if len(successors.items()) != 0:  # filter out non-reachable states
-                    if parent_id.action is None:  # action choice (probabilistic)
-                        distribution = gateway.newDistribution()
-                        for successor in successors:
-                            eattr = successors[successor]
-                            p = (eattr.get("p_ub") + eattr.get("p_lb")) / 2
-                            assert p is not None
-                            distribution.add(int(mapping[successor]), p)
-                        mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)
-                    else:  # action transition
-                        for successor in successors:
-                            distribution = gateway.newDistribution()
-                            eattr = successors[successor]
-                            p = (eattr.get("p_ub") + eattr.get("p_lb")) / 2
-                            assert p is not None
-                            distribution.add(int(mapping[successor]), p)
-                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)
+        for parent_id, edges in graph.adjacency():  # generate the edges
+            if descendants_dict[parent_id]:  # if it is within the filter
+                if len(edges.items()) != 0:  # filter out states with no successors (we want to add just edges)
+                    if filter_by_action:
+                        actions = set([edges[key].get("action") for key in edges])  # get unique actions
+                        for action in actions:
+                            distribution = gateway.jvm.explicit.Distribution(eval)
+                            filtered_edges = [key for key in edges if edges[key].get("action") == action]  # get only the edges matching the current action
+                            for successor in filtered_edges:
+                                edgeattr = edges[successor]
+                                ub = edgeattr.get("ub")
+                                lb = edgeattr.get("lb")
+                                assert ub is not None
+                                assert lb is not None
+                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
+                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)
+                    else:  # markov chain following the policy
+                        distribution = gateway.jvm.explicit.Distribution(eval)
+                        for successor in edges:
+                            edgeattr = edges[successor]
+                            ub = edgeattr.get("ub")
+                            lb = edgeattr.get("lb")
+                            assert ub is not None
+                            assert lb is not None
+                            distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
+                        mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "policy")
 
                 else:
                     # zero successors
@@ -187,6 +183,12 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                 bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
 
     print("done")
+    minmin, minmax, maxmin, maxmax = extract_probabilities([73], gateway, mc, mdp)
+    print(f"minmin: {minmin}")
+    print(f"minmax: {minmax}")
+    print(f"maxmin: {maxmin}")
+    print(f"maxmax: {maxmax}")
+    mdp.exportToDotFile("imdppy.dot")
     #
     # terminal_states = [mapping[x] for x in self.get_terminal_states_ids(dict_filter=descendants_dict)]
     # half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
@@ -204,6 +206,22 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
     # print("Prism updated with new data")
     prism_needs_update = False
     return mdp, gateway
+
+
+def extract_probabilities(targets: list, gateway, mc, mdp):
+    mdp.findDeadlocks(True)
+    target = gateway.jvm.java.util.BitSet()
+    for id in targets:
+        target.set(id)
+    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
+    minmin = res.soln[0]
+    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
+    minmax = res.soln[0]
+    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
+    maxmin = res.soln[0]
+    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
+    maxmax = res.soln[0]
+    return minmin, minmax, maxmin, maxmax
 
 
 if __name__ == '__main__':
@@ -232,7 +250,7 @@ if __name__ == '__main__':
 
     while len(frontier) != 0:
         t, x = frontier.pop(0)
-        if t == 4:
+        if t == 7:
             break
         ranges_probs = None
         for chosen_action in range(2):
@@ -264,7 +282,7 @@ if __name__ == '__main__':
                 graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
 
     fig, simple_vertices = show_polygon_list3(vertices_list, "x_lead", "x_lead-x_ego", template, template_2d)
-    # fig.show()
+    fig.show()
     save_dir = "/home/edoardo/Development/SafeDRL/"
     width = 2560
     height = 1440
