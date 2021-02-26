@@ -5,10 +5,10 @@ from typing import List, Tuple
 import ray
 import torch
 from py4j.java_collections import ListConverter
-from py4j.java_gateway import JavaGateway, get_field
+from py4j.java_gateway import JavaGateway
 
 from agents.ppo.train_PPO_car import get_PPO_trainer
-from agents.ray_utils import convert_DQN_ray_policy_to_sequential, convert_ray_policy_to_sequential
+from agents.ray_utils import convert_ray_policy_to_sequential
 import gurobi as grb
 import networkx
 
@@ -182,17 +182,13 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                     pass
                 bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
 
-    print("done")
-    minmin, minmax, maxmin, maxmax = extract_probabilities([73], gateway, mc, mdp)
-    print(f"minmin: {minmin}")
-    print(f"minmax: {minmax}")
-    print(f"maxmin: {maxmin}")
-    print(f"maxmax: {maxmax}")
+    print("prism updated")
+
     mdp.exportToDotFile("imdppy.dot")
     #
-    # terminal_states = [mapping[x] for x in self.get_terminal_states_ids(dict_filter=descendants_dict)]
-    # half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
     # terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
+
+    # half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
     # half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
     # # get probabilities from prism to encounter a terminal state
     # solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
@@ -205,7 +201,17 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
     #         bar.update(bar.value + 1)
     # print("Prism updated with new data")
     prism_needs_update = False
-    return mdp, gateway
+    return gateway, mc, mdp, mapping
+
+
+def calculate_target_probabilities(gateway, model_checker, mdp, mapping, targets: List[Tuple]):
+    terminal_states = [mapping[x] for x in targets]
+    minmin, minmax, maxmin, maxmax = extract_probabilities(terminal_states, gateway, model_checker, mdp)
+    # print(f"minmin: {minmin}")
+    # print(f"minmax: {minmax}")
+    # print(f"maxmin: {maxmin}")
+    # print(f"maxmax: {maxmax}")
+    return minmin, minmax, maxmin, maxmax
 
 
 def extract_probabilities(targets: list, gateway, mc, mdp):
@@ -229,77 +235,120 @@ def evolutionary_merge(graph: networkx.DiGraph, template: np.ndarray):
     n_nodes = graph.number_of_nodes()
 
 
-def main():
+if __name__ == '__main__':
     ray.init(local_mode=False)
     nn = get_nn()
     save_dir = "/home/edoardo/Development/SafeDRL/"
     load = True
+    explore = True
     output_flag = False
+    show_graph = False
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
     env_input_size = 6
     rounding_value = 1024
-    input_boundaries = tuple([50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0])
+    horizon = 13
+    input_boundaries = tuple([50, -40, 30, -20, 28, -28, 36, -36, 0, -0, 0, -0])
     template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
     distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
-    collision_distance = 10
+    collision_distance = 0
     unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
     input_template = Experiment.box(env_input_size)
     _, template = StoppingCarExperiment.get_template(1)
     input = Experiment.generate_input_region(gurobi_model, input_template, input_boundaries, env_input_size)
     root = tuple(optimise(template, gurobi_model, input, env_input_size))
-    if not load:
-        vertices_list = defaultdict(list)
-        vertices_list[0].append(root)
-        frontier = [(0, root)]
-        seen = [root]
-        graph = networkx.DiGraph()
-
-        while len(frontier) != 0:
-            t, x = frontier.pop(0)
-            if t == 7:
-                break
-            ranges_probs = None
-            for chosen_action in range(2):
-                gurobi_model = grb.Model()
-                gurobi_model.setParam('OutputFlag', output_flag)
-                input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-                x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
-                if ranges_probs is None:
-                    ranges = get_range_bounds(input, nn, gurobi_model)
-                    ranges_probs = unroll_methods.softmax_interval(ranges)
-                    print(ranges_probs)
-                x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
-                successor = tuple(x_prime_results)
-                successor = Experiment.round_tuple(successor, rounding_value)
-                is_contained, contained_item = find_contained(successor, seen)
-                if not is_contained:
-                    unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
-                    if not unsafe:
-                        frontier.append((t + 1, successor))
-                        vertices_list[t].append(successor)
-                    else:
-                        print("unsafe")
-                        print(successor)
-                        exit(0)
-                    graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
-                    seen.append(successor)
-                else:
-                    print("skipped")
-                    graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
-
-        fig, simple_vertices = show_polygon_list3(vertices_list, "x_lead", "x_lead-x_ego", template, template_2d)
-        fig.show()
-
-        width = 2560
-        height = 1440
-        scale = 1
-        fig.write_image(os.path.join(save_dir, "plot.svg"), width=width, height=height, scale=scale)
-        networkx.write_gpickle(graph, os.path.join(save_dir, "graph.g"))
-    else:
+    new_frontier = []
+    if load:
         graph = networkx.read_gpickle(os.path.join(save_dir, "graph.g"))
-    mdp, gateway = recreate_prism_PPO(graph, root, max_t=6)
+        seen = list(graph.nodes)
+        frontier = []
+        terminal = []
+        for node in graph.nodes:
+            attr = graph.nodes[node]
+            if not attr.get("safe", True):
+                terminal.append(node)
+            if not attr.get("irrelevant", False):
+                if len(list(graph.neighbors(node))) == 0:
+                    t = networkx.shortest_path_length(graph, source=root, target=node)
+                    frontier.append((t, node))
+        # todo recreate vertices_list?
+    else:
+        graph = networkx.DiGraph()
+        frontier = [(0, root)]
+        terminal = []
+        seen = [root]
+    if explore:
+        if show_graph:
+            vertices_list = defaultdict(list)
+            vertices_list[0].append(root)
+        else:
+            vertices_list = None
 
+        exit_flag = False
+        while len(new_frontier) != 0 or len(frontier) != 0:
+            while len(frontier) != 0:  # performs one exploration iteration
+                t, x = frontier.pop(0)
+                if t == horizon:
+                    exit_flag = True
+                    break
+                ranges_probs = None
+                for chosen_action in range(2):
+                    gurobi_model = grb.Model()
+                    gurobi_model.setParam('OutputFlag', output_flag)
+                    input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+                    x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
+                    if ranges_probs is None:
+                        ranges = get_range_bounds(input, nn, gurobi_model)
+                        ranges_probs = unroll_methods.softmax_interval(ranges)
+                    x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
+                    successor = tuple(x_prime_results)
+                    successor = Experiment.round_tuple(successor, rounding_value)
+                    print(successor)
+                    is_contained, contained_item = find_contained(successor, seen)
+                    if not is_contained:
+                        unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
+                        if not unsafe:
+                            new_frontier.append((t + 1, successor))
+                            if show_graph:
+                                vertices_list[t].append(successor)
+                        else:
+                            print("unsafe")
+                            print(successor)
+                        graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                        seen.append(successor)
+                        if unsafe:
+                            graph.nodes[successor]["safe"] = not unsafe
+                            terminal.append(successor)
+                    else:
+                        print("skipped")
+                        graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                if exit_flag:
+                    break
+            # update prism
+            gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
+            for t, x in new_frontier:
+                minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
+                if maxmax > 1e-6:  # check if state is irrelevant
+                    frontier.append((t, x))  # next computation only considers relevant states
+                else:
+                    graph.nodes[x]["irrelevant"] = True
+            new_frontier = []
+            if exit_flag:
+                break
+        if show_graph:
+            fig, simple_vertices = show_polygon_list3(vertices_list, "x_lead", "x_lead-x_ego", template, template_2d)
+            fig.show()
 
-if __name__ == '__main__':
-    main()
+            width = 2560
+            height = 1440
+            scale = 1
+            fig.write_image(os.path.join(save_dir, "plot.svg"), width=width, height=height, scale=scale)
+        networkx.write_gpickle(graph, os.path.join(save_dir, "graph.g"))
+        print("Graph saved")
+
+    gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
+    targets = []
+    for x, attr in graph.nodes.data():
+        if not attr.get("safe", True) or attr.get("irrelevant", False):
+            targets.append(x)
+    calculate_target_probabilities(gateway, mc, mdp, mapping, targets=targets)
