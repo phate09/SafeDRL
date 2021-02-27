@@ -41,23 +41,32 @@ class TorchCustomModel(TorchModelV2, nn.Module):
 def get_TD3_config(seed, use_gpu=1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": StoppingCar,  #
-              "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model" "custom_model": "my_model",
-              "lr": 5e-4,
-              "num_gpus": use_gpu,
-              # "vf_clip_param": 100000,
-              # "grad_clip": 2500,
-              "clip_rewards": 5,
+              # "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model""custom_model": "my_model",
+              # "critic_lr": 0.001,
+              # "actor_lr": 0.001,
+              # "use_huber": True,
+              # "huber_threshold": 1.0,
+              # "l2_reg": 0.000001,
+              # "learning_starts": 500,
+              # "rollout_fragment_length": 1,
+              # "train_batch_size": 64,
+              # "num_gpus": use_gpu,
+              # "twin_q": True,
+              # "gamma": 0.99,
+              # "timesteps_per_iteration": 600,
+              # "target_network_update_freq": 0,
+              # "tau": 0.001,
+              # "clip_rewards": 1000,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
-              "batch_mode": "complete_episodes",
-              "evaluation_interval": 10,
-              "evaluation_num_episodes": 20,
-              # "use_gae": True,  #
-              # "lambda": 0.95,  # gae lambda param
-              # "num_sgd_iter": 10,
-              "train_batch_size": 4000,
-              # "sgd_minibatch_size": 1024,
-              "rollout_fragment_length": 1000,
+              # # "batch_mode": "complete_episodes",
+              "evaluation_interval": 5,
+              "evaluation_num_episodes": 10,
+              "actor_hiddens": [64, 64],
+              "critic_hiddens": [64, 64],
+              "learning_starts": 5000,
+              "exploration_config":
+                  {"random_timesteps": 5000},
               "framework": "torch",
               "horizon": 1000,
               "seed": seed,
@@ -66,8 +75,9 @@ def get_TD3_config(seed, use_gpu=1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"cost_fn": tune.grid_search([0]),
-                             "epsilon_input": tune.grid_search([0])}  #
+              "env_config": {"cost_fn": tune.grid_search([2]),
+                             "epsilon_input": tune.grid_search([0]),
+                             "reduced": True}  #
               }
     return config
 
@@ -82,7 +92,7 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "TD3",
-        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -2e1},
+        stop={"info/num_steps_trained": 2e8},  # , "episode_reward_mean": -5e1
         config=config,
         name=f"tune_TD3_stopping_car_continuous",
         checkpoint_freq=10,
@@ -90,6 +100,6 @@ if __name__ == "__main__":
         log_to_file=True,
         # resume="PROMPT",
         verbose=1,
-        num_samples=10
+        num_samples=1
     )
     ray.shutdown()
