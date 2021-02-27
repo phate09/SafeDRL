@@ -1,11 +1,23 @@
 import ray
+from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 from ray.rllib.agents.dqn import DQNTorchPolicy
 from ray.rllib.agents.ppo import PPOTorchPolicy, ppo
 import torch
+from ray.rllib.models.torch.misc import SlimFC
 
 from environment.pendulum_abstract import PendulumEnv
 from environment.stopping_car import StoppingCar
 
+
+def convert_td3_policy_to_sequential(policy: DDPGTorchPolicy) -> torch.nn.Sequential:
+    layers_list = []
+    for seq_layer in policy.model.policy_model:
+        if isinstance(seq_layer, SlimFC):
+            for layer in seq_layer._modules['_model']:
+                print(layer)
+                layers_list.append(layer)
+    sequential_nn = torch.nn.Sequential(*layers_list)
+    return sequential_nn
 
 def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
