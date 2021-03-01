@@ -142,14 +142,15 @@ class Experiment():
                             num_already_visited += 1
         self.plot_fn(vertices_list, template, template_2d)
         return max_t, num_already_visited, vertices_list, False
+
     @staticmethod
     def round_tuple(x, rounding_value):
         rounded_x = []
         for val in x:
             if val < 0:
-                rounded_x.append(-1 * math.floor(abs(val) * rounding_value)/rounding_value)
+                rounded_x.append(-1 * math.floor(abs(val) * rounding_value) / rounding_value)
             else:
-                rounded_x.append(math.ceil(abs(val) * rounding_value)/rounding_value)
+                rounded_x.append(math.ceil(abs(val) * rounding_value) / rounding_value)
         return tuple(rounded_x)
 
     def generate_root_polytope(self):
@@ -246,7 +247,7 @@ class Experiment():
 
             # print(layer)
             if type(layer) is torch.nn.Linear:
-                v = gurobi_model.addMVar(lb=float("-inf"), shape=(layer.out_features), name=f"layer_{i}")
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=(int(layer.out_features)), name=f"layer_{i}")
                 lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
                 if layer.bias is not None:
                     lin_expr = lin_expr + layer.bias.data.numpy()
@@ -285,6 +286,56 @@ class Experiment():
         gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return gurobi_model.status == 2
+
+    @staticmethod
+    def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential):
+        gurobi_vars = []
+        gurobi_vars.append(input)
+        for i, layer in enumerate(nn):
+
+            # print(layer)
+            if type(layer) is torch.nn.Linear:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=(int(layer.out_features)), name=f"layer_{i}")
+                lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
+                if layer.bias is not None:
+                    lin_expr = lin_expr + layer.bias.data.numpy()
+                gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
+                gurobi_vars.append(v)
+            elif type(layer) is torch.nn.ReLU:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
+                M = 10e6
+                # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+                gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
+                gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
+                gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
+                gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
+                gurobi_vars.append(v)
+                # gurobi_model.update()
+                # gurobi_model.optimize()
+                # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+                """
+                y = Relu(x)
+                0 <= z <= 1, z is integer
+                y >= x
+                y <= x + Mz
+                y >= 0
+                y <= M - Mz"""
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        last_layer = gurobi_vars[-1]
+        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        max_val = gurobi_model.ObjVal
+        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        min_val = gurobi_model.ObjVal
+        return max_val, min_val
 
     def generic_plot(self, title_x, title_y, vertices_list, template, template_2d):
         fig, simple_vertices = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
