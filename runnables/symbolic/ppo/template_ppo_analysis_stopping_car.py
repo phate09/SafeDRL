@@ -241,6 +241,7 @@ if __name__ == '__main__':
     save_dir = "/home/edoardo/Development/SafeDRL/"
     load = True
     explore = True
+    save = False
     output_flag = False
     show_graph = False
     gurobi_model = grb.Model()
@@ -343,8 +344,9 @@ if __name__ == '__main__':
             height = 1440
             scale = 1
             fig.write_image(os.path.join(save_dir, "plot.svg"), width=width, height=height, scale=scale)
-        networkx.write_gpickle(graph, os.path.join(save_dir, "graph.g"))
-        print("Graph saved")
+        if save:
+            networkx.write_gpickle(graph, os.path.join(save_dir, "graph.g"))
+            print("Graph saved")
 
     gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
     targets = []
