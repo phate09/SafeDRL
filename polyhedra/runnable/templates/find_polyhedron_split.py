@@ -10,7 +10,7 @@ def split_polyhedron(template, boundaries, dimension):
     # create clones
     boundaries1 = list(boundaries)
     boundaries2 = list(boundaries)
-    boundaries1[inverted_dimension] = midpoint
+    boundaries1[inverted_dimension] = -midpoint
     boundaries2[dimension] = midpoint
     boundaries1 = tuple(boundaries1)
     boundaries2 = tuple(boundaries2)
@@ -43,7 +43,7 @@ def pick_longest_dimension(template, boundaries):
 
 if __name__ == '__main__':
     template = Experiment.octagon(2)
-    boundaries = (1, 1, 1, 1, 1, 1, 1, 1)
+    boundaries = (1, -1, 1, 1, 1, 1, 1, 1)
 
     # pick dimension
     dimension = pick_longest_dimension(template, boundaries)

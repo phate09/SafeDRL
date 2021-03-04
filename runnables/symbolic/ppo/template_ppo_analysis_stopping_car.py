@@ -14,6 +14,7 @@ import networkx
 
 from polyhedra.plot_utils import show_polygon_list3
 from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
+from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
 import numpy as np
@@ -167,15 +168,23 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                                 distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
                             mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)
                     else:  # markov chain following the policy
-                        distribution = gateway.jvm.explicit.Distribution(eval)
-                        for successor in edges:
-                            edgeattr = edges[successor]
-                            ub = edgeattr.get("ub")
-                            lb = edgeattr.get("lb")
-                            assert ub is not None
-                            assert lb is not None
-                            distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
-                        mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "policy")
+                        actions = set([edges[key].get("action") for key in edges])  # get unique actions
+                        if "split" in actions:
+                            # nondeterministic choice
+                            for successor in edges:
+                                distribution = gateway.jvm.explicit.Distribution(eval)
+                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(1.0, 1.0))
+                                mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "split")
+                        else:
+                            distribution = gateway.jvm.explicit.Distribution(eval)
+                            for successor in edges:
+                                edgeattr = edges[successor]
+                                ub = edgeattr.get("ub")
+                                lb = edgeattr.get("lb")
+                                assert ub is not None
+                                assert lb is not None
+                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
+                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "policy")
 
                 else:
                     # zero successors
@@ -235,11 +244,23 @@ def evolutionary_merge(graph: networkx.DiGraph, template: np.ndarray):
     n_nodes = graph.number_of_nodes()
 
 
+def create_range_bounds_model(template, x, env_input_size, nn, round=-1):
+    gurobi_model = grb.Model()
+    gurobi_model.setParam('OutputFlag', output_flag)
+    input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+    ranges = get_range_bounds(input, nn, gurobi_model)
+    ranges_probs = unroll_methods.softmax_interval(ranges)
+    if round >= 0:
+        pass
+        # todo round the probabilities
+    return ranges_probs
+
+
 if __name__ == '__main__':
     ray.init(local_mode=False)
     nn = get_nn()
     save_dir = "/home/edoardo/Development/SafeDRL/"
-    load = True
+    load = False
     explore = True
     save = False
     output_flag = False
@@ -255,7 +276,8 @@ if __name__ == '__main__':
     collision_distance = 0
     unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
     input_template = Experiment.box(env_input_size)
-    _, template = StoppingCarExperiment.get_template(1)
+    # _, template = StoppingCarExperiment.get_template(1)
+    template = input_template
     input = Experiment.generate_input_region(gurobi_model, input_template, input_boundaries, env_input_size)
     root = tuple(optimise(template, gurobi_model, input, env_input_size))
     new_frontier = []
@@ -292,37 +314,54 @@ if __name__ == '__main__':
                 if t == horizon:
                     exit_flag = True
                     break
-                ranges_probs = None
+                ranges_probs = create_range_bounds_model(template, x, env_input_size, nn)
+                # check prob range not too wide
+                split_flag = False
                 for chosen_action in range(2):
-                    gurobi_model = grb.Model()
-                    gurobi_model.setParam('OutputFlag', output_flag)
-                    input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-                    x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
-                    if ranges_probs is None:
-                        ranges = get_range_bounds(input, nn, gurobi_model)
-                        ranges_probs = unroll_methods.softmax_interval(ranges)
-                    x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
-                    successor = tuple(x_prime_results)
-                    successor = Experiment.round_tuple(successor, rounding_value)
-                    print(successor)
-                    is_contained, contained_item = find_contained(successor, seen)
-                    if not is_contained:
-                        unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
-                        if not unsafe:
-                            new_frontier.append((t + 1, successor))
-                            if show_graph:
-                                vertices_list[t].append(successor)
+                    prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
+                    if prob_diff > 0.2:
+                        # should split the input
+                        split_flag = True
+                        break
+                if split_flag:
+                    # todo think about entropy based splitting/refinement
+                    dimension = pick_longest_dimension(template, x)
+                    split1, split2 = split_polyhedron(template, x, dimension)
+                    new_frontier.append((t, split1))
+                    new_frontier.append((t, split2))
+                    graph.add_edge(x, split1, action="split")
+                    graph.add_edge(x, split2, action="split") #todo probabily remove from seen
+                else:
+                    for chosen_action in range(2):
+                        gurobi_model = grb.Model()
+                        gurobi_model.setParam('OutputFlag', output_flag)
+                        input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+                        x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
+                        if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
+                            # skip action
+                            continue
+                        x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
+                        successor = tuple(x_prime_results)
+                        successor = Experiment.round_tuple(successor, rounding_value)
+                        print(successor)
+                        is_contained, contained_item = find_contained(successor, seen)
+                        if not is_contained:
+                            unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
+                            if not unsafe:
+                                new_frontier.append((t + 1, successor))
+                                if show_graph:
+                                    vertices_list[t].append(successor)
+                            else:
+                                print("unsafe")
+                                print(successor)
+                            graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                            seen.append(successor)
+                            if unsafe:
+                                graph.nodes[successor]["safe"] = not unsafe
+                                terminal.append(successor)
                         else:
-                            print("unsafe")
-                            print(successor)
-                        graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
-                        seen.append(successor)
-                        if unsafe:
-                            graph.nodes[successor]["safe"] = not unsafe
-                            terminal.append(successor)
-                    else:
-                        print("skipped")
-                        graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                            print("skipped")
+                            graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
                 if exit_flag:
                     break
             # update prism
