@@ -30,6 +30,18 @@ def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequent
         layers_list.append(layer)
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
+def convert_ray_policy_to_sequential2(policy: PPOTorchPolicy) -> torch.nn.Sequential:
+    layers_list = []
+    for seq_layer in policy.model.torch_sub_model._hidden_layers:
+        for layer in seq_layer._modules['_model']:
+            print(layer)
+            layers_list.append(layer)
+    for layer in policy.model.torch_sub_model._modules['_logits'][0]._modules['_model']:
+        print(layer)
+        layers_list.append(layer)
+    layers_list.append(policy.model.torch_sub_model._modules['_logits'][1])
+    sequential_nn = torch.nn.Sequential(*layers_list)
+    return sequential_nn
 def convert_ray_simple_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
     for seq_layer in policy.model._hidden_layers:

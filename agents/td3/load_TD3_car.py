@@ -4,7 +4,9 @@ import os
 import ray
 import torch.nn
 import numpy as np
-from agents.ray_utils import convert_td3_policy_to_sequential
+from ray.rllib.agents.ppo import ppo
+
+from agents.ray_utils import *
 from environment.stopping_car_continuous import StoppingCar
 import ray.rllib.agents.ddpg as td3
 from agents.td3.tune.tune_train_TD3_car import get_TD3_config
@@ -13,12 +15,14 @@ ray.init()
 # config, trainer = get_PPO_trainer(use_gpu=0)
 
 config = get_TD3_config(1234)
-trainer = td3.TD3Trainer(config=config)
+trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680")
 # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600")
-trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_750/checkpoint-750")
+# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_2f9f7_00000_0_cost_fn=3,epsilon_input=0_2021-03-07_16-00-06/checkpoint_150/checkpoint-150")
+trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250")
 policy = trainer.get_policy()
-sequential_nn = convert_td3_policy_to_sequential(policy).cpu()
+sequential_nn = convert_ray_policy_to_sequential2(policy)
+# policy.model.cuda()
 # l0 = torch.nn.Linear(6, 2, bias=False)
 # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
 # layers = [l0]
@@ -30,7 +34,7 @@ plot_index = 1
 x_index = 0
 position_list = []
 x_list = []
-config = {"cost_fn": 3,
+config = {"cost_fn": 0,
           "epsilon_input": 0,
           "reduced": True}
 env = StoppingCar(config)
@@ -54,9 +58,10 @@ for n in range(1):
     position_list.append(state_np[plot_index])
     x_list.append(state_np[x_index])
     for i in range(1000):
-        state = torch.from_numpy(state_np).float().unsqueeze(0)
+        state = torch.from_numpy(state_np).cuda().float().unsqueeze(0)
         # state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
-        action = sequential_nn(state).squeeze()
+        action = sequential_nn(state).squeeze()[0]
+        action2 = policy.compute_single_action([state_np], explore=False)
         # action_score2 = sequential_nn2(state)
         # action = torch.argmax(action_score).item()
         # action2 = torch.argmax(action_score2).item()

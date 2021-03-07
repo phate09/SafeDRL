@@ -29,7 +29,7 @@ class StoppingCar(gym.Env):
         self.d_default = 20  # minimum safe distance
         # self.t_gap = 1.4  # safe distance reaction time
         self.v_set = 30  # speed to drive at if no cars ahead
-        self.action_space = spaces.Box(-20, 20, shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Box(-3, 3, shape=(1,), dtype=np.float32)
         if self.use_reduced_state_space:
             self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
         else:
@@ -81,9 +81,9 @@ class StoppingCar(gym.Env):
         elif self.cost_function_index == 3:
             cost -= (0.03 * (delta_x - self.d_default)) ** 2
             cost -= (0.01 * (delta_v)) ** 2
-            cost -= (0.02 * max(0, acceleration - 12)) ** 2
+            cost -= (0.02 * max(0, acceleration - 3)) ** 2
             if delta_x < 0:  # crash
-                cost -= 1
+                cost -= 10
         if self.use_reduced_state_space:
             return np.array([delta_v, delta_x]), cost, done, {}
         else:
