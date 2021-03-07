@@ -14,7 +14,9 @@ ray.init()
 
 config = get_TD3_config(1234)
 trainer = td3.TD3Trainer(config=config)
-trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680")
+# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680")
+# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600")
+trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_750/checkpoint-750")
 policy = trainer.get_policy()
 sequential_nn = convert_td3_policy_to_sequential(policy).cpu()
 # l0 = torch.nn.Linear(6, 2, bias=False)
@@ -28,7 +30,7 @@ plot_index = 1
 x_index = 0
 position_list = []
 x_list = []
-config = {"cost_fn": 2,
+config = {"cost_fn": 3,
           "epsilon_input": 0,
           "reduced": True}
 env = StoppingCar(config)
@@ -43,8 +45,8 @@ print(state_np)
 for n in range(1):
     cumulative_reward = 0
     env.reset()
-    env.x_ego = env.np_random.uniform(0, 10)
-    env.x_lead = env.np_random.uniform(30, 40)
+    env.x_ego = 0  # env.np_random.uniform(0, 10)
+    env.x_lead = 30  # env.np_random.uniform(30, 40)
     env.v_lead = 28
     env.v_ego = 36
     state_np = env.get_state()
@@ -74,7 +76,7 @@ for n in range(1):
             break
     print("-------")
     print(f"cumulative_reward:{cumulative_reward}")
-#we want positive delta_x and delta_v close to 0
+# we want positive delta_x and delta_v close to 0
 print("all good")
 print(f"min_distance:{min_distance}")
 # with open(os.path.join("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous", "simulation.csv"), 'w',
@@ -87,8 +89,9 @@ import plotly.graph_objects as go
 
 fig = go.Figure()
 # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-trace1 = go.Scatter(x=x_list, y=position_list, mode='markers', )
+trace1 = go.Scatter(x=x_list, y=position_list, mode='markers')
 fig.add_trace(trace1)
+fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
 fig.show()
 ray.shutdown()
 

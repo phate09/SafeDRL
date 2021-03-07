@@ -26,7 +26,7 @@ class StoppingCar(gym.Env):
         self.y_ego = 0  # acceleration ego vehicle
         self.a_ego = 3  # deceleration/acceleration amount
         self.dt = .1  # delta time
-        self.d_default = 10  # minimum safe distance
+        self.d_default = 20  # minimum safe distance
         # self.t_gap = 1.4  # safe distance reaction time
         self.v_set = 30  # speed to drive at if no cars ahead
         self.action_space = spaces.Box(-20, 20, shape=(1,), dtype=np.float32)
@@ -39,9 +39,10 @@ class StoppingCar(gym.Env):
     def reset(self):
         self.y_lead = self.y_ego = 0
         self.v_lead = self.np_random.uniform(20, 36)
-        self.v_ego = self.np_random.uniform(20, 36)
+        # self.v_ego = self.np_random.uniform(20, 36)
+        self.v_ego = self.np_random.uniform(20, 60)
         self.x_ego = self.np_random.uniform(0, 0)
-        self.x_lead = self.np_random.uniform(20, 60)
+        self.x_lead = self.np_random.uniform(10, 60)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
         if self.use_reduced_state_space:
@@ -72,9 +73,15 @@ class StoppingCar(gym.Env):
             if delta_x < 0:  # crash
                 done = True
                 cost = -1000
-        else:
+        elif self.cost_function_index == 2:
             cost -= (0.03 * (delta_x - self.d_default)) ** 2
             cost -= (0.01 * (delta_v)) ** 2
+            if delta_x < 0:  # crash
+                cost -= 1
+        elif self.cost_function_index == 3:
+            cost -= (0.03 * (delta_x - self.d_default)) ** 2
+            cost -= (0.01 * (delta_v)) ** 2
+            cost -= (0.02 * max(0, acceleration - 12)) ** 2
             if delta_x < 0:  # crash
                 cost -= 1
         if self.use_reduced_state_space:

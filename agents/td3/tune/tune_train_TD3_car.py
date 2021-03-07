@@ -61,7 +61,7 @@ def get_TD3_config(seed, use_gpu=1):
               "num_envs_per_worker": 10,
               # # "batch_mode": "complete_episodes",
               "evaluation_interval": 5,
-              "evaluation_num_episodes": 10,
+              "evaluation_num_episodes": 20,
               "actor_hiddens": [64, 64],
               "critic_hiddens": [64, 64],
               "learning_starts": 5000,
@@ -75,7 +75,7 @@ def get_TD3_config(seed, use_gpu=1):
                   # "env_config": {...},
                   "explore": False
               },
-              "env_config": {"cost_fn": tune.grid_search([2]),
+              "env_config": {"cost_fn": tune.grid_search([3]),
                              "epsilon_input": tune.grid_search([0]),
                              "reduced": True}  #
               }
@@ -92,13 +92,15 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "TD3",
-        stop={"info/num_steps_trained": 2e8},  # , "episode_reward_mean": -5e1
+        stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -2e1},  #
         config=config,
         name=f"tune_TD3_stopping_car_continuous",
         checkpoint_freq=10,
+        checkpoint_score_attr="episode_reward_mean",
+        keep_checkpoints_num=10,
         checkpoint_at_end=True,
         log_to_file=True,
-        # resume="PROMPT",
+        resume="PROMPT",
         verbose=1,
         num_samples=1
     )

@@ -19,7 +19,8 @@ class StoppingCarContinuousExperiment(Experiment):
         self.post_fn_remote = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
-        self.template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
+        # self.template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
+        self.template_2d: np.ndarray = np.array([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]])
         input_boundaries, input_template = self.get_template(0)
         self.input_boundaries: List = input_boundaries
         self.input_template: np.ndarray = input_template
@@ -29,36 +30,39 @@ class StoppingCarContinuousExperiment(Experiment):
         distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
         # self.use_bfs = True
         # self.n_workers = 1
-        self.rounding_value = 2 ** 10
+        self.rounding_value = 2 ** 6
         self.use_rounding = False
         self.time_horizon = 400
         self.unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
         self.input_epsilon = 0
-        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_62310_00000_0_cost_fn=2,epsilon_input=0_2021-03-04_13-34-45/checkpoint_780/checkpoint-780"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_3665a_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_14-37-57/checkpoint_114/checkpoint-114"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600"
+        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_750/checkpoint-750"
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
         """milp method"""
         post = []
-        for chosen_action in range(2):
-            gurobi_model = grb.Model()
-            gurobi_model.setParam('OutputFlag', output_flag)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-            observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
-            gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
-            gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
-            gurobi_model.addConstr(observation[0] <= input[2] - input[3] + self.input_epsilon / 2, name=f"obs_constr11")
-            gurobi_model.addConstr(observation[0] >= input[2] - input[3] - self.input_epsilon / 2, name=f"obs_constr12")
-            max_val, min_val = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)  # todo do something with these variables
-            # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
-            if feasible_action:
-                # apply dynamic
-                x_prime = StoppingCarContinuousExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=self.env_input_size)
-                gurobi_model.update()
-                gurobi_model.optimize()
-                found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-                if found_successor:
-                    post.append(tuple(x_prime_results))
+        # for chosen_action in range(2):
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
+        gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
+        gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
+        gurobi_model.addConstr(observation[0] <= input[2] - input[3] + self.input_epsilon / 2, name=f"obs_constr11")
+        gurobi_model.addConstr(observation[0] >= input[2] - input[3] - self.input_epsilon / 2, name=f"obs_constr12")
+        nn_output = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)
+        # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
+        # apply dynamic
+        x_prime = StoppingCarContinuousExperiment.apply_dynamic(input, gurobi_model, action=nn_output, env_input_size=self.env_input_size)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
+        if found_successor:
+            post.append(tuple(x_prime_results))
         return post
 
     @staticmethod
@@ -83,16 +87,18 @@ class StoppingCarContinuousExperiment(Experiment):
         v_ego = input[3]
         a_lead = input[4]
         a_ego = input[5]
+        gurobi_model.addConstr(action[0] <= 12)  # cap the acceleration to +12 m/s*2
+        gurobi_model.addConstr(action[0] >= -12)  # cap the acceleration to -12 m/s*2
         z = gurobi_model.addMVar(shape=(6,), lb=float("-inf"), name=f"x_prime")
         const_acc = 3
         dt = .1  # seconds
-        if action == 0:
-            acceleration = -const_acc
-        elif action == 1:
-            acceleration = const_acc
-        else:
-            acceleration = 0
-        a_ego_prime = acceleration
+        # if action == 0:
+        #     acceleration = -const_acc
+        # elif action == 1:
+        #     acceleration = const_acc
+        # else:
+        #     acceleration = 0
+        a_ego_prime = action
         v_ego_prime = v_ego + a_ego * dt
         v_lead_prime = v_lead + a_lead * dt
         x_lead_prime = x_lead + v_lead_prime * dt
@@ -109,7 +115,7 @@ class StoppingCarContinuousExperiment(Experiment):
 
     def plot(self, vertices_list, template, template_2d):
         # try:
-        self.generic_plot("x_lead", "x_lead-x_ego", vertices_list, template, template_2d)
+        self.generic_plot("v_lead-v_ego", "x_lead-x_ego", vertices_list, template, template_2d)
         # except:
         #     print("Error in plotting")
 
@@ -237,13 +243,15 @@ class StoppingCarContinuousExperiment(Experiment):
 if __name__ == '__main__':
     ray.init(log_to_driver=False, local_mode=True)
     experiment = StoppingCarContinuousExperiment()
-    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car_continuous/test"
+    experiment.save_dir = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
-    experiment.show_progress_plot = False
-    template = Experiment.octagon(experiment.env_input_size)
+    experiment.show_progress_plot = True
+    experiment.use_rounding = False
+    # template = Experiment.octagon(experiment.env_input_size)
+    _, template = StoppingCarContinuousExperiment.get_template(1)
     experiment.analysis_template = template  # standard
-    input_boundaries = [40, -30, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
+    input_boundaries = [40, -30, 10, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()

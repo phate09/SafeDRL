@@ -325,17 +325,17 @@ class Experiment():
         # gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         last_layer = gurobi_vars[-1]
-        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        max_val = gurobi_model.ObjVal
-        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        min_val = gurobi_model.ObjVal
-        return max_val, min_val
+        # gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # max_val = gurobi_model.ObjVal
+        # gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # min_val = gurobi_model.ObjVal
+        return last_layer
 
     def generic_plot(self, title_x, title_y, vertices_list, template, template_2d):
         fig, simple_vertices = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
