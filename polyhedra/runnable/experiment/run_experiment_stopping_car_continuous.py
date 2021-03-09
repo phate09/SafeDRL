@@ -7,7 +7,7 @@ import torch
 from ray.rllib.agents.ddpg import td3
 from ray.rllib.agents.ppo import ppo
 
-from agents.td3.tune.tune_train_TD3_car import get_TD3_config
+
 from agents.ray_utils import *
 from polyhedra.experiments_nn_analysis import Experiment
 
@@ -37,9 +37,10 @@ class StoppingCarContinuousExperiment(Experiment):
         self.input_epsilon = 0
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_62310_00000_0_cost_fn=2,epsilon_input=0_2021-03-04_13-34-45/checkpoint_780/checkpoint-780"
-        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_3665a_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_14-37-57/checkpoint_114/checkpoint-114"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_ 3665a_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_14-37-57/checkpoint_114/checkpoint-114"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600"
-        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250"
+        # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250"
+        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_7bdde_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_11-49-20/checkpoint_1460/checkpoint-1460"
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -61,7 +62,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.update()
         gurobi_model.optimize()
         found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-        x_prime_results = x_prime_results.round(4) #correct for rounding errors introduced by the conversion to h-repr
+        x_prime_results = x_prime_results.round(4)  # correct for rounding errors introduced by the conversion to h-repr
         if found_successor:
             post.append(tuple(x_prime_results))
         return post
@@ -224,6 +225,8 @@ class StoppingCarContinuousExperiment(Experiment):
         pass
 
     def get_nn(self):
+        # from agents.td3.tune.tune_train_TD3_car import get_TD3_config
+        from agents.td3.tune.tune_train_TD3_car import get_TD3_config
         config = get_TD3_config(1234)
         trainer = ppo.PPOTrainer(config)
         trainer.restore(self.nn_path)
@@ -242,7 +245,7 @@ class StoppingCarContinuousExperiment(Experiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=True)
+    ray.init(log_to_driver=False, local_mode=False)
     experiment = StoppingCarContinuousExperiment()
     experiment.save_dir = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test"
     experiment.plotting_time_interval = 60

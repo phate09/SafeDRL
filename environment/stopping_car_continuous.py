@@ -40,9 +40,9 @@ class StoppingCar(gym.Env):
         self.y_lead = self.y_ego = 0
         self.v_lead = self.np_random.uniform(20, 36)
         # self.v_ego = self.np_random.uniform(20, 36)
-        self.v_ego = self.np_random.uniform(20, 60)
-        self.x_ego = self.np_random.uniform(0, 0)
-        self.x_lead = self.np_random.uniform(10, 60)
+        self.v_ego = self.v_lead + self.np_random.uniform(-10, 10)
+        self.x_ego = self.np_random.uniform(0, 10)
+        self.x_lead = self.np_random.uniform(30, 40)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
         if self.use_reduced_state_space:

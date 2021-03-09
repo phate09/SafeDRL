@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 
 import ray
 import torch
@@ -14,12 +15,17 @@ from ray.rllib.utils.framework import try_import_torch
 import numpy as np
 from ray import tune
 import random
+import ray.tune.checkpoint_manager
+from ray.tune.trial import Trial
+
+from agents.ray_utils import convert_ray_policy_to_sequential2
 from environment.bouncing_ball_old import BouncingBall
 from environment.cartpole_ray import CartPoleEnv
 from environment.stopping_car_continuous import StoppingCar
 from ray.tune import Callback
 
 # torch, nn = try_import_torch()
+from polyhedra.runnable.experiment.run_experiment_stopping_car_continuous import StoppingCarContinuousExperiment
 
 custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
 
@@ -239,10 +245,11 @@ class CustomDDPGTorchModel(TorchModelV2, nn.Module):
 
 
 def stopper(trial_id, result):
-    if "evaluation" in result:
-        return result["evaluation"]["episode_reward_min"] > -150 and result["evaluation"]["episode_len_mean"] == 1000
-    else:
-        return False
+    # if "evaluation" in result:
+    #     return result["evaluation"]["episode_reward_min"] > -20 and result["evaluation"]["episode_len_mean"] == 1000
+    #
+    # else:
+    return False
 
 
 def get_TD3_config(seed, use_gpu: float = 1):
@@ -252,15 +259,15 @@ def get_TD3_config(seed, use_gpu: float = 1):
 
               "model": {"fcnet_hiddens": [32, 32], "fcnet_activation": "relu", "custom_model": "my_model"},
               # model config," "custom_model": "my_model" "fcnet_activation": "relu" "custom_model": "my_model",
-              "lr": 5e-4,
+              "lr": 5e-5,
               "num_gpus": use_gpu,
               # "clip_rewards": 1000,
               "vf_clip_param": 500.0,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
               "batch_mode": "truncate_episodes",
-              "evaluation_interval": 5,
-              "evaluation_num_episodes": 20,
+              "evaluation_interval": 10,
+              "evaluation_num_episodes": 30,
               "num_sgd_iter": 10,
               "train_batch_size": 4000,
               "sgd_minibatch_size": 1024,
@@ -282,17 +289,56 @@ def get_TD3_config(seed, use_gpu: float = 1):
               }
     return config
 
-# class MyCallback(Callback):
-#     def on_train_result(self, iteration, trials, trial, result, **info):
-#         result = info["result"]
-#         if result["episode_reward_mean"] > 6500:
-#             phase = 1
-#         else:
-#             phase = 0
-#         trainer = info["trainer"]
-#         trainer.workers.foreach_worker(
-#             lambda ev: ev.foreach_env(
-#                 lambda env: env.set_phase(phase)))
+
+class MyCallback(Callback):
+    def on_train_result(self, iteration, trials, trial, result, **info):
+        result = info["result"]
+        # if result["episode_reward_mean"] > 6500:
+        #     phase = 1
+        # else:
+        #     phase = 0
+        # trainer = info["trainer"]
+        # trainer.workers.foreach_worker(
+        #     lambda ev: ev.foreach_env(
+        #         lambda env: env.set_phase(phase)))
+    def on_checkpoint(self, iteration: int, trials,
+                      trial, checkpoint, **info):
+        experiment = StoppingCarContinuousExperiment()
+        experiment.nn_path = checkpoint.value
+        experiment.save_dir = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test"
+        experiment.plotting_time_interval = 60
+        experiment.show_progressbar = False
+        experiment.show_progress_plot = False
+        experiment.use_rounding = False
+        # template = Experiment.octagon(experiment.env_input_size)
+        _, template = StoppingCarContinuousExperiment.get_template(1)
+        experiment.analysis_template = template  # standard
+        input_boundaries = [40, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
+        experiment.input_boundaries = input_boundaries
+        experiment.time_horizon = 150
+
+        def get_nn():
+            # from agents.td3.tune.tune_train_TD3_car import get_TD3_config
+            config = get_TD3_config(1234)
+            trainer = ppo.PPOTrainer(config)
+            trainer.restore(experiment.nn_path)
+            policy = trainer.get_policy()
+            sequential_nn = convert_ray_policy_to_sequential2(policy).cpu()
+            # l0 = torch.nn.Linear(6, 2, bias=False)
+            # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+            # layers = [l0]
+            # for l in sequential_nn:
+            #     layers.append(l)
+            #
+            # nn = torch.nn.Sequential(*layers)
+            nn = sequential_nn
+            # ray.shutdown()
+            return nn
+        experiment.get_nn_fn = get_nn
+        elapsed_seconds, safe, max_t = experiment.run_experiment()
+        if safe:
+            trial.set_status(Trial.TERMINATED)
+        return safe
 
 if __name__ == "__main__":
     seed = 1234
@@ -301,11 +347,9 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
     config = get_TD3_config(use_gpu=1, seed=seed)
-    trainer = ppo.PPOTrainer(config=config)
-    # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250")
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
-        trainer,
+        "PPO",
         # stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -2e1},  #
         stop=stopper,
         config=config,
@@ -315,6 +359,11 @@ if __name__ == "__main__":
         keep_checkpoints_num=10,
         checkpoint_at_end=True,
         log_to_file=True,
+        callbacks=[MyCallback()],
+        # restore="/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250",
+        # restore="/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_7bdde_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_11-49-20/checkpoint_1810/checkpoint-1810",
+        # restore="/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_5e486_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_13-50-11/checkpoint_2060/checkpoint-2060",
+        # restore="/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_afe33_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_14-13-57/checkpoint_2230/checkpoint-2230",
         # resume="PROMPT",
         verbose=1,
         num_samples=1
