@@ -321,6 +321,27 @@ class Experiment():
                 y <= x + Mz
                 y >= 0
                 y <= M - Mz"""
+            elif type(layer) is torch.nn.Hardtanh:
+                layerTanh: torch.nn.Hardtanh = layer
+                min_val = layerTanh.min_val
+                max_val = layerTanh.max_val
+                M = 10e6
+                v1 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                z1 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh1_{i}")
+                z2 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh2_{i}")
+                gurobi_model.addConstr(v1 >= gurobi_vars[-1], name=f"hardtanh1_constr_1_{i}")
+                gurobi_model.addConstr(v1 <= gurobi_vars[-1] + M * z1, name=f"hardtanh1_constr_2_{i}")
+                gurobi_model.addConstr(v1 >= min_val, name=f"hardtanh1_constr_3_{i}")
+                gurobi_model.addConstr(v1 <= min_val + M - M * z1, name=f"hardtanh1_constr_4_{i}")
+                gurobi_vars.append(v1)
+                v2 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                gurobi_model.addConstr(v2 <= gurobi_vars[-1], name=f"hardtanh2_constr_1_{i}")
+                gurobi_model.addConstr(v2 >= gurobi_vars[-1] - M * z2, name=f"hardtanh2_constr_2_{i}")
+                gurobi_model.addConstr(v2 <= max_val, name=f"hardtanh2_constr_3_{i}")
+                gurobi_model.addConstr(v2 >= max_val - M + M * z2, name=f"hardtanh2_constr_4_{i}")
+                gurobi_vars.append(v2)
+            else:
+                raise Exception("Unrecognised layer")
         # gurobi_model.update()
         # gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -331,9 +352,9 @@ class Experiment():
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         # max_val = gurobi_model.ObjVal
         # gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
-        # gurobi_model.update()
-        # gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
         # min_val = gurobi_model.ObjVal
         return last_layer
 

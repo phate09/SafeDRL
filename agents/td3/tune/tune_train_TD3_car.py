@@ -240,7 +240,7 @@ class CustomDDPGTorchModel(TorchModelV2, nn.Module):
 
 def stopper(trial_id, result):
     if "evaluation" in result:
-        return result["evaluation"]["episode_reward_min"] > 300 and result["evaluation"]["episode_len_mean"] == 1000
+        return result["evaluation"]["episode_reward_min"] > -150 and result["evaluation"]["episode_len_mean"] == 1000
     else:
         return False
 
@@ -264,6 +264,7 @@ def get_TD3_config(seed, use_gpu: float = 1):
               "num_sgd_iter": 10,
               "train_batch_size": 4000,
               "sgd_minibatch_size": 1024,
+              "no_done_at_end": True,
               "rollout_fragment_length": 1000,
               "exploration_config":
                   {"random_timesteps": 5000},
@@ -281,6 +282,17 @@ def get_TD3_config(seed, use_gpu: float = 1):
               }
     return config
 
+# class MyCallback(Callback):
+#     def on_train_result(self, iteration, trials, trial, result, **info):
+#         result = info["result"]
+#         if result["episode_reward_mean"] > 6500:
+#             phase = 1
+#         else:
+#             phase = 0
+#         trainer = info["trainer"]
+#         trainer.workers.foreach_worker(
+#             lambda ev: ev.foreach_env(
+#                 lambda env: env.set_phase(phase)))
 
 if __name__ == "__main__":
     seed = 1234
@@ -289,9 +301,11 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
     config = get_TD3_config(use_gpu=1, seed=seed)
+    trainer = ppo.PPOTrainer(config=config)
+    # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250")
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
-        "PPO",
+        trainer,
         # stop={"info/num_steps_trained": 2e8, "episode_reward_mean": -2e1},  #
         stop=stopper,
         config=config,

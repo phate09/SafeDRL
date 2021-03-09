@@ -39,7 +39,7 @@ class StoppingCarContinuousExperiment(Experiment):
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_62310_00000_0_cost_fn=2,epsilon_input=0_2021-03-04_13-34-45/checkpoint_780/checkpoint-780"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_3665a_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_14-37-57/checkpoint_114/checkpoint-114"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600"
-        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_750/checkpoint-750"
+        self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250"
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -61,6 +61,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.update()
         gurobi_model.optimize()
         found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
+        x_prime_results = x_prime_results.round(4) #correct for rounding errors introduced by the conversion to h-repr
         if found_successor:
             post.append(tuple(x_prime_results))
         return post
@@ -87,8 +88,8 @@ class StoppingCarContinuousExperiment(Experiment):
         v_ego = input[3]
         a_lead = input[4]
         a_ego = input[5]
-        gurobi_model.addConstr(action[0] <= 12)  # cap the acceleration to +12 m/s*2
-        gurobi_model.addConstr(action[0] >= -12)  # cap the acceleration to -12 m/s*2
+        # gurobi_model.addConstr(action[0] <= 12)  # cap the acceleration to +12 m/s*2
+        # gurobi_model.addConstr(action[0] >= -12)  # cap the acceleration to -12 m/s*2
         z = gurobi_model.addMVar(shape=(6,), lb=float("-inf"), name=f"x_prime")
         const_acc = 3
         dt = .1  # seconds
@@ -110,7 +111,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.addConstr(z[2] == v_lead_prime, name=f"dyna_constr_3")
         gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
         gurobi_model.addConstr(z[4] == a_lead, name=f"dyna_constr_5")  # no change in a_lead
-        gurobi_model.addConstr(z[5] == a_ego_prime, name=f"dyna_constr_6")
+        gurobi_model.addConstr(z[5] == a_ego_prime[0], name=f"dyna_constr_6")  # use index 0 which is the action (as opposed to index 1 which is the standard deviation for exploration)
         return z
 
     def plot(self, vertices_list, template, template_2d):
@@ -224,10 +225,10 @@ class StoppingCarContinuousExperiment(Experiment):
 
     def get_nn(self):
         config = get_TD3_config(1234)
-        trainer = td3.TD3Trainer(config)
+        trainer = ppo.PPOTrainer(config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()
-        sequential_nn = convert_td3_policy_to_sequential(policy).cpu()
+        sequential_nn = convert_ray_policy_to_sequential2(policy).cpu()
         # l0 = torch.nn.Linear(6, 2, bias=False)
         # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
         # layers = [l0]
@@ -251,7 +252,7 @@ if __name__ == '__main__':
     # template = Experiment.octagon(experiment.env_input_size)
     _, template = StoppingCarContinuousExperiment.get_template(1)
     experiment.analysis_template = template  # standard
-    input_boundaries = [40, -30, 10, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
+    input_boundaries = [40, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()
