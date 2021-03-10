@@ -33,7 +33,7 @@ def sample_ellipsoid(e, r):
     p /= np.linalg.norm(p)
 
     # Scale to a point in the sphere volume
-    p *= np.random.uniform() ** (1.0/e.shape[0])
+    p *= np.random.uniform() ** (1.0 / e.shape[0])
 
     # Transform to a point in the ellipsoid
     return np.sqrt(r) * np.linalg.cholesky(np.linalg.inv(e)).dot(p)
@@ -42,10 +42,10 @@ def sample_ellipsoid(e, r):
 def ellipsoid_axes(e):
     """Return matrix with columns that are the axes of the ellipsoid."""
     w, v = np.linalg.eigh(e)
-    return v.dot(np.diag(w**(-1/2.0)))
+    return v.dot(np.diag(w ** (-1 / 2.0)))
 
 
-def dikin_walk(a, b, x0, r=3/40):
+def dikin_walk(a, b, x0, r=3 / 40):
     """Generate points with Dikin walk."""
     x = x0
     h_x = hessian(a, b, x)
@@ -175,10 +175,11 @@ def main():
         [-3, 1, 0],
         [1, 3, 0],
         [1, 0, 0],
-    ])
+        [-1, 0, 0],
+    ])  # this is the template
     leq_rhs = np.array([
-        -6, -1, 8, 4, 22, 10
-    ])
+        -6, -1, 8, 4, 22, 10, -1
+    ])  # these are the boundaries
 
     # Find nullspace
     u, s, vh = np.linalg.svd(eq)
@@ -229,7 +230,7 @@ def main():
 
     # Plot chains
     for chain_number, chain in enumerate(chains):
-        print('Chain {}/{}'.format(chain_number+1, chain_count))
+        print('Chain {}/{}'.format(chain_number + 1, chain_count))
 
         points = chain.dot(nullspace.T)
         maxes = points.max(axis=0)
@@ -242,7 +243,7 @@ def main():
         ax.set_xlim(mins[0], maxes[0])
         ax.set_ylim(mins[1], maxes[1])
 
-        for i in range(leq.shape[0]):
+        for i in range(leq.shape[0]): #plot black lines
             if leq[i, 1] != 0:
                 y1 = (mins[0] * leq[i, 0] - leq_rhs[i]) / -leq[i, 1]
                 y2 = (maxes[0] * leq[i, 0] - leq_rhs[i]) / -leq[i, 1]
