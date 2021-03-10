@@ -40,6 +40,8 @@ def pick_longest_dimension(template, boundaries):
             max_dimension_index = dimension
     return max_dimension_index
 
+def sample_points(template,boundaries,n_samples:int):
+    pass
 
 if __name__ == '__main__':
     template = Experiment.octagon(2)
