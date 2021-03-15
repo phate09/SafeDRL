@@ -137,7 +137,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Dikin walk test')
     parser.add_argument('--sampler', choices=['dikin', 'hit-and-run'],
-                        default='dikin', help='Sampling method to use')
+                        default='hit-and-run', help='Sampling method to use')
     parser.add_argument('--chains', type=int, default=1,
                         help='Number of chains')
     parser.add_argument('--burn', type=int, default=1000,
@@ -178,7 +178,7 @@ def main():
         [-1, 0, 0],
     ])  # this is the template
     leq_rhs = np.array([
-        -6, -1, 8, 4, 22, 10, -1
+        -6, -1, 8, 4, 22, 10, -10
     ])  # these are the boundaries
 
     # Find nullspace

@@ -3,12 +3,18 @@
 import argparse
 from concurrent import futures
 
+import ray
+import sklearn
+import torch
 import numpy as np
+import pypoman
 from scipy.optimize import linprog
 from matplotlib import pyplot as plt
 
 from six.moves import range
-
+import plotly.graph_objects as go
+from agents.ppo.train_PPO_car import get_PPO_trainer
+from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 
 
@@ -16,6 +22,7 @@ def hessian(a, b, x):
     """Return log-barrier Hessian matrix at x."""
     d = (b - a.dot(x))
     s = d ** -2.0
+    # s[s == np.inf] = 0
     return a.T.dot(np.diag(s)).dot(a)
 
 
@@ -134,7 +141,13 @@ def collect_chain(sampler, count, burn, thin, *args, **kwargs):
     return points
 
 
+# def collect_chain2(sampler,count,burn,thint,a,b,x0,dikin_radius):
+#     x = x0
+#     h_x = hessian(a, b, x)
+
+
 def main():
+    run_sampling_polyhedra()
     template = Experiment.octagon(2)
     boundaries = np.array((1, 2, 1, 1, 2, 1, 1, 1))
 
@@ -143,7 +156,6 @@ def main():
     b = boundaries
 
     chains = sample_polyhedron(a, b)
-    import plotly.graph_objects as go
 
     fig = go.Figure()
     # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
@@ -154,19 +166,92 @@ def main():
     print("done")
 
 
-def sample_polyhedron(a, b, count=10000):
+def get_nn():
+    config, trainer = get_PPO_trainer(use_gpu=0)
+    trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
+    policy = trainer.get_policy()
+    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+    return sequential_nn
+
+
+def get_template():
+    return Experiment.octagon(2)
+
+
+def run_sampling_polyhedra():
+    ray.init(ignore_reinit_error=True)
+    nn = get_nn()
+    template = get_template()
+    boundaries = np.array((5, -5, 5, 5, 5, 5, 5, 5), dtype=float)
+    samples = sample_polyhedron(template, boundaries, 10000)
+    samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
+
+    fig = go.Figure()
+    # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
+    predicted_label = samples_ontput.detach().numpy()[:, 0]
+    trace1 = go.Scatter(x=samples[:, 0], y=samples[:, 1], marker=dict(color=predicted_label, colorscale='bluered'), mode='markers')
+    fig.add_trace(trace1)
+    fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
+    fig.show()
+    points = samples
+    chosen_dimension = find_dimension_split(points, predicted_label, template)
+    print("done")
+
+
+def plot_points_and_prediction(points, prediction: np.ndarray):
+    fig = go.Figure()
+    # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
+    trace1 = go.Scatter(x=points[:, 0], y=points[:, 1], marker=dict(color=prediction, colorscale='bluered'), mode='markers')
+    fig.add_trace(trace1)
+    fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
+    fig.show()
+
+
+def find_dimension_split(points, predicted_label, template):
+    costs = []
+    true_label_assignment = []
+    # plot_points_and_prediction(points, predicted_label)
+    for dimension in template:
+        proj = project_to_dimension(points, dimension)
+        max_value = np.max(proj)
+        min_value = np.min(proj)
+        mid_value = (max_value + min_value) / 2
+        true_label = proj <= mid_value
+        true_label_assignment.append(true_label)
+        eps = 1e-7
+        # y_pred = np.expand_dims(np.clip(predicted_label,eps,1-eps),1)
+        # y_pred = np.append(1 - y_pred, y_pred, axis=1)
+        # transformed_labels = np.column_stack((np.invert(true_label).astype(int), true_label.astype(int)))
+        # loss = -(transformed_labels * np.log(y_pred)).sum(axis=1)
+        cost = sklearn.metrics.log_loss(true_label.astype(int), predicted_label.astype(float))
+        costs.append(cost)
+    chosen_dimension = np.argmin(costs)
+    # plot_points_and_prediction(points, true_label_assignment[chosen_dimension].astype(int))
+
+    return chosen_dimension
+
+
+def project_to_dimension(points: np.ndarray, dimension: np.ndarray):
+    lengths = np.linalg.norm(dimension)
+    projs = np.dot(points, dimension) / lengths
+    return projs
+
+
+def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
     # Initial point to start the chains from.
     # Use the Chebyshev center.
-    x0 = chebyshev_center(a, b)
-    print('Chebyshev center: {}'.format(x0))
-    print('A= {}'.format(a))
-    print('b= {}'.format(b))
-    print('x0= {}'.format(x0))
+    # x0 = chebyshev_center(a, b)
+    x0 = pypoman.polyhedron.compute_chebyshev_center(a, b)
+    # print('Chebyshev center: {}'.format(x0))
+    # print('A= {}'.format(a))
+    # print('b= {}'.format(b))
+    # print('x0= {}'.format(x0))
     chain_count = 1
     burn = 1000
     thin = 10
     dikin_radius = 1
     sampler_args = (dikin_radius,)
+    # sampler_args = ()
     chains = collect_chain(dikin_walk, count, burn, thin, a, b, x0, *sampler_args)
     return chains
 

@@ -2,8 +2,10 @@ import os
 from collections import defaultdict
 from typing import List, Tuple
 
+import pypoman
 import ray
 import torch
+import plotly.graph_objects as go
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 
@@ -12,8 +14,9 @@ from agents.ray_utils import convert_ray_policy_to_sequential
 import gurobi as grb
 import networkx
 
-from polyhedra.plot_utils import show_polygon_list3
-from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
+from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace
+from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment, StoppingCarExperiment2
+from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split
 from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
@@ -22,19 +25,28 @@ import numpy as np
 from utility.standard_progressbar import StandardProgressBar
 
 
+def sample_and_split(nn, template, boundaries):
+    samples = sample_polyhedron(template, boundaries, 5000)
+    samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
+    predicted_label = samples_ontput.detach().numpy()[:, 0]
+    chosen_dimension = find_dimension_split(samples, predicted_label, template)
+    split1, split2 = split_polyhedron(template, boundaries, chosen_dimension)
+    return split1, split2
+
+
 def get_nn():
-    global config, l0
     config, trainer = get_PPO_trainer(use_gpu=0)
     trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
     policy = trainer.get_policy()
     sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-    l0 = torch.nn.Linear(6, 2, bias=False)
-    l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
-    layers = [l0]
-    for l in sequential_nn:
-        layers.append(l)
-    nn = torch.nn.Sequential(*layers)
-    return nn
+    # l0 = torch.nn.Linear(6, 2, bias=False)
+    # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+    # layers = [l0]
+    # for l in sequential_nn:
+    #     layers.append(l)
+    # nn = torch.nn.Sequential(*layers)
+    # return nn
+    return sequential_nn
 
 
 def get_range_bounds(input, nn, gurobi_model):
@@ -248,12 +260,39 @@ def create_range_bounds_model(template, x, env_input_size, nn, round=-1):
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
     input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+    # observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
+    # epsilon = 0
+    # gurobi_model.addConstr(observation[1] <= input[0] - input[1] + epsilon / 2, name=f"obs_constr21")
+    # gurobi_model.addConstr(observation[1] >= input[0] - input[1] - epsilon / 2, name=f"obs_constr22")
+    # gurobi_model.addConstr(observation[0] <= input[2] - input[3] + epsilon / 2, name=f"obs_constr11")
+    # gurobi_model.addConstr(observation[0] >= input[2] - input[3] - epsilon / 2, name=f"obs_constr12")
     ranges = get_range_bounds(input, nn, gurobi_model)
     ranges_probs = unroll_methods.softmax_interval(ranges)
     if round >= 0:
         pass
         # todo round the probabilities
     return ranges_probs
+
+
+def acceptable_range(ranges_probs):
+    split_flag = False
+    for chosen_action in range(2):
+        prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
+        if prob_diff > 0.2:
+            # should split the input
+            split_flag = True
+            break
+    return split_flag
+
+
+def plot_frontier(new_frontier):
+    temp_frontier = [x for t, x in new_frontier]
+    vertices_list = [pypoman.duality.compute_polytope_vertices(template, np.array(x)) for x in temp_frontier]
+    plot_points = [[tuple(x) for x in vertices_item] for vertices_item in vertices_list]
+    fig = go.Figure()
+    fig.add_trace(compute_polygon_trace(plot_points))
+    # fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
+    fig.show()
 
 
 if __name__ == '__main__':
@@ -265,18 +304,22 @@ if __name__ == '__main__':
     save = False
     output_flag = False
     show_graph = False
+    use_entropy_split = True
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
-    env_input_size = 6
+    env_input_size = 2
     rounding_value = 1024
     horizon = 13
-    input_boundaries = tuple([50, -40, 30, -20, 28, -28, 36, -36, 0, -0, 0, -0])
-    template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
-    distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
+    # input_boundaries = tuple([50, -40, 10, 0, 36, -28, 36, -28])
+    input_boundaries = tuple([50, 0, 10, 10])
+    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
+    distance = [Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)]
     collision_distance = 0
     unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
     input_template = Experiment.box(env_input_size)
     # _, template = StoppingCarExperiment.get_template(1)
+    # template = np.array([Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1), -(Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)),
+    #                      Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), -(Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3))])
     template = input_template
     input = Experiment.generate_input_region(gurobi_model, input_template, input_boundaries, env_input_size)
     root = tuple(optimise(template, gurobi_model, input, env_input_size))
@@ -315,28 +358,35 @@ if __name__ == '__main__':
                     exit_flag = True
                     break
                 ranges_probs = create_range_bounds_model(template, x, env_input_size, nn)
-                # check prob range not too wide
-                split_flag = False
-                for chosen_action in range(2):
-                    prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
-                    if prob_diff > 0.2:
-                        # should split the input
-                        split_flag = True
-                        break
+                split_flag = acceptable_range(ranges_probs)
                 if split_flag:
-                    # todo think about entropy based splitting/refinement
-                    dimension = pick_longest_dimension(template, x)
-                    split1, split2 = split_polyhedron(template, x, dimension)
-                    new_frontier.append((t, split1))
-                    new_frontier.append((t, split2))
-                    graph.add_edge(x, split1, action="split")
-                    graph.add_edge(x, split2, action="split") #todo probabily remove from seen
+                    to_split = []
+                    to_split.append(x)
+                    while len(to_split) != 0:
+                        to_analyse = to_split.pop()
+                        ranges_probs = create_range_bounds_model(template, to_analyse, env_input_size, nn)
+                        split_flag = acceptable_range(ranges_probs)
+
+                        # check prob range not too wide
+                        if split_flag:
+                            if use_entropy_split:
+                                split1, split2 = sample_and_split(nn, template, to_analyse)
+                            else:
+                                dimension = pick_longest_dimension(template, x)
+                                split1, split2 = split_polyhedron(template, x, dimension)
+                            to_split.append(split1)
+                            to_split.append(split2)
+                        else:
+                            new_frontier.append((t, to_analyse))
+                            # plot_frontier(new_frontier)
+                            graph.add_edge(x, to_analyse, action="split")
+                    print("finished splitting")
                 else:
                     for chosen_action in range(2):
                         gurobi_model = grb.Model()
                         gurobi_model.setParam('OutputFlag', output_flag)
                         input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-                        x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
+                        x_prime = StoppingCarExperiment2.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
                         if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
                             # skip action
                             continue
