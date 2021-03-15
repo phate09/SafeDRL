@@ -6,7 +6,7 @@ import ray
 import torch
 from ray.rllib.agents.ddpg import td3
 from ray.rllib.agents.ppo import ppo
-
+import torch.nn
 
 from agents.ray_utils import *
 from polyhedra.experiments_nn_analysis import Experiment
@@ -243,6 +243,20 @@ class StoppingCarContinuousExperiment(Experiment):
         # ray.shutdown()
         return nn
 
+    def get_nn_static(self):
+        layers = []
+        l0 = torch.nn.Linear(2, 1)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, 1]], dtype=torch.float32))
+        l0.bias = torch.nn.Parameter(torch.tensor([-30], dtype=torch.float32))
+        layers.append(l0)
+        l0 = torch.nn.Linear(1, 1)
+        l0.weight = torch.nn.Parameter(torch.tensor([[1.2]], dtype=torch.float32))
+        l0.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
+        layers.append(l0)
+        layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+        nn = torch.nn.Sequential(*layers)
+        return nn
+
 
 if __name__ == '__main__':
     ray.init(log_to_driver=False, local_mode=False)
@@ -252,10 +266,11 @@ if __name__ == '__main__':
     experiment.show_progressbar = True
     experiment.show_progress_plot = True
     experiment.use_rounding = False
+    experiment.get_nn_fn = experiment.get_nn_static
     # template = Experiment.octagon(experiment.env_input_size)
     _, template = StoppingCarContinuousExperiment.get_template(1)
     experiment.analysis_template = template  # standard
-    input_boundaries = [40, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
+    input_boundaries = [40, -30, 0, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()

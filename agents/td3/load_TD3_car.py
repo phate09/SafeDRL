@@ -11,18 +11,73 @@ from environment.stopping_car_continuous import StoppingCar
 import ray.rllib.agents.ddpg as td3
 from agents.td3.tune.tune_train_TD3_car import get_TD3_config
 
+
+def nn1():
+    layers = []
+    l0 = torch.nn.Linear(2, 2)
+    l0.weight = torch.nn.Parameter(torch.tensor([[0, -1], [1, 0]], dtype=torch.float32))
+    l0.bias = torch.nn.Parameter(torch.tensor([+20, 0], dtype=torch.float32))
+    layers.append(l0)
+    # layers.append(torch.nn.ReLU())
+    layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+    l1 = torch.nn.Linear(2, 1)
+    l1.weight = torch.nn.Parameter(torch.tensor([[0.15, 1]], dtype=torch.float32))
+    l1.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
+    layers.append(l1)
+
+    nn = torch.nn.Sequential(*layers)
+    return nn
+
+
+def nn2():
+    layers = []
+    l0 = torch.nn.Linear(2, 3)
+    l0.weight = torch.nn.Parameter(torch.tensor([[0, 1], [1, 0], [-1, 0]], dtype=torch.float32))
+    l0.bias = torch.nn.Parameter(torch.tensor([-20, 0, 0], dtype=torch.float32))
+    layers.append(l0)
+    layers.append(torch.nn.ReLU())
+    l1 = torch.nn.Linear(3, 2)
+    l1.weight = torch.nn.Parameter(torch.tensor([[-1, 0, 0], [0, 1, 1]], dtype=torch.float32))
+    l1.bias = torch.nn.Parameter(torch.tensor([0, 0], dtype=torch.float32))
+    layers.append(l1)
+    l2 = torch.nn.Linear(2, 1)
+    l2.weight = torch.nn.Parameter(torch.tensor([[0.15, 1]], dtype=torch.float32))
+    l2.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
+    layers.append(l2)
+    layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+    nn = torch.nn.Sequential(*layers)
+    return nn
+
+
+def nn3():
+    layers = []
+    l0 = torch.nn.Linear(2, 1)
+    l0.weight = torch.nn.Parameter(torch.tensor([[0, 1]], dtype=torch.float32))
+    l0.bias = torch.nn.Parameter(torch.tensor([-30], dtype=torch.float32))
+    layers.append(l0)
+    l0 = torch.nn.Linear(1, 1)
+    l0.weight = torch.nn.Parameter(torch.tensor([[1.2]], dtype=torch.float32))
+    l0.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
+    layers.append(l0)
+    layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+    nn = torch.nn.Sequential(*layers)
+    return nn
+
+
 ray.init()
 # config, trainer = get_PPO_trainer(use_gpu=0)
 
-config = get_TD3_config(1234)
-trainer = ppo.PPOTrainer(config=config)
-# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680")
-# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600")
-# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_2f9f7_00000_0_cost_fn=3,epsilon_input=0_2021-03-07_16-00-06/checkpoint_150/checkpoint-150")
-# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250")
-trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_90786_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_14-34-33/checkpoint_2870/checkpoint-2870")
-policy = trainer.get_policy()
-sequential_nn = convert_ray_policy_to_sequential2(policy)
+# config = get_TD3_config(1234)
+# trainer = ppo.PPOTrainer(config=config)
+# # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_0a03b_00000_0_cost_fn=2,epsilon_input=0_2021-02-27_17-12-58/checkpoint_680/checkpoint-680")
+# # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600")
+# # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_2f9f7_00000_0_cost_fn=3,epsilon_input=0_2021-03-07_16-00-06/checkpoint_150/checkpoint-150")
+# # trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250")
+# trainer.restore("/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_90786_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_14-34-33/checkpoint_2870/checkpoint-2870")
+# policy = trainer.get_policy()
+# sequential_nn = convert_ray_policy_to_sequential2(policy)
+
+sequential_nn = nn3()
 # policy.model.cuda()
 # l0 = torch.nn.Linear(6, 2, bias=False)
 # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
@@ -59,10 +114,10 @@ for n in range(1):
     position_list.append(state_np[plot_index])
     x_list.append(state_np[x_index])
     for i in range(1000):
-        state = torch.from_numpy(state_np).cuda().float().unsqueeze(0)
+        state = torch.from_numpy(state_np).float().unsqueeze(0)
         # state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
-        action = sequential_nn(state).squeeze()[0]
-        action2 = policy.compute_single_action([state_np], explore=False)
+        action = sequential_nn(state).squeeze()
+        # action2 = policy.compute_single_action([state_np], explore=False)
         # action_score2 = sequential_nn2(state)
         # action = torch.argmax(action_score).item()
         # action2 = torch.argmax(action_score2).item()
