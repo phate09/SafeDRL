@@ -113,7 +113,7 @@ for n in range(1):
     # state_np = np.array(state)
     position_list.append(state_np[plot_index])
     x_list.append(state_np[x_index])
-    for i in range(1000):
+    for i in range(150):
         state = torch.from_numpy(state_np).float().unsqueeze(0)
         # state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
         action = sequential_nn(state).squeeze()

@@ -62,7 +62,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.update()
         gurobi_model.optimize()
         found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-        x_prime_results = x_prime_results.round(4)  # correct for rounding errors introduced by the conversion to h-repr
+        # x_prime_results = x_prime_results.round(4)  # correct for rounding errors introduced by the conversion to h-repr
         if found_successor:
             post.append(tuple(x_prime_results))
         return post
@@ -101,7 +101,7 @@ class StoppingCarContinuousExperiment(Experiment):
         # else:
         #     acceleration = 0
         a_ego_prime = action
-        v_ego_prime = v_ego + a_ego * dt
+        v_ego_prime = v_ego + action * dt
         v_lead_prime = v_lead + a_lead * dt
         x_lead_prime = x_lead + v_lead_prime * dt
         x_ego_prime = x_ego + v_ego_prime * dt
