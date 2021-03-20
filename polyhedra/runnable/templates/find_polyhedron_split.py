@@ -2,11 +2,14 @@ from polyhedra.experiments_nn_analysis import Experiment
 import numpy as np
 
 
-def split_polyhedron(template, boundaries, dimension):
+def split_polyhedron(template, boundaries, dimension, decision_point=None):
     inverted_value = -template[dimension]
     inverted_dimension = find_inverted_dimension(inverted_value, template)
     # find midpoint
-    midpoint = (boundaries[dimension] - boundaries[inverted_dimension]) / 2
+    if decision_point is None:
+        midpoint = (boundaries[dimension] - boundaries[inverted_dimension]) / 2
+    else:
+        midpoint = decision_point
     # create clones
     boundaries1 = list(boundaries)
     boundaries2 = list(boundaries)
@@ -40,8 +43,10 @@ def pick_longest_dimension(template, boundaries):
             max_dimension_index = dimension
     return max_dimension_index
 
-def sample_points(template,boundaries,n_samples:int):
+
+def sample_points(template, boundaries, n_samples: int):
     pass
+
 
 if __name__ == '__main__':
     template = Experiment.octagon(2)

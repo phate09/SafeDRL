@@ -16,7 +16,7 @@ import networkx
 
 from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace
 from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment, StoppingCarExperiment2
-from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split
+from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2
 from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
@@ -29,8 +29,8 @@ def sample_and_split(nn, template, boundaries):
     samples = sample_polyhedron(template, boundaries, 5000)
     samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
-    chosen_dimension = find_dimension_split(samples, predicted_label, template)
-    split1, split2 = split_polyhedron(template, boundaries, chosen_dimension)
+    chosen_dimension, decision_point = find_dimension_split2(samples, predicted_label, template)
+    split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
     return split1, split2
 
 

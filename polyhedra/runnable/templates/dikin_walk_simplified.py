@@ -207,16 +207,64 @@ def plot_points_and_prediction(points, prediction: np.ndarray):
     fig.show()
 
 
+def find_dimension_split2(points, predicted_label, template):
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+    costs = []
+
+    decision_boundaries = []
+    proj2ds = []
+    classifier_predictions = []
+    for dimension in template:
+        proj = project_to_dimension(points, dimension)
+        proj2d = np.array([[x, 0] for x in proj])
+        proj2ds.append(proj2d)
+        # plot_points_and_prediction(proj2d, predicted_label)
+        max_value_x = np.max(proj)
+        min_value_x = np.min(proj)
+        mid_value_x = (max_value_x + min_value_x) / 2
+        max_value_y = np.max(predicted_label)
+        min_value_y = np.min(predicted_label)
+        mid_value_y = (max_value_y + min_value_y) / 2
+        true_label = predicted_label >= mid_value_y
+        clf: LogisticRegression = LogisticRegression(random_state=0).fit(proj.reshape(-1, 1), true_label)
+        cost = clf.score(proj.reshape(-1, 1), true_label)
+        classifier_prediction = clf.predict(proj.reshape(-1, 1))
+        classifier_predictions.append(classifier_prediction)
+        # plot_points_and_prediction(proj2d, classifier_prediction.astype(int))
+        # plot_points_and_prediction(points, classifier_prediction.astype(int))
+        # try to find the decision boundary
+        num_tests = 300
+        X_test = np.linspace(min_value_x, max_value_x, num_tests)
+        test_prediction = clf.predict(X_test.reshape(-1, 1))
+        decision_boundary = min_value_x
+        index_true = list(test_prediction).index(True)
+        index_false = list(test_prediction).index(False)
+        if abs(num_tests / 2 - index_true) < abs(num_tests / 2 - index_false):
+            decision_boundary = X_test[index_true]
+        else:
+            decision_boundary = X_test[index_false]
+        costs.append(cost)
+        decision_boundaries.append(decision_boundary)
+    chosen_dimension = np.argmax(costs)
+    # plot_points_and_prediction(points, predicted_label)
+    # plot_points_and_prediction(proj2ds[chosen_dimension], predicted_label)
+    # plot_points_and_prediction(proj2ds[chosen_dimension], classifier_predictions[chosen_dimension].astype(int))
+    # plot_points_and_prediction(points, classifier_predictions[chosen_dimension].astype(int))
+
+    return chosen_dimension, decision_boundaries[chosen_dimension]
+
+
 def find_dimension_split(points, predicted_label, template):
     costs = []
     true_label_assignment = []
     # plot_points_and_prediction(points, predicted_label)
     for dimension in template:
         proj = project_to_dimension(points, dimension)
-        max_value = np.max(proj)
-        min_value = np.min(proj)
-        mid_value = (max_value + min_value) / 2
-        true_label = proj <= mid_value
+        max_value_x = np.max(proj)
+        min_value_x = np.min(proj)
+        mid_value_x = (max_value_x + min_value_x) / 2
+        true_label = proj <= mid_value_x
         true_label_assignment.append(true_label)
         eps = 1e-7
         # y_pred = np.expand_dims(np.clip(predicted_label,eps,1-eps),1)
