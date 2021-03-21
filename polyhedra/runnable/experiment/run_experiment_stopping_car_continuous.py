@@ -259,7 +259,7 @@ class StoppingCarContinuousExperiment(Experiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=False)
+    ray.init(log_to_driver=False, local_mode=True)
     experiment = StoppingCarContinuousExperiment()
     experiment.save_dir = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test"
     experiment.plotting_time_interval = 60
@@ -267,8 +267,8 @@ if __name__ == '__main__':
     experiment.show_progress_plot = True
     experiment.use_rounding = False
     experiment.get_nn_fn = experiment.get_nn_static
-    # template = Experiment.octagon(experiment.env_input_size)
-    _, template = StoppingCarContinuousExperiment.get_template(1)
+    template = Experiment.octagon(experiment.env_input_size)
+    # _, template = StoppingCarContinuousExperiment.get_template(1)
     experiment.analysis_template = template  # standard
     input_boundaries = [40, -30, 0, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries

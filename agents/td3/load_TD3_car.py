@@ -102,11 +102,11 @@ env.reset()
 min_distance = 9999
 state_np = env.get_state()
 print(state_np)
-for n in range(1):
+for n in range(1000):
     cumulative_reward = 0
     env.reset()
     env.x_ego = 0  # env.np_random.uniform(0, 10)
-    env.x_lead = 30  # env.np_random.uniform(30, 40)
+    # env.x_lead = 30  # env.np_random.uniform(30, 40)
     env.v_lead = 28
     env.v_ego = 36
     state_np = env.get_state()
