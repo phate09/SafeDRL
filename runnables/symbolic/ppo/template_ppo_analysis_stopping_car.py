@@ -33,7 +33,7 @@ def sample_and_split(nn, template, boundaries):
     chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template)
     split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
     template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
-    show_polygons(template,[split1,split2],  template_2d)
+    show_polygons(template, [split1, split2], template_2d)
     return split1, split2
 
 
@@ -41,6 +41,7 @@ def show_polygons(template, boundaries, template_2d):
     fig = go.Figure()
     for boundary in boundaries:
         vertices = windowed_projection(template, boundary, template_2d)
+        assert vertices is not None
         sorted_vertices = PolygonSort(vertices)
         trace = compute_trace_polygons([sorted_vertices])
         fig.add_trace(trace)

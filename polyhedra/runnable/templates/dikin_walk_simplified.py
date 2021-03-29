@@ -8,6 +8,7 @@ import sklearn
 import torch
 import numpy as np
 import pypoman
+from ray import remote
 from scipy.optimize import linprog
 from matplotlib import pyplot as plt
 
@@ -264,47 +265,57 @@ def find_dimension_split3(points, predicted_label, template):
     proj2ds = []
     classifier_predictions = []
     indices = []
-
+    proc_ids = []
     for dimension in template:
-        proj = project_to_dimension(points, dimension)
-        proj2d = np.array([[x, 0] for x in proj])
-        proj2ds.append(proj2d)
-        # plot_points_and_prediction(proj2d, predicted_label)
-        max_value_x = np.max(proj)
-        min_value_x = np.min(proj)
-        mid_value_x = (max_value_x + min_value_x) / 2
-        max_value_y = np.max(predicted_label)
-        min_value_y = np.min(predicted_label)
-        mid_value_y = (max_value_y + min_value_y) / 2
-        true_label = predicted_label >= mid_value_y
-        # enumerate all points, find ranges of probabilities for each decision boundary
-        range_1 = (max_value_y, min_value_y)
-        range_2 = (max_value_y, min_value_y)
-        decision_boundary = -1
-        min_cost = 9999
-        sorted_pred = predicted_label[np.argsort(proj)]
-        sorted_proj = np.sort(proj)
-        assert len(points) > 3
-        for i in range(1, len(sorted_pred)):
-            range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
-            range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
-            tolerance = (max_value_y - min_value_y) * 0.05
-            cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance)) ** 2 + (max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance)) ** 2  # todo check
-            if cost <= min_cost:
-                range_1 = range_1_temp
-                range_2 = range_2_temp
-                min_cost = cost
-                decision_boundary = i
+        proc_id = remote_find_minimum.remote(dimension, points, predicted_label)
+        proc_ids.append(proc_id)
+    values = ray.get(proc_ids)
+    for value in values:
+        decision_boundary, min_cost, sorted_proj, proj2d = value
         costs.append(min_cost)
         decision_boundaries.append(sorted_proj[decision_boundary])
         indices.append(decision_boundary)
+        proj2ds.append(proj2d)
     chosen_dimension = np.argmin([((i - len(points) / 2) / len(points)) ** 2 for i in indices])
     plot_points_and_prediction(points, predicted_label)
     # plot_points_and_prediction(proj2ds[chosen_dimension], predicted_label)
     # plot_points_and_prediction(proj2ds[chosen_dimension], [1 if x[0]>decision_boundaries[chosen_dimension] else 0 for x in proj2ds[chosen_dimension]])
-    plot_points_and_prediction(points, [0 if x[0]>decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
+    plot_points_and_prediction(points, [0 if x[0] > decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
 
     return chosen_dimension, decision_boundaries[chosen_dimension]
+
+
+@remote
+def remote_find_minimum(dimension, points, predicted_label):
+    proj = project_to_dimension(points, dimension)
+    proj2d = np.array([[x, 0] for x in proj])
+    # plot_points_and_prediction(proj2d, predicted_label)
+    max_value_x = np.max(proj)
+    min_value_x = np.min(proj)
+    mid_value_x = (max_value_x + min_value_x) / 2
+    max_value_y = np.max(predicted_label)
+    min_value_y = np.min(predicted_label)
+    mid_value_y = (max_value_y + min_value_y) / 2
+    true_label = predicted_label >= mid_value_y
+    # enumerate all points, find ranges of probabilities for each decision boundary
+    range_1 = (max_value_y, min_value_y)
+    range_2 = (max_value_y, min_value_y)
+    decision_boundary = -1
+    min_cost = 9999
+    sorted_pred = predicted_label[np.argsort(proj)]
+    sorted_proj = np.sort(proj)
+    assert len(points) > 3
+    for i in range(1, len(sorted_pred)):
+        range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
+        range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
+        tolerance = (max_value_y - min_value_y) * 0.05
+        cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance)) ** 2 + (max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance)) ** 2  # todo check
+        if cost <= min_cost:
+            range_1 = range_1_temp
+            range_2 = range_2_temp
+            min_cost = cost
+            decision_boundary = i
+    return decision_boundary, min_cost, sorted_proj, proj2d
 
 
 def find_dimension_split(points, predicted_label, template):
@@ -333,7 +344,7 @@ def find_dimension_split(points, predicted_label, template):
 
 def project_to_dimension(points: np.ndarray, dimension: np.ndarray):
     lengths = np.linalg.norm(dimension)
-    projs = np.dot(points, dimension) #/ lengths
+    projs = np.dot(points, dimension)  # / lengths
     return projs
 
 
