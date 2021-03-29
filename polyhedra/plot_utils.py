@@ -95,6 +95,7 @@ def create_window_boundary(template_input, x_results, template_2d, window_bounda
 
 
 def windowed_projection(template, x_results, template_2d):
+    '''transform a polyhedron from h-rep to v-rep'''
     ub_lb_window_boundaries = np.array([1000, 1000, -1000, -1000])
     window_A, window_b = create_window_boundary(template, x_results, template_2d, ub_lb_window_boundaries)
     try:

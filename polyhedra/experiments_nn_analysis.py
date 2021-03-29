@@ -186,8 +186,9 @@ class Experiment():
             gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), grb.GRB.MAXIMIZE)
             gurobi_model.optimize()
             # print_model(gurobi_model)
-            if gurobi_model.status != 2:
-                return None
+            assert gurobi_model.status == 2
+            # if gurobi_model.status != 2:
+            #     return None
             result = gurobi_model.ObjVal
             results.append(result)
         return np.array(results)
@@ -208,7 +209,7 @@ class Experiment():
     @staticmethod
     def e(n, i):
         result = [0] * n
-        result[i] = 1
+        result[min(i, n)] = 1
         return np.array(result)
 
     @staticmethod
@@ -371,6 +372,7 @@ class Experiment():
             fig.write_image(os.path.join(self.save_dir, "plot.jpeg"), width=width, height=height, scale=scale)
             fig.write_image(os.path.join(self.save_dir, "plot.pdf"), width=width, height=height, scale=scale)
             fig.write_html(os.path.join(self.save_dir, "plot.html"), include_plotlyjs="cdn")
+            fig.write_json(os.path.join(self.save_dir, "plot.json"))
             with open(os.path.join(self.save_dir, "plot.csv"), 'w', newline='') as myfile:
                 wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC)
                 for timestep in simple_vertices:

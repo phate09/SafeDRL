@@ -252,7 +252,7 @@ def PolygonSort(corners):
 
 
 def compute_trace_polygons(polygons: List[List]):
-    # e.g corners = [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]
+    # e.g polygons in the same trace = [[(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)], [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]]
     # corners need to be sorted
     x_list = []
     y_list = []

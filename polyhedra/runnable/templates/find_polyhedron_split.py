@@ -3,6 +3,7 @@ import numpy as np
 
 
 def split_polyhedron(template, boundaries, dimension, decision_point=None):
+    # todo bugged for diagonals
     inverted_value = -template[dimension]
     inverted_dimension = find_inverted_dimension(inverted_value, template)
     # find midpoint

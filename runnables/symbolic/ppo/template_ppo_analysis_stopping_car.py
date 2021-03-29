@@ -14,9 +14,10 @@ from agents.ray_utils import convert_ray_policy_to_sequential
 import gurobi as grb
 import networkx
 
-from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace
+from mosaic.utils import PolygonSort, compute_trace_polygons
+from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
 from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment, StoppingCarExperiment2
-from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2
+from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2, find_dimension_split3
 from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
@@ -29,9 +30,21 @@ def sample_and_split(nn, template, boundaries):
     samples = sample_polyhedron(template, boundaries, 5000)
     samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
-    chosen_dimension, decision_point = find_dimension_split2(samples, predicted_label, template)
+    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template)
     split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
+    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
+    show_polygons(template,[split1,split2],  template_2d)
     return split1, split2
+
+
+def show_polygons(template, boundaries, template_2d):
+    fig = go.Figure()
+    for boundary in boundaries:
+        vertices = windowed_projection(template, boundary, template_2d)
+        sorted_vertices = PolygonSort(vertices)
+        trace = compute_trace_polygons([sorted_vertices])
+        fig.add_trace(trace)
+    fig.show()
 
 
 def get_nn():
@@ -311,12 +324,12 @@ if __name__ == '__main__':
     rounding_value = 1024
     horizon = 13
     # input_boundaries = tuple([50, -40, 10, 0, 36, -28, 36, -28])
-    input_boundaries = tuple([50, 0, 10, 10])
+    input_boundaries = tuple([50, 0, 10, 10, 100, 100, 100, 100])
     template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
     distance = [Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)]
     collision_distance = 0
     unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
-    input_template = Experiment.box(env_input_size)
+    input_template = Experiment.octagon(env_input_size)
     # _, template = StoppingCarExperiment.get_template(1)
     # template = np.array([Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1), -(Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)),
     #                      Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), -(Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3))])

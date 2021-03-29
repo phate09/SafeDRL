@@ -1,5 +1,6 @@
 import csv
 import os
+from collections import defaultdict
 
 import ray
 import torch.nn
@@ -59,7 +60,7 @@ def nn3():
     l0.weight = torch.nn.Parameter(torch.tensor([[1.2]], dtype=torch.float32))
     l0.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
     layers.append(l0)
-    layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+    # layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
     nn = torch.nn.Sequential(*layers)
     return nn
 
@@ -86,10 +87,10 @@ sequential_nn = nn3()
 #     layers.append(l)
 #
 # sequential_nn2 = torch.nn.Sequential(*layers)
-plot_index = 1
+y_index = 1
 x_index = 0
-position_list = []
-x_list = []
+y_list = defaultdict(list)  # []
+x_list = defaultdict(list)
 config = {"cost_fn": 0,
           "epsilon_input": 0,
           "reduced": True}
@@ -106,14 +107,14 @@ for n in range(1000):
     cumulative_reward = 0
     env.reset()
     env.x_ego = 0  # env.np_random.uniform(0, 10)
-    # env.x_lead = 30  # env.np_random.uniform(30, 40)
+    env.x_lead = env.np_random.uniform(30, 40)  # env.np_random.uniform(27.6, 32.3)
     env.v_lead = 28
-    env.v_ego = 36
+    env.v_ego = env.np_random.uniform(env.v_lead - 2.5, env.v_lead + 2.5)  # 36
     state_np = env.get_state()
     # state_np = np.array(state)
-    position_list.append(state_np[plot_index])
-    x_list.append(state_np[x_index])
-    for i in range(150):
+    y_list[0].append(state_np[y_index])
+    x_list[0].append(state_np[x_index])
+    for i in range(10):
         state = torch.from_numpy(state_np).float().unsqueeze(0)
         # state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
         action = sequential_nn(state).squeeze()
@@ -124,8 +125,8 @@ for n in range(1000):
         # assert action == action2
         print(f"action: {action}")
         state_np, reward, done, _ = env.step(action)
-        position_list.append(state_np[plot_index])
-        x_list.append(state_np[x_index])
+        y_list[1 + i].append(state_np[y_index])
+        x_list[1 + i].append(state_np[x_index])
         min_distance = min(state_np[1], min_distance)
         cumulative_reward += reward
         print(f"iteration: {i}, delta_x: {state_np[1]:.2f}, delta_v: {state_np[0]:.2f}, reward: {reward}")
@@ -147,13 +148,21 @@ print(f"min_distance:{min_distance}")
 #         wr.writerow((x_list[i], item))
 #     wr.writerow("")
 import plotly.graph_objects as go
+import plotly.io as pio
 
 fig = go.Figure()
+with open('/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test/plot.json', 'r') as f:
+    fig = pio.from_json(f.read())
+
 # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-trace1 = go.Scatter(x=x_list, y=position_list, mode='markers')
-fig.add_trace(trace1)
+for i in range(len(y_list)):
+    trace1 = go.Scatter(x=x_list[i], y=y_list[i], mode='markers')
+    fig.add_trace(trace1)
 fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
 fig.show()
+save_dir = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/test"
+fig.write_html(os.path.join(save_dir, "merged.html"), include_plotlyjs="cdn")
+
 ray.shutdown()
 
 # suggest 200 timesteps

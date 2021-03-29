@@ -27,7 +27,7 @@ class StoppingCarContinuousExperiment(Experiment):
         _, template = self.get_template(1)
         self.analysis_template: np.ndarray = template
         collision_distance = 0
-        distance = [Experiment.e(6, 0) - Experiment.e(6, 1)]
+        distance = [Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)]
         # self.use_bfs = True
         # self.n_workers = 1
         self.rounding_value = 2 ** 6
@@ -92,15 +92,8 @@ class StoppingCarContinuousExperiment(Experiment):
         # gurobi_model.addConstr(action[0] <= 12)  # cap the acceleration to +12 m/s*2
         # gurobi_model.addConstr(action[0] >= -12)  # cap the acceleration to -12 m/s*2
         z = gurobi_model.addMVar(shape=(6,), lb=float("-inf"), name=f"x_prime")
-        const_acc = 3
         dt = .1  # seconds
-        # if action == 0:
-        #     acceleration = -const_acc
-        # elif action == 1:
-        #     acceleration = const_acc
-        # else:
-        #     acceleration = 0
-        a_ego_prime = action
+        a_ego_prime = 0  # action
         v_ego_prime = v_ego + action * dt
         v_lead_prime = v_lead + a_lead * dt
         x_lead_prime = x_lead + v_lead_prime * dt
@@ -112,7 +105,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.addConstr(z[2] == v_lead_prime, name=f"dyna_constr_3")
         gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
         gurobi_model.addConstr(z[4] == a_lead, name=f"dyna_constr_5")  # no change in a_lead
-        gurobi_model.addConstr(z[5] == a_ego_prime[0], name=f"dyna_constr_6")  # use index 0 which is the action (as opposed to index 1 which is the standard deviation for exploration)
+        gurobi_model.addConstr(z[5] == a_ego_prime, name=f"dyna_constr_6")  # use index 0 which is the action (as opposed to index 1 which is the standard deviation for exploration)
         return z
 
     def plot(self, vertices_list, template, template_2d):
@@ -123,19 +116,20 @@ class StoppingCarContinuousExperiment(Experiment):
 
     @staticmethod
     def get_template(mode=0):
-        x_lead = Experiment.e(6, 0)
-        x_ego = Experiment.e(6, 1)
-        v_lead = Experiment.e(6, 2)
-        v_ego = Experiment.e(6, 3)
-        a_lead = Experiment.e(6, 4)
-        a_ego = Experiment.e(6, 5)
+        env_input_size = 6
+        x_lead = Experiment.e(env_input_size, 0)
+        x_ego = Experiment.e(env_input_size, 1)
+        v_lead = Experiment.e(env_input_size, 2)
+        v_ego = Experiment.e(env_input_size, 3)
+        a_lead = Experiment.e(env_input_size, 4)
+        a_ego = Experiment.e(env_input_size, 5)
         if mode == 0:  # box directions with intervals
             input_boundaries = [50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
             # optimise in a direction
             template = []
-            for dimension in range(6):
-                template.append(Experiment.e(6, dimension))
-                template.append(-Experiment.e(6, dimension))
+            for dimension in range(env_input_size):
+                template.append(Experiment.e(env_input_size, dimension))
+                template.append(-Experiment.e(env_input_size, dimension))
             template = np.array(template)  # the 6 dimensions in 2 variables
 
             # t1 = [0] * 6
@@ -153,17 +147,17 @@ class StoppingCarContinuousExperiment(Experiment):
             input_boundaries = [0, -100, 30, -31, 20, -30, 0, -35, 0, -0, -10, -10, 20]
             # optimise in a direction
             template = []
-            for dimension in range(6):
-                t1 = [0] * 6
+            for dimension in range(env_input_size):
+                t1 = [0] * env_input_size
                 t1[dimension] = 1
-                t2 = [0] * 6
+                t2 = [0] * env_input_size
                 t2[dimension] = -1
                 template.append(t1)
                 template.append(t2)
             # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
             template = np.array(template)  # the 6 dimensions in 2 variables
 
-            t1 = [0] * 6
+            t1 = [0] * env_input_size
             t1[0] = 1
             t1[1] = -1
             template = np.vstack([template, t1])
@@ -172,17 +166,17 @@ class StoppingCarContinuousExperiment(Experiment):
             input_boundaries = [30, -30, 0, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
             # optimise in a direction
             template = []
-            for dimension in range(6):
-                t1 = [0] * 6
+            for dimension in range(env_input_size):
+                t1 = [0] * env_input_size
                 t1[dimension] = 1
-                t2 = [0] * 6
+                t2 = [0] * env_input_size
                 t2[dimension] = -1
                 template.append(t1)
                 template.append(t2)
             # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
             template = np.array(template)  # the 6 dimensions in 2 variables
 
-            t1 = [0] * 6
+            t1 = [0] * env_input_size
             t1[0] = -1
             t1[1] = 1
             template = np.vstack([template, t1])
@@ -190,24 +184,24 @@ class StoppingCarContinuousExperiment(Experiment):
         if mode == 4:  # octagon, every pair of variables
             input_boundaries = [20]
             template = []
-            for dimension in range(6):
-                t1 = [0] * 6
+            for dimension in range(env_input_size):
+                t1 = [0] * env_input_size
                 t1[dimension] = 1
-                t2 = [0] * 6
+                t2 = [0] * env_input_size
                 t2[dimension] = -1
                 template.append(t1)
                 template.append(t2)
-                for other_dimension in range(dimension + 1, 6):
-                    t1 = [0] * 6
+                for other_dimension in range(dimension + 1, env_input_size):
+                    t1 = [0] * env_input_size
                     t1[dimension] = 1
                     t1[other_dimension] = -1
-                    t2 = [0] * 6
+                    t2 = [0] * env_input_size
                     t2[dimension] = -1
                     t2[other_dimension] = 1
-                    t3 = [0] * 6
+                    t3 = [0] * env_input_size
                     t3[dimension] = 1
                     t3[other_dimension] = 1
-                    t4 = [0] * 6
+                    t4 = [0] * env_input_size
                     t4[dimension] = -1
                     t4[other_dimension] = -1
                     template.append(t1)
@@ -219,6 +213,15 @@ class StoppingCarContinuousExperiment(Experiment):
             input_boundaries = [20]
 
             template = np.array([a_lead, -a_lead, -v_lead, v_lead, -(v_lead - v_ego), (v_lead - v_ego), -(x_lead - x_ego), (x_lead - x_ego)])
+            return input_boundaries, template
+        if mode == 6:  # directions to easily find fixed point
+
+            input_boundaries = [20]
+            delta_v = (v_lead - v_ego)
+            delta_x = (x_lead - x_ego)
+            template = np.array(
+                [a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -delta_v, delta_v, -delta_x, delta_x, (delta_v - delta_x), -(delta_v - delta_x),
+                 (delta_v + delta_x), -(delta_v + delta_x), (delta_v - delta_x)])
             return input_boundaries, template
 
     def get_nn_old(self):
@@ -253,7 +256,7 @@ class StoppingCarContinuousExperiment(Experiment):
         l0.weight = torch.nn.Parameter(torch.tensor([[1.2]], dtype=torch.float32))
         l0.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
         layers.append(l0)
-        layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+        # layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
         nn = torch.nn.Sequential(*layers)
         return nn
 
@@ -267,10 +270,10 @@ if __name__ == '__main__':
     experiment.show_progress_plot = True
     experiment.use_rounding = False
     experiment.get_nn_fn = experiment.get_nn_static
-    template = Experiment.octagon(experiment.env_input_size)
-    # _, template = StoppingCarContinuousExperiment.get_template(1)
+    # template = Experiment.octagon(experiment.env_input_size)
+    _, template = StoppingCarContinuousExperiment.get_template(6)
     experiment.analysis_template = template  # standard
-    input_boundaries = [40, -30, 0, -0, 28, -28, 36, -36, 0, -0, 0, 0, 0]
+    input_boundaries = [40, -30, 0, -0, 28, -28, 28 + 2.5, -(28 - 2.5), 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()
