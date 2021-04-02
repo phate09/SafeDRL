@@ -17,7 +17,7 @@ import networkx
 from mosaic.utils import PolygonSort, compute_trace_polygons
 from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
 from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment, StoppingCarExperiment2
-from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2, find_dimension_split3
+from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2, find_dimension_split3, plot_points_and_prediction
 from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
@@ -27,13 +27,23 @@ from utility.standard_progressbar import StandardProgressBar
 
 
 def sample_and_split(nn, template, boundaries):
-    samples = sample_polyhedron(template, boundaries, 5000)
+    print("Performing split...", "")
+    repeat = True
+    while repeat:
+        repeat = False
+        try:
+            samples = sample_polyhedron(template, boundaries, 5000)
+        except:
+            print("Warning: error during the sampling")
+            repeat = True
     samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
     chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template)
     split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
+    print("done")
     template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
-    show_polygons(template, [split1, split2], template_2d)
+    # plot_points_and_prediction(samples, predicted_label)
+    # show_polygons(template, [split1, split2], template_2d)
     return split1, split2
 
 
@@ -292,7 +302,7 @@ def acceptable_range(ranges_probs):
     split_flag = False
     for chosen_action in range(2):
         prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
-        if prob_diff > 0.2:
+        if prob_diff > 0.5:
             # should split the input
             split_flag = True
             break
@@ -378,11 +388,11 @@ if __name__ == '__main__':
                     to_split.append(x)
                     while len(to_split) != 0:
                         to_analyse = to_split.pop()
-                        ranges_probs = create_range_bounds_model(template, to_analyse, env_input_size, nn)
-                        split_flag = acceptable_range(ranges_probs)
+                        ranges_probs1 = create_range_bounds_model(template, to_analyse, env_input_size, nn)
+                        split_flag1 = acceptable_range(ranges_probs1)
 
                         # check prob range not too wide
-                        if split_flag:
+                        if split_flag1:
                             if use_entropy_split:
                                 split1, split2 = sample_and_split(nn, template, to_analyse)
                             else:

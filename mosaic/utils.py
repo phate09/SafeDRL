@@ -417,7 +417,7 @@ def save_graph_as_dot(graph):
     replace_list.append(("strict digraph  {", "strict digraph  { ranksep=4;"))
     inplace_change('file.dot', replace_list)
     regex_list = []
-    regex_list.append(("(p=\d+\.\d*)", "xlabel=\"\\1\""))
+    regex_list.append((r"(p=\d+\.\d*)", "xlabel=\"\\1\""))
     regex_change('file.dot', regex_list)
 
 
