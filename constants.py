@@ -24,3 +24,6 @@ batch_size = "batch_size"
 buffer_size = "buffer_size"
 n_step_td = "n_step_td"
 train_mode = "train_mode"
+import os
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))  # This is your Project Root
