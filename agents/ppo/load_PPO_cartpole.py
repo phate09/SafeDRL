@@ -65,7 +65,7 @@ for i in range(n_trials):
         # assert action == action2
         print(f"action: {action}")
         state_np, reward, done, _ = env.step(action)
-        # env.render()
+        env.render()
         position_list.append(state_np[plot_index])
         # min_distance = min(state_np[7], min_distance)
         cumulative_reward += reward
