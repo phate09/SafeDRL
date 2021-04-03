@@ -16,7 +16,7 @@ register_env("flappy_bird", env_creator)
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_lunar_hover/PPO_LunarHover_7ba4e_00000_0_2021-04-02_19-01-43/checkpoint_990/checkpoint-990")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_flappy_bird/PPO_my_env_95b43_00000_0_2021-04-03_14-36-24/checkpoint_940/checkpoint-940")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_flappy_bird/PPO_my_env_95b43_00000_0_2021-04-03_14-36-24/checkpoint_2280/checkpoint-2280")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
