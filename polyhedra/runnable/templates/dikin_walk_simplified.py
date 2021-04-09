@@ -9,7 +9,7 @@ import torch
 import numpy as np
 import pypoman
 from ray import remote
-from scipy.optimize import linprog
+from scipy.optimize import linprog, minimize, minimize_scalar
 from matplotlib import pyplot as plt
 import scipy
 import scipy.stats
@@ -48,7 +48,7 @@ def sample_ellipsoid(e, r):
     p *= np.random.uniform() ** (1.0 / e.shape[0])
 
     # Transform to a point in the ellipsoid
-    return np.sqrt(r) * np.linalg.cholesky(np.linalg.inv(e)).dot(p)
+    return np.sqrt(r) * np.linalg.cholesky(np.linalg.pinv(e)).dot(p)
 
 
 def ellipsoid_axes(e):
@@ -86,6 +86,36 @@ def dikin_walk(a, b, x0, r=3 / 40):
         yield x
 
 
+def dikin_walk_simplified(a, b, x0, r=3 / 40, n_samples=10000):
+    """Generate points with Dikin walk. Using a For loop"""
+    x = x0
+    h_x = hessian(a, b, x)
+    results = []
+    for i in range(n_samples):
+        if not (a.dot(x) <= b).all():
+            print(a.dot(x) - b)
+            raise Exception('Invalid state: {}'.format(x))
+
+        if np.random.uniform() < 0.5:
+            results.append(x)
+            continue
+
+        z = x + sample_ellipsoid(h_x, r)
+        h_z = hessian(a, b, z)
+
+        if local_norm(h_z, x - z) > 1.0:
+            results.append(x)
+            continue
+
+        p = np.sqrt(np.linalg.det(h_z) / np.linalg.det(h_x))
+        if p >= 1 or np.random.uniform() < p:
+            x = z
+            h_x = h_z
+
+        results.append(x)
+    return np.array(results)
+
+
 def hit_and_run(a, b, x0):
     """Generate points with Hit-and-run algorithm."""
     x = x0
@@ -120,6 +150,23 @@ def chebyshev_center(a, b):
 
     return res.x[:-1]
 
+from scipy.spatial import ConvexHull, Delaunay
+import numpy as np
+from numpy.linalg import det
+from scipy.stats import dirichlet
+
+
+def dist_in_hull(a,b, n):
+    points = np.vstack(pypoman.duality.compute_polytope_vertices(a,b))
+    dims = points.shape[-1]
+    hull = points[ConvexHull(points).vertices]
+    deln = points[Delaunay(hull).simplices]
+
+    vols = np.abs(det(deln[:, :dims, :] - deln[:, dims:, :])) / np.math.factorial(dims)
+    sample = np.random.choice(len(vols), size = n, )#p = vols / vols.sum()
+
+    return np.einsum('ijk, ij -> ik', deln[sample], dirichlet.rvs([1]*(dims + 1), size = n))
+
 
 def collect_chain(sampler, count, burn, thin, *args, **kwargs):
     """Use the given sampler to collect points from a chain.
@@ -127,7 +174,7 @@ def collect_chain(sampler, count, burn, thin, *args, **kwargs):
     Args:
         count: Number of points to collect.
         burn: Number of points to skip at beginning of chain.
-        thin: Number of points to take from sampler for every point.
+        thin: Number of points to take from sampler for every point. (points to skip?)
     """
     chain = sampler(*args, **kwargs)
     point = next(chain)
@@ -144,28 +191,39 @@ def collect_chain(sampler, count, burn, thin, *args, **kwargs):
     return points
 
 
+def collect_chain_dikin_walk_simplified(count, burn, thin, *args, **kwargs):
+    points = dikin_walk_simplified(*args, **kwargs, n_samples=(count * thin) + burn)
+    points = points[burn:]
+    results = points[::thin]
+
+    return results
+
+
 # def collect_chain2(sampler,count,burn,thint,a,b,x0,dikin_radius):
 #     x = x0
 #     h_x = hessian(a, b, x)
 
+import polyhedra.runnable.templates.polytope as polytope
 
 def main():
-    run_sampling_polyhedra()
+    # run_sampling_polyhedra()
     template = Experiment.octagon(2)
-    boundaries = np.array((1, 2, 1, 1, 2, 1, 1, 1))
+    boundaries = np.array((1, 1, 1, 1, 1, 1, 1, 1))
 
     # Polytope parameters
     a = template
     b = boundaries
 
-    chains = sample_polyhedron(a, b)
-
+    # chains = sample_polyhedron(a, b)
+    # chains = dist_in_hull(a,b,1000)
+    chains = polytope.sample(n_points=10000, A1=a, b1=b)
     fig = go.Figure()
     # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
     trace1 = go.Scatter(x=chains[:, 0], y=chains[:, 1], mode='markers')
     fig.add_trace(trace1)
     fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
     fig.show()
+    fig.write_html("temp.html")
     print("done")
 
 
@@ -192,7 +250,7 @@ def run_sampling_polyhedra():
     fig = go.Figure()
     # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
     predicted_label = samples_ontput.detach().numpy()[:, 0]
-    trace1 = go.Scatter(x=samples[:, 0], y=samples[:, 1], marker=dict(color=predicted_label, colorscale='bluered'), mode='markers')
+    trace1 = go.Scatter(x=samples[:, 0], y=samples[:, 1], marker=dict(color=predicted_label, colorscale='bluered', cmax=1, cmin=0), mode='markers')
     fig.add_trace(trace1)
     fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
     fig.show()
@@ -204,7 +262,7 @@ def run_sampling_polyhedra():
 def plot_points_and_prediction(points, prediction: np.ndarray):
     fig = go.Figure()
     # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-    trace1 = go.Scatter(x=points[:, 0], y=points[:, 1], marker=dict(color=prediction, colorscale='bluered'), mode='markers')
+    trace1 = go.Scatter(x=points[:, 0], y=points[:, 1], marker=dict(color=prediction, colorscale='bluered', cmax=1, cmin=0), mode='markers')
     fig.add_trace(trace1)
     fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
     fig.update_yaxes(
@@ -260,7 +318,8 @@ def find_dimension_split2(points, predicted_label, template):
     return chosen_dimension, decision_boundaries[chosen_dimension]
 
 
-def find_dimension_split3(points, predicted_label, template):
+# noinspection PyUnreachableCode
+def find_dimension_split3(points, predicted_label, template,template2d):
     costs = []
 
     decision_boundaries = []
@@ -281,11 +340,14 @@ def find_dimension_split3(points, predicted_label, template):
         proj2ds.append(proj2d)
     chosen_dimension = np.argmin([((i - len(points) / 2) / len(points)) ** 2 for i in indices])
     chosen_dimension = np.argmin(costs)
-    # plot_points_and_prediction(points, predicted_label)
-    # plot_points_and_prediction(proj2ds[chosen_dimension], predicted_label)
+    max_value_y = np.max(predicted_label)
+    min_value_y = np.min(predicted_label)
+    delta_y = max_value_y - min_value_y
+    normalised_label = (predicted_label - min_value_y) / delta_y
+    # plot_points_and_prediction(points@template2d.T, normalised_label)
+    # plot_points_and_prediction(proj2ds[chosen_dimension], normalised_label)
     # plot_points_and_prediction(proj2ds[chosen_dimension], [0 if x[0]>decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
-    # plot_points_and_prediction(points, [0 if x[0] > decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
-    # todo add minimum size split?
+    # plot_points_and_prediction(points@template2d.T, [0 if x[0] > decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
     return chosen_dimension, decision_boundaries[chosen_dimension]
 
 
@@ -296,50 +358,75 @@ def remote_find_minimum(dimension, points, predicted_label):
     # plot_points_and_prediction(proj2d, predicted_label)
     max_value_x = np.max(proj)
     min_value_x = np.min(proj)
+    delta_x = max_value_x - min_value_x
+    min_absolute_delta_x = 0.0001
+    if delta_x < min_absolute_delta_x:
+        return 0, float('inf'), None, None, None  # aim to give a big negative reward to skip
     mid_value_x = (max_value_x + min_value_x) / 2
     max_value_y = np.max(predicted_label)
     min_value_y = np.min(predicted_label)
     mid_value_y = (max_value_y + min_value_y) / 2
+    delta_y = max_value_y - min_value_y
     true_label = predicted_label >= mid_value_y
+    normalised_label = (predicted_label - min_value_y) / delta_y
     # enumerate all points, find ranges of probabilities for each decision boundary
     range_1 = (max_value_y, min_value_y)
     range_2 = (max_value_y, min_value_y)
     decision_boundary = -1
     min_cost = 9999
     max_cost = -99999
-    sorted_pred = predicted_label[np.argsort(proj)]
+    sorted_pred = normalised_label[np.argsort(proj)]
     sorted_proj = np.sort(proj)
     assert len(points) > 3
     normalisation_quotient = max_value_y - min_value_y
     costs = []
     # true_label = predicted_label >= min_value_y + (max_value_y - min_value_y) * 0.7
     min_percentage = 0.1  # the minimum relative distance of a slice
-    mode = 1
-    for i in range(max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))):
-        # range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
-        # range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
-        # range_1_inv = (1 - range_1_temp[1], 1 - range_1_temp[0])
-        # tolerance = (max_value_y - min_value_y) * 0.0
-        # cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance) / normalisation_quotient) + (
-        #         max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance) / normalisation_quotient)  # todo check
-        # cost = cost ** 2
+    mode = 0
+
+    def f(i):
         true_label = np.array(range(len(sorted_pred))) > i
-        if np.all(true_label) or not np.any(true_label):
-            continue
         if mode == 0:
             cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
         elif mode == 1:
             cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
         else:
             raise Exception("Unvalid choice")
-        costs.append(cost)
-        if cost < min_cost:
-            # range_1 = range_1_temp
-            # range_2 = range_2_temp
-            min_cost = cost
-            decision_boundary = i
-    # plot_list(costs)
-    return decision_boundary, min_cost, sorted_proj, proj2d, costs
+        return cost
+
+    method = "scipy"
+    if method == "scipy":
+        bounds = max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))
+        temp_cost = minimize_scalar(f, bounds=bounds, method='bounded')
+        decision_boundary = int(temp_cost.x)
+        min_cost = temp_cost.fun
+        return decision_boundary, min_cost, sorted_proj, proj2d, costs
+    else:
+        for i in range(max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))):
+            # range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
+            # range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
+            # range_1_inv = (1 - range_1_temp[1], 1 - range_1_temp[0])
+            # tolerance = (max_value_y - min_value_y) * 0.0
+            # cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance) / normalisation_quotient) + (
+            #         max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance) / normalisation_quotient)  # todo check
+            # cost = cost ** 2
+            true_label = np.array(range(len(sorted_pred))) > i
+            if np.all(true_label) or not np.any(true_label):
+                continue
+            if mode == 0:
+                cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
+            elif mode == 1:
+                cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
+            else:
+                raise Exception("Unvalid choice")
+            costs.append(cost)
+            if cost < min_cost:
+                # range_1 = range_1_temp
+                # range_2 = range_2_temp
+                min_cost = cost
+                decision_boundary = i
+        # plot_list(costs)
+        return decision_boundary, min_cost, sorted_proj, proj2d, costs
 
 
 @remote
@@ -460,7 +547,8 @@ def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
     dikin_radius = 1
     sampler_args = (dikin_radius,)
     # sampler_args = ()
-    chains = collect_chain(dikin_walk, count, burn, thin, a, b, x0, *sampler_args)
+    # chains = collect_chain(dikin_walk, count, burn, thin, a, b, x0, *sampler_args)
+    chains = collect_chain_dikin_walk_simplified(count, burn, thin, a, b, x0, *sampler_args)
     return chains
 
 

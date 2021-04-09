@@ -1,7 +1,9 @@
 import os
+import sys
 from collections import defaultdict
 from typing import List, Tuple
 
+import progressbar
 import pypoman
 import ray
 import torch
@@ -22,26 +24,27 @@ from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dime
 from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
 import numpy as np
-
+import polyhedra.runnable.templates.polytope as polytope
 from utility.standard_progressbar import StandardProgressBar
 
 
 def sample_and_split(nn, template, boundaries):
-    print("Performing split...", "")
+    # print("Performing split...", "")
     repeat = True
     while repeat:
         repeat = False
         try:
-            samples = sample_polyhedron(template, boundaries, 5000)
-        except:
+            samples = polytope.sample(10000, template, boundaries)
+            # samples = sample_polyhedron(template, boundaries, 5000)
+        except Exception as e:
             print("Warning: error during the sampling")
             repeat = True
     samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
-    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template)
+    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
+    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d)
     split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
-    print("done")
-    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
+    # print("done")
     # plot_points_and_prediction(samples, predicted_label)
     # show_polygons(template, [split1, split2], template_2d)
     return split1, split2
@@ -51,10 +54,15 @@ def show_polygons(template, boundaries, template_2d):
     fig = go.Figure()
     for boundary in boundaries:
         vertices = windowed_projection(template, boundary, template_2d)
+        # vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (template, np.array(boundaries)), canonicalize=False)
         assert vertices is not None
         sorted_vertices = PolygonSort(vertices)
         trace = compute_trace_polygons([sorted_vertices])
         fig.add_trace(trace)
+    fig.update_yaxes(
+        scaleanchor="x",
+        scaleratio=1,
+    )
     fig.show()
 
 
@@ -63,14 +71,14 @@ def get_nn():
     trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
     policy = trainer.get_policy()
     sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-    # l0 = torch.nn.Linear(6, 2, bias=False)
-    # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
-    # layers = [l0]
-    # for l in sequential_nn:
-    #     layers.append(l)
-    # nn = torch.nn.Sequential(*layers)
-    # return nn
-    return sequential_nn
+    l0 = torch.nn.Linear(4, 2, bias=False)
+    l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1], [1, -1, 0, 0]], dtype=torch.float32))
+    layers = [l0]
+    for l in sequential_nn:
+        layers.append(l)
+    nn = torch.nn.Sequential(*layers)
+    return nn
+    # return sequential_nn
 
 
 def get_range_bounds(input, nn, gurobi_model):
@@ -227,7 +235,7 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                     pass
                 bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
 
-    print("prism updated")
+    # print("prism updated")
 
     mdp.exportToDotFile("imdppy.dot")
     #
@@ -302,7 +310,7 @@ def acceptable_range(ranges_probs):
     split_flag = False
     for chosen_action in range(2):
         prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
-        if prob_diff > 0.5:
+        if prob_diff > 0.2:
             # should split the input
             split_flag = True
             break
@@ -320,31 +328,35 @@ def plot_frontier(new_frontier):
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=False)
+    ray.init(local_mode=True)
     nn = get_nn()
     save_dir = "/home/edoardo/Development/SafeDRL/"
     load = False
     explore = True
-    save = False
+    save = True
     output_flag = False
-    show_graph = False
+    show_graph = True
     use_entropy_split = True
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', output_flag)
-    env_input_size = 2
+    env_input_size = 4
     rounding_value = 1024
     horizon = 13
     # input_boundaries = tuple([50, -40, 10, 0, 36, -28, 36, -28])
-    input_boundaries = tuple([50, 0, 10, 10, 100, 100, 100, 100])
-    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 0), Experiment.e(env_input_size, 1)])
+    input_boundaries = tuple([50, -40, 0, 0, 28, -28, 36, -28])
     distance = [Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)]
     collision_distance = 0
     unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
-    input_template = Experiment.octagon(env_input_size)
+    input_template = Experiment.box(env_input_size)
+    x_lead = Experiment.e(env_input_size, 0)
+    x_ego = Experiment.e(env_input_size, 1)
+    v_lead = Experiment.e(env_input_size, 2)
+    v_ego = Experiment.e(env_input_size, 3)
+    template_2d: np.ndarray = np.array([v_lead - v_ego, x_lead - x_ego])
     # _, template = StoppingCarExperiment.get_template(1)
     # template = np.array([Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1), -(Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)),
     #                      Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), -(Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3))])
-    template = input_template
+    template = Experiment.combinations([x_lead - x_ego, v_lead - v_ego])
     input = Experiment.generate_input_region(gurobi_model, input_template, input_boundaries, env_input_size)
     root = tuple(optimise(template, gurobi_model, input, env_input_size))
     new_frontier = []
@@ -375,87 +387,107 @@ if __name__ == '__main__':
             vertices_list = None
 
         exit_flag = False
-        while len(new_frontier) != 0 or len(frontier) != 0:
-            while len(frontier) != 0:  # performs one exploration iteration
-                t, x = frontier.pop(0)
-                if t == horizon:
-                    exit_flag = True
-                    break
-                ranges_probs = create_range_bounds_model(template, x, env_input_size, nn)
-                split_flag = acceptable_range(ranges_probs)
-                if split_flag:
-                    to_split = []
-                    to_split.append(x)
-                    while len(to_split) != 0:
-                        to_analyse = to_split.pop()
-                        ranges_probs1 = create_range_bounds_model(template, to_analyse, env_input_size, nn)
-                        split_flag1 = acceptable_range(ranges_probs1)
-
-                        # check prob range not too wide
-                        if split_flag1:
-                            if use_entropy_split:
-                                split1, split2 = sample_and_split(nn, template, to_analyse)
+        widgets = [progressbar.Variable('current_t'), ", ", progressbar.Variable('last_action'), ", ", progressbar.Variable('last_polytope'), ", ", progressbar.widgets.Timer()]
+        with progressbar.ProgressBar(prefix=f"Main loop: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_main:
+            while len(new_frontier) != 0 or len(frontier) != 0:
+                while len(frontier) != 0:  # performs one exploration iteration
+                    t, x = frontier.pop(0)
+                    if t == horizon:
+                        exit_flag = True
+                        break
+                    ranges_probs = create_range_bounds_model(template, x, env_input_size, nn)
+                    split_flag = acceptable_range(ranges_probs)
+                    # split_flag = False
+                    if split_flag:
+                        bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
+                        to_split = []
+                        to_split.append(x)
+                        bar_main.update(force=True)
+                        bar_main.fd.flush()
+                        print("", file=sys.stderr)  # new line
+                        widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
+                        with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar:
+                            while len(to_split) != 0:
+                                bar.update(value=bar.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
+                                to_analyse = to_split.pop()
+                                if use_entropy_split:
+                                    split1, split2 = sample_and_split(nn, template, np.array(to_analyse))
+                                else:
+                                    dimension = pick_longest_dimension(template, x)
+                                    split1, split2 = split_polyhedron(template, x, dimension)
+                                ranges_probs1 = create_range_bounds_model(template, split1, env_input_size, nn)
+                                split_flag1 = acceptable_range(ranges_probs1)
+                                if split_flag1:
+                                    to_split.append(split1)
+                                else:
+                                    new_frontier.append((t, split1))
+                                    # plot_frontier(new_frontier)
+                                    graph.add_edge(x, split1, action="split")
+                                ranges_probs2 = create_range_bounds_model(template, split2, env_input_size, nn)
+                                split_flag2 = acceptable_range(ranges_probs2)
+                                if split_flag2:
+                                    to_split.append(split2)
+                                else:
+                                    new_frontier.append((t, split2))
+                                    # plot_frontier(new_frontier)
+                                    graph.add_edge(x, split2, action="split")
+                        # print("finished splitting")
+                        print("", file=sys.stderr)  # new line
+                        show_polygons(template, [x[1] for x in new_frontier], template_2d)
+                    else:
+                        for chosen_action in range(2):
+                            gurobi_model = grb.Model()
+                            gurobi_model.setParam('OutputFlag', output_flag)
+                            input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+                            x_prime = StoppingCarExperiment2.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
+                            if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
+                                # skip action
+                                continue
+                            x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
+                            successor = tuple(x_prime_results)
+                            successor = Experiment.round_tuple(successor, rounding_value)
+                            # print(successor)
+                            is_contained, contained_item = find_contained(successor, seen)
+                            if not is_contained:
+                                unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
+                                if not unsafe:
+                                    new_frontier.append((t + 1, successor))
+                                    if show_graph:
+                                        vertices_list[t].append(successor)
+                                else:
+                                    bar_main.update(value=bar_main.value + 1, current_t=t, last_action="unsafe", last_polytope=str(successor))
+                                    # print("unsafe")
+                                    # print(successor)
+                                graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                                seen.append(successor)
+                                if unsafe:
+                                    graph.nodes[successor]["safe"] = not unsafe
+                                    terminal.append(successor)
                             else:
-                                dimension = pick_longest_dimension(template, x)
-                                split1, split2 = split_polyhedron(template, x, dimension)
-                            to_split.append(split1)
-                            to_split.append(split2)
-                        else:
-                            new_frontier.append((t, to_analyse))
-                            # plot_frontier(new_frontier)
-                            graph.add_edge(x, to_analyse, action="split")
-                    print("finished splitting")
-                else:
-                    for chosen_action in range(2):
-                        gurobi_model = grb.Model()
-                        gurobi_model.setParam('OutputFlag', output_flag)
-                        input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-                        x_prime = StoppingCarExperiment2.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=env_input_size)
-                        if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
-                            # skip action
-                            continue
-                        x_prime_results = optimise(template, gurobi_model, x_prime, env_input_size)
-                        successor = tuple(x_prime_results)
-                        successor = Experiment.round_tuple(successor, rounding_value)
-                        print(successor)
-                        is_contained, contained_item = find_contained(successor, seen)
-                        if not is_contained:
-                            unsafe = check_unsafe(template, x_prime_results, unsafe_zone, env_input_size)
-                            if not unsafe:
-                                new_frontier.append((t + 1, successor))
-                                if show_graph:
-                                    vertices_list[t].append(successor)
-                            else:
-                                print("unsafe")
-                                print(successor)
-                            graph.add_edge(x, successor, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
-                            seen.append(successor)
-                            if unsafe:
-                                graph.nodes[successor]["safe"] = not unsafe
-                                terminal.append(successor)
-                        else:
-                            print("skipped")
-                            graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                                bar_main.update(value=bar_main.value + 1, current_t=t, last_action="skipped", last_polytope=str(successor))
+                                # print("skipped")
+                                graph.add_edge(x, contained_item, action=chosen_action, lb=ranges_probs[chosen_action][0], ub=ranges_probs[chosen_action][1])
+                    if exit_flag:
+                        break
+                # update prism
+                gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
+                for t, x in new_frontier:
+                    minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
+                    if maxmax > 1e-6:  # check if state is irrelevant
+                        frontier.append((t, x))  # next computation only considers relevant states
+                    else:
+                        graph.nodes[x]["irrelevant"] = True
+                new_frontier = []
                 if exit_flag:
                     break
-            # update prism
-            gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
-            for t, x in new_frontier:
-                minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
-                if maxmax > 1e-6:  # check if state is irrelevant
-                    frontier.append((t, x))  # next computation only considers relevant states
-                else:
-                    graph.nodes[x]["irrelevant"] = True
-            new_frontier = []
-            if exit_flag:
-                break
         if show_graph:
-            fig, simple_vertices = show_polygon_list3(vertices_list, "x_lead", "x_lead-x_ego", template, template_2d)
+            fig, simple_vertices = show_polygon_list3(vertices_list, "delta_v", "delta_x", template, template_2d)
             fig.show()
 
             width = 2560
             height = 1440
             scale = 1
+            fig.write_html(os.path.join(save_dir, "plot.html"))
             fig.write_image(os.path.join(save_dir, "plot.svg"), width=width, height=height, scale=scale)
         if save:
             networkx.write_gpickle(graph, os.path.join(save_dir, "graph.g"))

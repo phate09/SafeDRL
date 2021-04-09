@@ -266,7 +266,7 @@ def compute_trace_polygons(polygons: List[List]):
         x_list.extend(x)
         y_list.extend(y)
 
-    trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', )
+    trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', marker=dict(size=1))
     return trace1
 
 

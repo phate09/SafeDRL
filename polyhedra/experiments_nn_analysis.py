@@ -228,6 +228,20 @@ class Experiment():
         return np.stack(template)
 
     @staticmethod
+    def combinations(items: List[np.ndarray]):
+        template = []
+        for i, item in enumerate(items):
+            template.append(item)
+            template.append(-item)
+            for j in range(0, i):
+                other = items[j]
+                template.append(item + other)
+                template.append(item - other)
+                template.append(other - item)
+                template.append(-other - item)
+        return np.stack(template)
+
+    @staticmethod
     def box(n):
         template = []
         for i in range(n):
