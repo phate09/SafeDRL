@@ -11,16 +11,19 @@ import torch.nn
 from agents.ray_utils import *
 from polyhedra.experiments_nn_analysis import Experiment
 
+v_lead = 28
+max_speed = 36
+
 
 class StoppingCarContinuousExperiment(Experiment):
     def __init__(self):
-        env_input_size: int = 6
+        env_input_size: int = 3
         super().__init__(env_input_size)
         self.post_fn_remote = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
         # self.template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
-        self.template_2d: np.ndarray = np.array([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]])
+        self.template_2d: np.ndarray = np.array([[0, 0, 1], [1, -1, 0]])
         input_boundaries, input_template = self.get_template(0)
         self.input_boundaries: List = input_boundaries
         self.input_template: np.ndarray = input_template
@@ -50,12 +53,20 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
         input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
+        gurobi_model.addConstr(input[0] >= 0, name=f"input_base_constr1")
+        gurobi_model.addConstr(input[1] >= 0, name=f"input_base_constr2")
+        gurobi_model.addConstr(input[2] >= 0, name=f"input_base_constr3")
+        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
         gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
         gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
-        gurobi_model.addConstr(observation[0] <= input[2] - input[3] + self.input_epsilon / 2, name=f"obs_constr11")
-        gurobi_model.addConstr(observation[0] >= input[2] - input[3] - self.input_epsilon / 2, name=f"obs_constr12")
-        nn_output = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)
+        gurobi_model.addConstr(observation[0] <= v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
+        gurobi_model.addConstr(observation[0] >= v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
+        nn_output, max_val, min_val = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)
+        is_equal = torch.isclose(nn(torch.from_numpy(observation.X).float()), torch.from_numpy(nn_output.X).float(),rtol=1e-3).item()
+        assert is_equal
+        # clipped_nn_output = gurobi_model.addMVar(lb=float("-inf"), shape=(len(nn_output)), name=f"clipped_nn_output")
+        # gurobi_model.addConstr(nn_output[0] >= -12, name=f"clipped_out_constr1")
+        # gurobi_model.addConstr(nn_output[0] <= 12, name=f"clipped_out_constr2")
         # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
         # apply dynamic
         x_prime = StoppingCarContinuousExperiment.apply_dynamic(input, gurobi_model, action=nn_output, env_input_size=self.env_input_size)
@@ -85,27 +96,23 @@ class StoppingCarContinuousExperiment(Experiment):
 
         x_lead = input[0]
         x_ego = input[1]
-        v_lead = input[2]
-        v_ego = input[3]
-        a_lead = input[4]
-        a_ego = input[5]
+        v_ego = input[2]
         # gurobi_model.addConstr(action[0] <= 12)  # cap the acceleration to +12 m/s*2
         # gurobi_model.addConstr(action[0] >= -12)  # cap the acceleration to -12 m/s*2
-        z = gurobi_model.addMVar(shape=(6,), lb=float("-inf"), name=f"x_prime")
+        z = gurobi_model.addMVar(shape=(3,), lb=float("-inf"), name=f"x_prime")
         dt = .1  # seconds
-        a_ego_prime = 0  # action
-        v_ego_prime = v_ego + action * dt
-        v_lead_prime = v_lead + a_lead * dt
+        acceleration = action[0]
+        a_ego_prime = acceleration
+        v_ego_prime = v_ego + acceleration * dt
+        gurobi_model.addConstr(v_ego_prime <= max_speed, name=f"v_constr")
+        # gurobi_model.addConstr(v_ego_prime >= -max_speed, name=f"v_constr")
+        # gurobi_model.addConstr(a_lead == 0, name="a_lead_constr")
+        v_lead_prime = v_lead
         x_lead_prime = x_lead + v_lead_prime * dt
         x_ego_prime = x_ego + v_ego_prime * dt
-        # delta_x_prime = (x_lead + (v_lead + (a_lead + 0) * dt) * dt) - (x_ego + (v_ego + (a_ego + acceleration) * dt) * dt)
-        # delta_v_prime = (v_lead + (a_lead + 0) * dt) - (v_ego + (a_ego + acceleration) * dt)
         gurobi_model.addConstr(z[0] == x_lead_prime, name=f"dyna_constr_1")
         gurobi_model.addConstr(z[1] == x_ego_prime, name=f"dyna_constr_2")
-        gurobi_model.addConstr(z[2] == v_lead_prime, name=f"dyna_constr_3")
-        gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
-        gurobi_model.addConstr(z[4] == a_lead, name=f"dyna_constr_5")  # no change in a_lead
-        gurobi_model.addConstr(z[5] == a_ego_prime, name=f"dyna_constr_6")  # use index 0 which is the action (as opposed to index 1 which is the standard deviation for exploration)
+        gurobi_model.addConstr(z[2] == v_ego_prime, name=f"dyna_constr_3")
         return z
 
     def plot(self, vertices_list, template, template_2d):
@@ -256,7 +263,7 @@ class StoppingCarContinuousExperiment(Experiment):
         l0.weight = torch.nn.Parameter(torch.tensor([[1.2]], dtype=torch.float32))
         l0.bias = torch.nn.Parameter(torch.tensor([0], dtype=torch.float32))
         layers.append(l0)
-        # layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
+        layers.append(torch.nn.Hardtanh(min_val=-3, max_val=3))
         nn = torch.nn.Sequential(*layers)
         return nn
 
@@ -271,9 +278,16 @@ if __name__ == '__main__':
     experiment.use_rounding = False
     experiment.get_nn_fn = experiment.get_nn_static
     # template = Experiment.octagon(experiment.env_input_size)
-    _, template = StoppingCarContinuousExperiment.get_template(6)
+    # _, template = StoppingCarContinuousExperiment.get_template(6)
+    x_lead = Experiment.e(experiment.env_input_size, 0)
+    x_ego = Experiment.e(experiment.env_input_size, 1)
+    v_ego = Experiment.e(experiment.env_input_size, 2)
+    template = np.array([-(x_lead - x_ego),(x_lead - x_ego),v_ego])
     experiment.analysis_template = template  # standard
-    input_boundaries = [40, -30, 0, -0, 28, -28, 28 + 2.5, -(28 - 2.5), 0, -0, 0, 0, 0]
+    experiment.input_template = Experiment.box(3)
+    input_boundaries = [35, -30, 0, -0, 16, -0]
+    # experiment.analysis_template = template  # standard
+    # input_boundaries = [40, -30, 0, -0, 28, -28, 28 + 2.5, -(28 - 2.5), 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()

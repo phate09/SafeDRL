@@ -7,7 +7,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 from typing import Tuple, List
 
-import gurobi as grb
+import gurobipy as grb
 import numpy as np
 import progressbar
 import ray
@@ -125,21 +125,23 @@ class Experiment():
                 if self.show_progressbar:
                     bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
                 ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
-                x_primes_list = ray.get(ready_ids)
-                for x_primes in x_primes_list:
-                    for x_prime in x_primes:
-                        if self.use_rounding:
-                            # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
-                            x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
-                            # x_prime_rounded should always be bigger than x_prime
-                            assert contained(x_prime, x_prime_rounded)
-                            x_prime = x_prime_rounded
-                        frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
-                        if not any([contained(x_prime, y) for u, y in frontier]):
-                            frontier.append(((t + 1), x_prime))
-                            # print(x_prime)
-                        else:
-                            num_already_visited += 1
+                if len(ready_ids) != 0:
+                    x_primes_list = ray.get(ready_ids)
+                    assert len(x_primes_list) != 0, "something is wrong with the calculation of the successor"
+                    for x_primes in x_primes_list:
+                        for x_prime in x_primes:
+                            if self.use_rounding:
+                                # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
+                                x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
+                                # x_prime_rounded should always be bigger than x_prime
+                                assert contained(x_prime, x_prime_rounded)
+                                x_prime = x_prime_rounded
+                            frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
+                            if not any([contained(x_prime, y) for u, y in frontier]):
+                                frontier.append(((t + 1), x_prime))
+                                # print(x_prime)
+                            else:
+                                num_already_visited += 1
         self.plot_fn(vertices_list, template, template_2d)
         return max_t, num_already_visited, vertices_list, False
 
@@ -186,7 +188,11 @@ class Experiment():
             gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), grb.GRB.MAXIMIZE)
             gurobi_model.optimize()
             # print_model(gurobi_model)
-            assert gurobi_model.status == 2
+            if gurobi_model.status == 5 or gurobi_model.status == 4:
+                result = float("inf")
+                results.append(result)
+                continue
+            assert gurobi_model.status == 2, f"gurobi_model.status=={gurobi_model.status}"
             # if gurobi_model.status != 2:
             #     return None
             result = gurobi_model.ObjVal
@@ -270,8 +276,9 @@ class Experiment():
                 gurobi_vars.append(v)
             elif type(layer) is torch.nn.ReLU:
                 v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
-                z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
-                M = 10e6
+
+                z = gurobi_model.addMVar(shape=gurobi_vars[-1].shape, vtype=grb.GRB.BINARY, name=f"relu_{i}")  # lb=0, ub=1,
+                M = 1e2
                 # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
                 gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
                 gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
@@ -300,7 +307,7 @@ class Experiment():
         gurobi_model.update()
         gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        return gurobi_model.status == 2
+        return gurobi_model.status == 2 or gurobi_model.status == 5
 
     @staticmethod
     def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential):
@@ -319,7 +326,7 @@ class Experiment():
             elif type(layer) is torch.nn.ReLU:
                 v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
                 z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
-                M = 10e6
+                M = 1e3
                 # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
                 gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
                 gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
@@ -340,7 +347,7 @@ class Experiment():
                 layerTanh: torch.nn.Hardtanh = layer
                 min_val = layerTanh.min_val
                 max_val = layerTanh.max_val
-                M = 10e6
+                M = 10e3
                 v1 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
                 z1 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh1_{i}")
                 z2 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh2_{i}")
@@ -357,21 +364,21 @@ class Experiment():
                 gurobi_vars.append(v2)
             else:
                 raise Exception("Unrecognised layer")
-        # gurobi_model.update()
-        # gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        last_layer = gurobi_vars[-1]
-        # gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
-        # gurobi_model.update()
-        # gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        # max_val = gurobi_model.ObjVal
-        # gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
         gurobi_model.update()
         gurobi_model.optimize()
         assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        # min_val = gurobi_model.ObjVal
-        return last_layer
+        last_layer = gurobi_vars[-1]
+        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        max_val = gurobi_model.ObjVal
+        gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MINIMIZE)  # maximise the output
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        min_val = gurobi_model.ObjVal
+        return last_layer, max_val, min_val
 
     def generic_plot(self, title_x, title_y, vertices_list, template, template_2d):
         fig, simple_vertices = show_polygon_list3(vertices_list, title_x, title_y, template, template_2d)
