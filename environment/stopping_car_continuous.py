@@ -57,7 +57,7 @@ class StoppingCar(gym.Env):
     def step(self, action_ego):
         acceleration = float(action_ego)
         self.y_ego = acceleration
-        self.v_ego += self.y_ego * self.dt
+        self.v_ego += acceleration * self.dt
         self.v_ego = min(max(self.v_ego, 0), 40)
         self.v_lead += self.y_lead * self.dt
         self.x_lead += self.v_lead * self.dt

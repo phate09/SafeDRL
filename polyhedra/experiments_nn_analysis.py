@@ -41,6 +41,7 @@ class Experiment():
         self.show_progressbar = True
         self.show_progress_plot = True
         self.save_dir = None
+        self.keep_model = False  # whether to keep the gurobi model for later timesteps
 
     def run_experiment(self):
         assert self.get_nn_fn is not None

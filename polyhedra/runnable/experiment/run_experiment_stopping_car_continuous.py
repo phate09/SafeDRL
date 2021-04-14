@@ -9,26 +9,28 @@ from ray.rllib.agents.ppo import ppo
 import torch.nn
 
 from agents.ray_utils import *
+from polyhedra.continuous_experiments_nn_analysis import ContinuousExperiment
 from polyhedra.experiments_nn_analysis import Experiment
 
 v_lead = 28
 max_speed = 36
 
 
-class StoppingCarContinuousExperiment(Experiment):
+class StoppingCarContinuousExperiment(ContinuousExperiment):
     def __init__(self):
         env_input_size: int = 3
         super().__init__(env_input_size)
-        self.post_fn_remote = self.post_milp
+        self.post_fn_continuous = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
-        # self.template_2d: np.ndarray = np.array([[1, 0, 0, 0, 0, 0], [1, -1, 0, 0, 0, 0]])
         self.template_2d: np.ndarray = np.array([[0, 0, 1], [1, -1, 0]])
-        input_boundaries, input_template = self.get_template(0)
         self.input_boundaries: List = input_boundaries
-        self.input_template: np.ndarray = input_template
-        _, template = self.get_template(1)
-        self.analysis_template: np.ndarray = template
+        x_lead = Experiment.e(self.env_input_size, 0)
+        x_ego = Experiment.e(self.env_input_size, 1)
+        v_ego = Experiment.e(self.env_input_size, 2)
+        template = np.array([-(x_lead - x_ego), (x_lead - x_ego), v_ego])
+        self.analysis_template = template  # standard
+        self.input_template = Experiment.box(self.env_input_size)
         collision_distance = 0
         distance = [Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)]
         # self.use_bfs = True
@@ -44,13 +46,16 @@ class StoppingCarContinuousExperiment(Experiment):
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250"
         self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_7bdde_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_11-49-20/checkpoint_1460/checkpoint-1460"
+        self.internal_model = None
 
-    @ray.remote
+    def before_start(self):
+        self.internal_model = grb.Model()
+
     def post_milp(self, x, nn, output_flag, t, template):
         """milp method"""
         post = []
         # for chosen_action in range(2):
-        gurobi_model = grb.Model()
+        gurobi_model = self.internal_model  # grb.Model()
         gurobi_model.setParam('OutputFlag', output_flag)
         input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
         gurobi_model.addConstr(input[0] >= 0, name=f"input_base_constr1")
@@ -62,7 +67,7 @@ class StoppingCarContinuousExperiment(Experiment):
         gurobi_model.addConstr(observation[0] <= v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
         gurobi_model.addConstr(observation[0] >= v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
         nn_output, max_val, min_val = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)
-        is_equal = torch.isclose(nn(torch.from_numpy(observation.X).float()), torch.from_numpy(nn_output.X).float(),rtol=1e-3).item()
+        is_equal = torch.isclose(nn(torch.from_numpy(observation.X).float()), torch.from_numpy(nn_output.X).float(), rtol=1e-3).item()
         assert is_equal
         # clipped_nn_output = gurobi_model.addMVar(lb=float("-inf"), shape=(len(nn_output)), name=f"clipped_nn_output")
         # gurobi_model.addConstr(nn_output[0] >= -12, name=f"clipped_out_constr1")
@@ -253,7 +258,8 @@ class StoppingCarContinuousExperiment(Experiment):
         # ray.shutdown()
         return nn
 
-    def get_nn_static(self):
+    @staticmethod
+    def get_nn_static():
         layers = []
         l0 = torch.nn.Linear(2, 1)
         l0.weight = torch.nn.Parameter(torch.tensor([[0, 1]], dtype=torch.float32))
@@ -279,13 +285,8 @@ if __name__ == '__main__':
     experiment.get_nn_fn = experiment.get_nn_static
     # template = Experiment.octagon(experiment.env_input_size)
     # _, template = StoppingCarContinuousExperiment.get_template(6)
-    x_lead = Experiment.e(experiment.env_input_size, 0)
-    x_ego = Experiment.e(experiment.env_input_size, 1)
-    v_ego = Experiment.e(experiment.env_input_size, 2)
-    template = np.array([-(x_lead - x_ego),(x_lead - x_ego),v_ego])
-    experiment.analysis_template = template  # standard
-    experiment.input_template = Experiment.box(3)
-    input_boundaries = [35, -30, 0, -0, 16, -0]
+
+    input_boundaries = [30, -29, 0, -0, 28, -0]
     # experiment.analysis_template = template  # standard
     # input_boundaries = [40, -30, 0, -0, 28, -28, 28 + 2.5, -(28 - 2.5), 0, -0, 0, 0, 0]
     experiment.input_boundaries = input_boundaries
