@@ -54,8 +54,8 @@ class Experiment():
         assert self.unsafe_zone is not None
         experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
-        root = self.generate_root_polytope()
-        max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, [root], self.template_2d)
+
+        max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
         print(f"T={max_t}")
 
         print(f"The algorithm skipped {num_already_visited} already visited states")
@@ -74,7 +74,9 @@ class Experiment():
         print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
         return elapsed_seconds, safe, max_t
 
-    def main_loop(self, nn, template, root_list: List[Tuple], template_2d):
+    def main_loop(self, nn, template, template_2d):
+        root = self.generate_root_polytope()
+        root_list = [root]
         vertices_list = defaultdict(list)
         seen = []
         frontier = [(0, x) for x in root_list]

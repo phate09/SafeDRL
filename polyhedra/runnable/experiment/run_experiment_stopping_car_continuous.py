@@ -21,14 +21,15 @@ class StoppingCarContinuousExperiment(ContinuousExperiment):
         env_input_size: int = 3
         super().__init__(env_input_size)
         self.post_fn_continuous = self.post_milp
+        self.post_fn_remote = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
         self.template_2d: np.ndarray = np.array([[0, 0, 1], [1, -1, 0]])
-        self.input_boundaries: List = input_boundaries
+        # self.input_boundaries: List = input_boundaries
         x_lead = Experiment.e(self.env_input_size, 0)
         x_ego = Experiment.e(self.env_input_size, 1)
         v_ego = Experiment.e(self.env_input_size, 2)
-        template = np.array([-(x_lead - x_ego), (x_lead - x_ego), v_ego])
+        template = np.array([-(x_lead - x_ego)])
         self.analysis_template = template  # standard
         self.input_template = Experiment.box(self.env_input_size)
         collision_distance = 0
@@ -46,7 +47,6 @@ class StoppingCarContinuousExperiment(ContinuousExperiment):
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/TD3_StoppingCar_47b16_00000_0_cost_fn=3,epsilon_input=0_2021-03-04_17-08-46/checkpoint_600/checkpoint-600"
         # self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_28110_00000_0_cost_fn=0,epsilon_input=0_2021-03-07_17-40-07/checkpoint_1250/checkpoint-1250"
         self.nn_path = "/home/edoardo/ray_results/tune_TD3_stopping_car_continuous/PPO_StoppingCar_7bdde_00000_0_cost_fn=0,epsilon_input=0_2021-03-09_11-49-20/checkpoint_1460/checkpoint-1460"
-        self.internal_model = None
 
     def before_start(self):
         self.internal_model = grb.Model()
@@ -54,20 +54,15 @@ class StoppingCarContinuousExperiment(ContinuousExperiment):
     def post_milp(self, x, nn, output_flag, t, template):
         """milp method"""
         post = []
-        # for chosen_action in range(2):
         gurobi_model = self.internal_model  # grb.Model()
-        gurobi_model.setParam('OutputFlag', output_flag)
-        input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-        gurobi_model.addConstr(input[0] >= 0, name=f"input_base_constr1")
-        gurobi_model.addConstr(input[1] >= 0, name=f"input_base_constr2")
-        gurobi_model.addConstr(input[2] >= 0, name=f"input_base_constr3")
+        input = self.last_input  # Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
         observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
         gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
         gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
         gurobi_model.addConstr(observation[0] <= v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
         gurobi_model.addConstr(observation[0] >= v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
         nn_output, max_val, min_val = Experiment.generate_nn_guard_continuous(gurobi_model, observation, nn)
-        is_equal = torch.isclose(nn(torch.from_numpy(observation.X).float()), torch.from_numpy(nn_output.X).float(), rtol=1e-3).item()
+        is_equal = torch.isclose(nn(torch.from_numpy(observation.X).float()), torch.from_numpy(nn_output.X).float(), rtol=1e-3).all().item()
         assert is_equal
         # clipped_nn_output = gurobi_model.addMVar(lb=float("-inf"), shape=(len(nn_output)), name=f"clipped_nn_output")
         # gurobi_model.addConstr(nn_output[0] >= -12, name=f"clipped_out_constr1")
@@ -78,6 +73,7 @@ class StoppingCarContinuousExperiment(ContinuousExperiment):
         gurobi_model.update()
         gurobi_model.optimize()
         found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
+        self.last_input = x_prime
         # x_prime_results = x_prime_results.round(4)  # correct for rounding errors introduced by the conversion to h-repr
         if found_successor:
             post.append(tuple(x_prime_results))
@@ -126,119 +122,6 @@ class StoppingCarContinuousExperiment(ContinuousExperiment):
         # except:
         #     print("Error in plotting")
 
-    @staticmethod
-    def get_template(mode=0):
-        env_input_size = 6
-        x_lead = Experiment.e(env_input_size, 0)
-        x_ego = Experiment.e(env_input_size, 1)
-        v_lead = Experiment.e(env_input_size, 2)
-        v_ego = Experiment.e(env_input_size, 3)
-        a_lead = Experiment.e(env_input_size, 4)
-        a_ego = Experiment.e(env_input_size, 5)
-        if mode == 0:  # box directions with intervals
-            input_boundaries = [50, -40, 10, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
-            # optimise in a direction
-            template = []
-            for dimension in range(env_input_size):
-                template.append(Experiment.e(env_input_size, dimension))
-                template.append(-Experiment.e(env_input_size, dimension))
-            template = np.array(template)  # the 6 dimensions in 2 variables
-
-            # t1 = [0] * 6
-            # t1[0] = -1
-            # t1[1] = 1
-            # template = np.vstack([template, t1])
-            return input_boundaries, template
-        if mode == 1:  # directions to easily find fixed point
-
-            input_boundaries = [20]
-
-            template = np.array([a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -(v_lead - v_ego), (v_lead - v_ego), -(x_lead - x_ego), (x_lead - x_ego)])
-            return input_boundaries, template
-        if mode == 2:
-            input_boundaries = [0, -100, 30, -31, 20, -30, 0, -35, 0, -0, -10, -10, 20]
-            # optimise in a direction
-            template = []
-            for dimension in range(env_input_size):
-                t1 = [0] * env_input_size
-                t1[dimension] = 1
-                t2 = [0] * env_input_size
-                t2[dimension] = -1
-                template.append(t1)
-                template.append(t2)
-            # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
-            template = np.array(template)  # the 6 dimensions in 2 variables
-
-            t1 = [0] * env_input_size
-            t1[0] = 1
-            t1[1] = -1
-            template = np.vstack([template, t1])
-            return input_boundaries, template
-        if mode == 3:  # single point box directions +diagonal
-            input_boundaries = [30, -30, 0, -0, 28, -28, 36, -36, 0, -0, 0, -0, 0]
-            # optimise in a direction
-            template = []
-            for dimension in range(env_input_size):
-                t1 = [0] * env_input_size
-                t1[dimension] = 1
-                t2 = [0] * env_input_size
-                t2[dimension] = -1
-                template.append(t1)
-                template.append(t2)
-            # template = np.array([[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]])  # the 8 dimensions in 2 variables
-            template = np.array(template)  # the 6 dimensions in 2 variables
-
-            t1 = [0] * env_input_size
-            t1[0] = -1
-            t1[1] = 1
-            template = np.vstack([template, t1])
-            return input_boundaries, template
-        if mode == 4:  # octagon, every pair of variables
-            input_boundaries = [20]
-            template = []
-            for dimension in range(env_input_size):
-                t1 = [0] * env_input_size
-                t1[dimension] = 1
-                t2 = [0] * env_input_size
-                t2[dimension] = -1
-                template.append(t1)
-                template.append(t2)
-                for other_dimension in range(dimension + 1, env_input_size):
-                    t1 = [0] * env_input_size
-                    t1[dimension] = 1
-                    t1[other_dimension] = -1
-                    t2 = [0] * env_input_size
-                    t2[dimension] = -1
-                    t2[other_dimension] = 1
-                    t3 = [0] * env_input_size
-                    t3[dimension] = 1
-                    t3[other_dimension] = 1
-                    t4 = [0] * env_input_size
-                    t4[dimension] = -1
-                    t4[other_dimension] = -1
-                    template.append(t1)
-                    template.append(t2)
-                    template.append(t3)
-                    template.append(t4)
-            return input_boundaries, np.array(template)
-        if mode == 5:
-            input_boundaries = [20]
-
-            template = np.array([a_lead, -a_lead, -v_lead, v_lead, -(v_lead - v_ego), (v_lead - v_ego), -(x_lead - x_ego), (x_lead - x_ego)])
-            return input_boundaries, template
-        if mode == 6:  # directions to easily find fixed point
-
-            input_boundaries = [20]
-            delta_v = (v_lead - v_ego)
-            delta_x = (x_lead - x_ego)
-            template = np.array(
-                [a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -delta_v, delta_v, -delta_x, delta_x, (delta_v - delta_x), -(delta_v - delta_x),
-                 (delta_v + delta_x), -(delta_v + delta_x), (delta_v - delta_x)])
-            return input_boundaries, template
-
-    def get_nn_old(self):
-        pass
-
     def get_nn(self):
         # from agents.td3.tune.tune_train_TD3_car import get_TD3_config
         from agents.td3.tune.tune_train_TD3_car import get_TD3_config
@@ -282,7 +165,7 @@ if __name__ == '__main__':
     experiment.show_progressbar = True
     experiment.show_progress_plot = True
     experiment.use_rounding = False
-    experiment.get_nn_fn = experiment.get_nn_static
+    # experiment.get_nn_fn = experiment.get_nn_static
     # template = Experiment.octagon(experiment.env_input_size)
     # _, template = StoppingCarContinuousExperiment.get_template(6)
 

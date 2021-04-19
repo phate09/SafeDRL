@@ -23,9 +23,13 @@ class ContinuousExperiment(Experiment):
         super().__init__(env_input_size)
         self.post_fn_continuous = None
         self.keep_model = False  # whether to keep the gurobi model for later timesteps
+        self.last_input = None
+        self.internal_model = None
 
-    def main_loop(self, nn, template, root_list: List[Tuple], template_2d):
+    def main_loop(self, nn, template, template_2d):
         assert self.post_fn_continuous is not None
+        root = self.generate_root_polytope()
+        root_list = [root]
         vertices_list = defaultdict(list)
         seen = []
         frontier = [(0, x) for x in root_list]
@@ -36,6 +40,10 @@ class ContinuousExperiment(Experiment):
         last_time_plot = None
         if self.before_start_fn is not None:
             self.before_start_fn(nn)
+        self.internal_model = grb.Model()
+        self.internal_model.setParam('OutputFlag', self.output_flag)
+        input = Experiment.generate_input_region(self.internal_model, self.input_template, self.input_boundaries, self.env_input_size)
+        self.last_input = input
         with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar:
             while len(frontier) != 0:
                 t, x = frontier.pop(0) if self.use_bfs else frontier.pop()
@@ -65,7 +73,7 @@ class ContinuousExperiment(Experiment):
                     self.plot_fn(vertices_list, template, template_2d)
                     return max_t, num_already_visited, vertices_list, True
                 seen.append(x)
-                x_primes_list = self.post_fn_continuous(self, x, nn, self.output_flag, t, template)
+                x_primes_list = self.post_fn_continuous(x, nn, self.output_flag, t, template)
                 if last_time_plot is None or time.time() - last_time_plot >= self.plotting_time_interval:
                     if last_time_plot is not None:
                         self.plot_fn(vertices_list, template, template_2d)
@@ -75,20 +83,20 @@ class ContinuousExperiment(Experiment):
                 if self.show_progressbar:
                     bar.update(value=bar.value + 1, seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
                 assert len(x_primes_list) != 0, "something is wrong with the calculation of the successor"
-                for x_primes in x_primes_list:
-                    for x_prime in x_primes:
-                        if self.use_rounding:
-                            # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
-                            x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
-                            # x_prime_rounded should always be bigger than x_prime
-                            assert contained(x_prime, x_prime_rounded)
-                            x_prime = x_prime_rounded
-                        frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
-                        if not any([contained(x_prime, y) for u, y in frontier]):
-                            frontier.append(((t + 1), x_prime))
-                            # print(x_prime)
-                        else:
-                            num_already_visited += 1
+                # for x_primes in x_primes_list:
+                for x_prime in x_primes_list:
+                    if self.use_rounding:
+                        # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
+                        x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
+                        # x_prime_rounded should always be bigger than x_prime
+                        assert contained(x_prime, x_prime_rounded)
+                        x_prime = x_prime_rounded
+                    frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
+                    if not any([contained(x_prime, y) for u, y in frontier]):
+                        frontier.append(((t + 1), x_prime))
+                        # print(x_prime)
+                    else:
+                        num_already_visited += 1
         self.plot_fn(vertices_list, template, template_2d)
         return max_t, num_already_visited, vertices_list, False
 
