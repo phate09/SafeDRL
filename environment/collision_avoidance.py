@@ -14,7 +14,7 @@ class ColAvoidEnvDiscrete(gym.Env):
         'video.frames_per_second': 50
     }
 
-    def __init__(self):
+    def __init__(self, config=None):
         # SIMULATION PARAMETERS
         self.map_size = 20  # length of side (m)
         self.num_dimensions = 2  # number of dimensions
@@ -39,7 +39,7 @@ class ColAvoidEnvDiscrete(gym.Env):
         # INTRUDER PARAMETERS
         self.r = 0.4  # radius (m)
         self.s = 2  # speed (m/s)
-        self.num_intruders = 3  # number of intruders at the
+        self.num_intruders = 1  # number of intruders at the
         # same time
 
         # STATUS
@@ -53,16 +53,16 @@ class ColAvoidEnvDiscrete(gym.Env):
         self.observation = None  # 40 bins + 2 dimensions
 
         # lower bound and upper bound
-        min_detection = self.range_detection[0] * np.ones(self.num_bins)
-        max_detection = self.range_detection[1] * np.ones(self.num_bins)
+        min_detection = 0 * np.ones(self.num_bins)  # self.range_detection[0] * np.ones(self.num_bins)
+        max_detection = 50 * np.ones(self.num_bins)  # self.range_detection[1] * np.ones(self.num_bins)
         min_location = -self.map_size / 2 * np.ones(self.num_dimensions)
         max_location = self.map_size / 2 * np.ones(self.num_dimensions)
 
         self.action_space = gym.spaces.Discrete(self.num_states)
-        self.observation_space = gym.spaces.Box(
-            np.concatenate((min_detection, min_location)),
-            np.concatenate((max_detection, max_location)),
-            dtype=np.float32)
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(42,),
+                                                # np.concatenate((min_detection, min_location)),
+                                                # np.concatenate((max_detection, max_location)),
+                                                dtype=np.float32)
 
         self.seed()
         self.viewer = None
@@ -95,38 +95,38 @@ class ColAvoidEnvDiscrete(gym.Env):
         # reward
 
         # reward 1: survive
-        reward_1 = 3.0 if not done else -3.0
+        reward_1 = 3.0 if not done else -30.0
 
         # penalty 1: distance to (0, 0)
         # 0 ~ 1
-        penalty_1 = np.min([self.dist_to_position() ** 2 / 5.0 ** 2, 1.0])
+        penalty_1 = self.dist_to_position() ** 2  # np.min([self.dist_to_position() ** 2 / 5.0 ** 2, 1.0])
 
         # penalty_2: distance to closest intruder
         # 0 ~ 1
         penalty_2 = 1.0 * (self.range_detection[1] - self.dist_to_intruder()) ** 2 / (self.range_detection[1] - self.range_detection[0]) ** 2
 
         # penalty 3: large changes on speed and direction
-        penalty_3 = 0.5 * 1.0 if self.vel_agents != 8 else 0.0
+        penalty_3 = 0.5 * 1.0 if action != 8 else 0.0
 
         reward = reward_1 - penalty_1 - penalty_2 - penalty_3
-        if not done:
-            pass
-            # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
-        elif self.steps_beyond_done is None:
-            # just failed
-            self.steps_beyond_done = 0
-            # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
-        else:
-            if self.steps_beyond_done == 0:
-                logger.warn(
-                    "You are calling 'step()' even though this "
-                    "environment has already returned done = True. You "
-                    "should always call 'reset()' once you receive 'done = "
-                    "True' -- any further steps are undefined behavior."
-                )
-            self.steps_beyond_done += 1
-            # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
-            self.reset()
+        # if not done:
+        #     pass
+        #     # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
+        # elif self.steps_beyond_done is None:
+        #     # just failed
+        #     self.steps_beyond_done = 0
+        #     # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
+        # else:
+        #     if self.steps_beyond_done == 0:
+        #         logger.warn(
+        #             "You are calling 'step()' even though this "
+        #             "environment has already returned done = True. You "
+        #             "should always call 'reset()' once you receive 'done = "
+        #             "True' -- any further steps are undefined behavior."
+        #         )
+        #     self.steps_beyond_done += 1
+        #     # reward = reward_1 - 10 * penalty_1 - 1.0 * penalty_2 - 1.0 * penalty_3
+        #     self.reset()
 
         info = {}
         self.reward, self.penalty_1, self.penalty_2, self.penalty_3 = reward, penalty_1, penalty_2, penalty_3
@@ -175,7 +175,7 @@ class ColAvoidEnvDiscrete(gym.Env):
             if np.linalg.norm(self.pos_intruders[i]) > self.map_size / 2:
                 # the place to initialize
                 # place them on a circle with radius = 10m
-                angle = 2 * np.pi * random.random()
+                angle = 2 * np.pi * self.np_random.random()
                 x = self.map_size / 2 * np.cos(angle)
                 y = self.map_size / 2 * np.sin(angle)
                 self.pos_intruders[i] = np.array([x, y])
@@ -184,7 +184,7 @@ class ColAvoidEnvDiscrete(gym.Env):
                 # # randomly select an angle for each intruder
                 # opp_angle = - (np.pi - angle)
                 # range_angle = np.arcsin(self.range_detection[1] / (self.map_size / 2))
-                # rand_angle = opp_angle - range_angle + (2 * range_angle * random.random())
+                # rand_angle = opp_angle - range_angle + (2 * range_angle * self.np_random.random())
                 # self.vel_intruders[i] = rand_angle
 
                 # strategy 2: head to the agent directly
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     env.reset()
     env.render()
     for i in range(100):
-        action = env.action_space.sample()
+        action = 1  # env.action_space.sample()
         env.step(action)
         env.render()
     env.close()

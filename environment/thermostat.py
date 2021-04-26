@@ -116,7 +116,7 @@ if __name__ == '__main__':
     env.reset()
     env.render()
     for i in range(1000):
-        action = env.action_space.sample()
+        action = 10#env.action_space.sample()
         env.step(action)
         env.render()
     env.close()
