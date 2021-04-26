@@ -272,13 +272,14 @@ def extract_probabilities(targets: list, gateway, mc, mdp):
     target = gateway.jvm.java.util.BitSet()
     for id in targets:
         target.set(id)
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
+    steps = 10
+    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
     minmin = res.soln[0]
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
+    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
     minmax = res.soln[0]
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
+    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
     maxmin = res.soln[0]
-    res = mc.computeReachProbs(mdp, target, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
+    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
     maxmax = res.soln[0]
     return minmin, minmax, maxmin, maxmax
 
@@ -328,7 +329,7 @@ def plot_frontier(new_frontier):
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=True)
+    ray.init(local_mode=False)
     nn = get_nn()
     save_dir = "/home/edoardo/Development/SafeDRL/"
     load = False
@@ -420,7 +421,7 @@ if __name__ == '__main__':
                                 if split_flag1:
                                     to_split.append(split1)
                                 else:
-                                    new_frontier.append((t, split1))
+                                    new_frontier.insert(0, (t, split1))
                                     # plot_frontier(new_frontier)
                                     graph.add_edge(x, split1, action="split")
                                 ranges_probs2 = create_range_bounds_model(template, split2, env_input_size, nn)
@@ -428,12 +429,12 @@ if __name__ == '__main__':
                                 if split_flag2:
                                     to_split.append(split2)
                                 else:
-                                    new_frontier.append((t, split2))
+                                    new_frontier.insert(0, (t, split2))
                                     # plot_frontier(new_frontier)
                                     graph.add_edge(x, split2, action="split")
                         # print("finished splitting")
                         print("", file=sys.stderr)  # new line
-                        show_polygons(template, [x[1] for x in new_frontier], template_2d)
+                        # show_polygons(template, [x[1] for x in new_frontier], template_2d)
                     else:
                         for chosen_action in range(2):
                             gurobi_model = grb.Model()
@@ -471,12 +472,17 @@ if __name__ == '__main__':
                         break
                 # update prism
                 gateway, mc, mdp, mapping = recreate_prism_PPO(graph, root)
-                for t, x in new_frontier:
-                    minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
-                    if maxmax > 1e-6:  # check if state is irrelevant
-                        frontier.append((t, x))  # next computation only considers relevant states
-                    else:
-                        graph.nodes[x]["irrelevant"] = True
+                with StandardProgressBar(prefix="Updating probabilities ", max_value=len(new_frontier) + 1).start() as bar:
+                    for t, x in new_frontier:
+                        try:
+                            minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
+                            bar.update(bar.value + 1)
+                        except Exception as e:
+                            print("warning")
+                        if maxmax > 1e-6:  # check if state is irrelevant
+                            frontier.append((t, x))  # next computation only considers relevant states
+                        else:
+                            graph.nodes[x]["irrelevant"] = True
                 new_frontier = []
                 if exit_flag:
                     break

@@ -6,6 +6,7 @@ Created on Thu Aug  2 14:40:23 2018
 @author: rcheng
 https://github.com/rcheng805/RL-CBF/blob/master/car/DDPG/car_simulator.py
 """
+import gym
 import numpy as np
 
 
@@ -62,9 +63,9 @@ class Car():
         return action
 
 
-class allCars():
+class allCars(gym.Env):
 
-    def __init__(self):
+    def __init__(self, config):
         self.count = 0
         self.L = 80
         self.t = 0
@@ -82,6 +83,19 @@ class allCars():
 
         self.allStates = np.zeros((5, 3))
         self.allStates = self.getAllStates()
+        self.max_acc = 30
+        # self.action_space = gym.spaces.Box(
+        #     low=-self.max_acc,
+        #     high=self.max_acc, shape=1,
+        #     dtype=np.float32
+        # )
+        self.observation_space = gym.spaces.Box(
+            low=-np.finfo(np.float32).max,
+            high=np.finfo(np.float32).max,
+            shape=(15,),
+            dtype=np.float32
+        )
+        self.action_space = gym.spaces.Discrete(3)
 
     def getAllStates(self):
         self.allStates[0, :] = self.car_1.getState()
@@ -197,13 +211,18 @@ class allCars():
         return f, g, x
 
     def step(self, action):
+        acceleration = 0
+        if action == 1:
+            acceleration = -self.max_acc
+        if action == 2:
+            acceleration = self.max_acc
         # Take action for all cars
         self.car_5.nextStep(self.car_5.getNextAction5(30), 10.0)
-        self.car_4.nextStep(action, 0)
+        self.car_4.nextStep(acceleration, 0)
         self.car_3.nextStep(self.car_3.getNextAction(30), 10.0)
         self.car_2.nextStep(self.car_2.getNextAction(30), 10.0)
         self.car_1.nextStep(self.car_1.getNextAction(30 - 10 * np.sin(0.2 * self.t)), 10.0)
-        r = self.getReward(action)
+        r = self.getReward(acceleration)
         s = np.ravel(self.getAllStates())
         self.t = self.t + 0.05
         self.count = self.count + 1
@@ -212,4 +231,3 @@ class allCars():
             return s, r, True, {}
         else:
             return s, r, False, {}
-

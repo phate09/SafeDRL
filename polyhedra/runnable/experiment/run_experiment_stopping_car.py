@@ -351,13 +351,13 @@ class StoppingCarExperiment2(StoppingCarExperiment):
 
 
         '''
-        v_lead = 28
+        # v_lead = 28
         max_speed = 36
         x_lead = input[0]
         x_ego = input[1]
-        # v_lead = input[2]
+        v_lead = input[2]
         v_ego = input[3]
-        z = gurobi_model.addMVar(shape=(3,), lb=float("-inf"), name=f"x_prime")
+        z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
         const_acc = 3
         dt = .1  # seconds
         if action == 0:
@@ -378,7 +378,8 @@ class StoppingCarExperiment2(StoppingCarExperiment):
         # delta_v_prime = (v_lead + (a_lead + 0) * dt) - (v_ego + (a_ego + acceleration) * dt)
         gurobi_model.addConstr(z[0] == x_lead_prime, name=f"dyna_constr_1")
         gurobi_model.addConstr(z[1] == x_ego_prime, name=f"dyna_constr_2")
-        gurobi_model.addConstr(z[2] == v_ego_prime, name=f"dyna_constr_3")
+        gurobi_model.addConstr(z[2] == v_lead_prime, name=f"dyna_constr_2")
+        gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_3")
         # gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
         # gurobi_model.addConstr(z[4] == 0, name=f"dyna_constr_5")  # no change in a_lead
         # gurobi_model.addConstr(z[5] == acceleration, name=f"dyna_constr_6")
@@ -411,7 +412,7 @@ class StoppingCarExperiment2(StoppingCarExperiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=False)
+    ray.init(log_to_driver=False, local_mode=True)
     experiment = StoppingCarExperiment2()
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
     experiment.plotting_time_interval = 60
