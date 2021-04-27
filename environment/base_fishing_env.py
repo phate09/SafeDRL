@@ -10,6 +10,7 @@ from gym_fishing.envs.shared_env import (
     simulate_mdp,
 )
 
+
 # consider adding support for gym logger, error, and seeding
 
 
@@ -17,10 +18,10 @@ class BaseFishingEnv(gym.Env):
     metadata = {"render.modes": ["human"]}
 
     def __init__(
-        self,
-        params={"r": 0.3, "K": 1, "sigma": 0.0, "x0": 0.75},
-        Tmax=100,
-        file=None,
+            self,
+            params={"r": 0.3, "K": 1, "sigma": 0.0, "x0": 0.75},
+            Tmax=100,
+            file=None,
     ):
 
         # parameters
@@ -61,14 +62,15 @@ class BaseFishingEnv(gym.Env):
 
         # Map from re-normalized model space to [0,2K] real space
         quota = self.get_quota(action)
-        self.get_fish_population(self.state)
+        self.fish_population = self.get_fish_population(self.state)
 
         # Apply harvest and population growth
-        self.harvest = self.harvest_draw(quota)
-        self.population_draw()
+        self.harvest = min(self.fish_population, quota)
+        self.fish_population = max(self.fish_population - self.harvest, 0.0)
+        self.fish_population = self.population_draw()
 
         # Map population back to system state (normalized space):
-        self.get_state(self.fish_population)
+        self.state = self.get_state(self.fish_population)
 
         # should be the instanteous reward, not discounted
         self.reward = max(self.harvest, 0.0)
@@ -109,28 +111,18 @@ class BaseFishingEnv(gym.Env):
     def plot_policy(self, df, output="results.png"):
         return plot_policyfn(self, df, output)
 
-    def harvest_draw(self, quota):
-        """
-        Select a value to harvest at each time step.
-        """
-
-        self.harvest = min(self.fish_population, quota)
-        self.fish_population = max(self.fish_population - self.harvest, 0.0)
-        return self.harvest
-
     def population_draw(self):
         """
         Select a value for population to grow or decrease at each time step.
         """
-        self.fish_population = np.maximum(
+        growth = self.r * self.fish_population * (1.0 - self.fish_population / self.K)
+        random_variation = self.fish_population * self.sigma * np.random.normal(0, 1)
+        return np.maximum(
             self.fish_population
-            + self.r
-            * self.fish_population
-            * (1.0 - self.fish_population / self.K)
-            + self.fish_population * self.sigma * np.random.normal(0, 1),
+            + growth
+            + random_variation,
             0.0,
         )
-        return self.fish_population
 
     def get_quota(self, action):
         """
@@ -156,9 +148,7 @@ class BaseFishingEnv(gym.Env):
             return quota / self.K - 1
 
     def get_fish_population(self, state):
-        self.fish_population = (state[0] + 1) * self.K
-        return self.fish_population
+        return (state[0] + 1) * self.K
 
     def get_state(self, fish_population):
-        self.state = np.array([fish_population / self.K - 1])
-        return self.state
+        return np.array([fish_population / self.K - 1])

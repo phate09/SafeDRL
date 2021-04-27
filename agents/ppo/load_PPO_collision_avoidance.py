@@ -16,7 +16,7 @@ ray.init()
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_lunar_hover/PPO_LunarHover_7ba4e_00000_0_2021-04-02_19-01-43/checkpoint_990/checkpoint-990")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_collision_avoidance/PPO_ColAvoidEnvDiscrete_12944_00000_0_2021-04-26_15-24-12/checkpoint_30/checkpoint-30")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_collision_avoidance/PPO_ColAvoidEnvDiscrete_12944_00000_0_2021-04-26_15-24-12/checkpoint_160/checkpoint-160")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
@@ -38,6 +38,7 @@ cumulative_reward = 0
 clock = pygame.time.Clock()
 for i in range(n_trials):
     state = env.reset()
+    env.render()
     # env.state[2] = 0.01
     # env.state[2] = 0.045
     # env.state[3] = -0.51

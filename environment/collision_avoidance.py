@@ -95,15 +95,15 @@ class ColAvoidEnvDiscrete(gym.Env):
         # reward
 
         # reward 1: survive
-        reward_1 = 3.0 if not done else -30.0
+        reward_1 = 3.0 if not done else -1000.0
 
         # penalty 1: distance to (0, 0)
         # 0 ~ 1
-        penalty_1 = self.dist_to_position() ** 2  # np.min([self.dist_to_position() ** 2 / 5.0 ** 2, 1.0])
+        penalty_1 = 0.3 * self.dist_to_position() ** 2  # np.min([self.dist_to_position() ** 2 / 5.0 ** 2, 1.0])
 
         # penalty_2: distance to closest intruder
         # 0 ~ 1
-        penalty_2 = 1.0 * (self.range_detection[1] - self.dist_to_intruder()) ** 2 / (self.range_detection[1] - self.range_detection[0]) ** 2
+        penalty_2 = 0  # 1.0 * (self.range_detection[1] - self.dist_to_intruder()) ** 2 / (self.range_detection[1] - self.range_detection[0]) ** 2
 
         # penalty 3: large changes on speed and direction
         penalty_3 = 0.5 * 1.0 if action != 8 else 0.0
@@ -137,6 +137,8 @@ class ColAvoidEnvDiscrete(gym.Env):
 
         self.vel_agents = np.zeros(self.num_intruders)
         self.pos_agents = np.zeros([self.num_agents, self.num_dimensions])
+        self.pos_intruders = None
+        self.vel_intruders = None
         self.init_intruders()
 
         # self.observation = self.range_detection[0] * np.ones(42)
@@ -300,8 +302,8 @@ if __name__ == '__main__':
     env = ColAvoidEnvDiscrete()
     env.reset()
     env.render()
-    for i in range(100):
-        action = 1  # env.action_space.sample()
+    for i in range(1000):
+        action = env.action_space.sample()
         env.step(action)
         env.render()
     env.close()
