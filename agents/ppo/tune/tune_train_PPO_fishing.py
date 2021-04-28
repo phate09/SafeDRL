@@ -14,6 +14,9 @@ import random
 from ray.tune import Callback
 from ray.tune.registry import register_env
 import gym_fishing
+
+from environment.fishing_env import MonitoredFishingEnv
+
 torch, nn = try_import_torch()
 
 
@@ -53,8 +56,8 @@ class MyCallback(Callback):
 
 def get_PPO_config(seed, use_gpu: float = 1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
-    config = {"env": "fishing",  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
+    config = {"env": MonitoredFishingEnv,  #
+              "model": {"custom_model": "my_model", "fcnet_hiddens": [16, 16], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
@@ -73,7 +76,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "sgd_minibatch_size": 1024,
               "rollout_fragment_length": 200,
               "framework": "torch",
-              "horizon": 1000,
+              "horizon": 100,
               "seed": seed,
               "evaluation_config": {
                   # Example: overriding env_config, exploration, etc:
@@ -88,9 +91,10 @@ def get_PPO_config(seed, use_gpu: float = 1):
 
 def env_creator(env_config):
     # import flappy_bird_gym
-    import gym
-    import gym_fishing
-    env = gym.make("fishing-v0")
+    # import gym
+    # import gym_fishing
+    # env = gym.make("fishing-v0")
+    env = MonitoredFishingEnv()
     return env
 
 
@@ -101,9 +105,9 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
     register_env("fishing", env_creator)
-    import flappy_bird_gym
-
-    env = gym.make("fishing-v0")
+    # import flappy_bird_gym
+    #
+    # env = gym.make("fishing-v0")
     config = get_PPO_config(use_gpu=0.5, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
@@ -112,9 +116,10 @@ if __name__ == "__main__":
         config=config,
         name=f"tune_PPO_fishing",
         checkpoint_freq=10,
+        keep_checkpoints_num=10,
         checkpoint_at_end=True,
         log_to_file=True,
-        callbacks=[MyCallback()],
+        # callbacks=[MyCallback()],
         # resume="PROMPT",
         verbose=1,
     )

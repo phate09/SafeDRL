@@ -83,6 +83,29 @@ def show_polygon_list3(polygon_vertices_list, x_axis_title, y_axis_title, templa
     return fig, projected_points
 
 
+def show_polygon_list31d(polygon_vertices_list, x_axis_title, y_axis_title, template, template2d):
+    #only works for 1dimensional data
+    traces = []
+    projected_points = []
+    for timestep in polygon_vertices_list:
+        principal_components_list = []
+        pol = polygon_vertices_list[timestep]
+        for p in pol:
+            p1 = np.expand_dims(p*np.array([1,-1]), axis=1) #fixes the negative value
+            e = np.append(p1, np.ones((p.shape[0], 1)) * timestep, axis=1)
+            principal_components_list.append(tuple([(y[1], y[0]) for y in PolygonSort(e)]))  # invert the axis
+        # polygon = [for x in polygon_vertices_list[timestep]]
+        # principal_components_list = transform_vertices2([windowed_projection(template, x, template2d)
+        #                                                  for x in polygon_vertices_list[timestep]])
+        traces.append(compute_polygon_trace(principal_components_list, marker_size=5))
+        projected_points.append([tuple([(y[0], y[1]) for y in PolygonSort(x)]) for x in principal_components_list])
+    fig = go.Figure()
+    for trace in traces:
+        fig.add_trace(trace)
+    fig.update_layout(xaxis_title=x_axis_title, yaxis_title=y_axis_title)
+    return fig, projected_points
+
+
 def create_window_boundary(template_input, x_results, template_2d, window_boundaries):
     assert len(window_boundaries) == 4
     window_template = np.vstack([template_input, template_2d, -template_2d])  # max and min
@@ -108,7 +131,7 @@ def windowed_projection(template, x_results, template_2d):
     return vertices
 
 
-def compute_polygon_trace(principalComponents: List[List]):
+def compute_polygon_trace(principalComponents: List[List], marker_size=1):
     polygon1 = [PolygonSort(x) for x in principalComponents]
-    trace1 = compute_trace_polygons(polygon1)
+    trace1 = compute_trace_polygons(polygon1, marker_size)
     return trace1

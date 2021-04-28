@@ -28,14 +28,8 @@ class FishingEnv(BaseFishingEnv):
 
 class MonitoredFishingEnv(FishingEnv):
     def __init__(self,
-                 r=0.3,
-                 K=1,
-                 sigma=0.0,
-                 n_actions=100,
-                 init_state=0.75,
-                 Tmax=100,
-                 file=None, ):
-        super().__init__(r, K, sigma, n_actions, init_state, Tmax, file)
+                 config=None):
+        super().__init__()
         self.n_steps = 5
         self.lower_bound = 0.25
         self.reward_penalty = 1000

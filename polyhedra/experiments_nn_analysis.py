@@ -13,8 +13,9 @@ import progressbar
 import ray
 import torch
 from interval import interval, imath
+import plotly.graph_objects as go
 
-from polyhedra.plot_utils import show_polygon_list3
+from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
 
 
 class Experiment():
@@ -303,10 +304,14 @@ class Experiment():
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
         last_layer = gurobi_vars[-1]
-        if action_ego == 0:
-            gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
-        else:
-            gurobi_model.addConstr(last_layer[1] >= last_layer[0], name="last_layer")
+        for i in range(last_layer.shape[0]):
+            if i == action_ego:
+                continue
+            gurobi_model.addConstr(last_layer[action_ego] >= last_layer[i], name="last_layer")
+        # if action_ego == 0:
+        #     gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
+        # else:
+        #     gurobi_model.addConstr(last_layer[1] >= last_layer[0], name="last_layer")
         gurobi_model.update()
         gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -406,7 +411,29 @@ class Experiment():
                             wr.writerow(vertex)
                         wr.writerow(item[0])  # write back the first item
                     wr.writerow("")
-
+    def generic_plot1d(self, title_x, title_y, vertices_list, template, template_2d):
+        fig, simple_vertices = show_polygon_list31d(vertices_list, title_x, title_y, template, template_2d)
+        if self.show_progress_plot:
+            fig.show()
+        if self.save_dir is not None:
+            width = 2560
+            height = 1440
+            scale = 1
+            fig.write_image(os.path.join(self.save_dir, "plot.svg"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.png"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.jpeg"), width=width, height=height, scale=scale)
+            fig.write_image(os.path.join(self.save_dir, "plot.pdf"), width=width, height=height, scale=scale)
+            fig.write_html(os.path.join(self.save_dir, "plot.html"), include_plotlyjs="cdn")
+            fig.write_json(os.path.join(self.save_dir, "plot.json"))
+            with open(os.path.join(self.save_dir, "plot.csv"), 'w', newline='') as myfile:
+                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC)
+                for timestep in simple_vertices:
+                    for item in timestep:
+                        # assert len(item) == 4
+                        for vertex in item:
+                            wr.writerow(vertex)
+                        wr.writerow(item[0])  # write back the first item
+                    wr.writerow("")
 
 def contained(x: tuple, y: tuple):
     # y contains x

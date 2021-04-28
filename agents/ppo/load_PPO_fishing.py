@@ -9,13 +9,14 @@ from ray.tune import register_env
 from agents.ppo.train_PPO_cartpole import get_PPO_trainer
 from agents.ppo.tune.tune_train_PPO_fishing import get_PPO_config, env_creator
 from agents.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
+from environment.fishing_env import MonitoredFishingEnv
 
 ray.init()
 register_env("fishing", env_creator)
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_lunar_hover/PPO_LunarHover_7ba4e_00000_0_2021-04-02_19-01-43/checkpoint_990/checkpoint-990")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_fishing/PPO_fishing_b9dcd_00000_0_2021-04-03_16-46-16/checkpoint_340/checkpoint-340")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_fishing/PPO_fishing_55f44_00000_0_2021-04-27_12-54-35/checkpoint_1460/checkpoint-1460")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
@@ -27,16 +28,17 @@ sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 #     layers.append(l)
 # nn = torch.nn.Sequential(*layers)
 nn = sequential_nn
-env = gym.make("fishing-v0")
+env = MonitoredFishingEnv()  # gym.make("fishing-v0")
 # env.render()
 plot_index = 0
 position_list = []
 # env.render()
-n_trials = 10
+n_trials = 1
 cumulative_reward = 0
 clock = pygame.time.Clock()
 for i in range(n_trials):
     state = env.reset()
+    print(state)
     # env.state[2] = 0.01
     # env.state[2] = 0.045
     # env.state[3] = -0.51
@@ -44,7 +46,7 @@ for i in range(n_trials):
     state_np = np.array(state)
     print(state_np)
     position_list.append(state_np[plot_index])
-    for i in range(1000):
+    for i in range(100):
         state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)
         # state = torch.from_numpy(state_np).float().unsqueeze(0)
         action_score = nn(state_reduced)
@@ -61,7 +63,8 @@ for i in range(n_trials):
         print(f"iteration: {i}, state: {state_np}, reward: {reward}")
         print("-------")
         # env.render()
-        clock.tick(30)  # framerate
+        # clock.tick(30)  # framerate
+        print(state)
         if done:
             print("done")
 
@@ -71,9 +74,9 @@ print("all good")
 # print(f"min_distance:{min_distance}")
 print(f"cumulative_reward:{cumulative_reward / n_trials}")
 # ray.shutdown()
-# import plotly.graph_objects as go
-#
-# fig = go.Figure()
-# trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-# fig.add_trace(trace1)
-# fig.show()
+import plotly.graph_objects as go
+
+fig = go.Figure()
+trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='lines+markers', )
+fig.add_trace(trace1)
+fig.show()
