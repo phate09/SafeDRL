@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 from gym import spaces
+from gym.utils import seeding
 
 from gym_fishing.envs.shared_env import (
     csv_entry,
@@ -19,7 +20,7 @@ class BaseFishingEnv(gym.Env):
 
     def __init__(
             self,
-            params={"r": 0.3, "K": 1, "sigma": 0.0, "x0": 0.75},
+            params={"r": 0.3, "K": 1, "sigma": 0.0, "x0_lb": 0.75, "x0_ub": 0.75},
             Tmax=100,
             file=None,
     ):
@@ -28,7 +29,9 @@ class BaseFishingEnv(gym.Env):
         self.K = params["K"]
         self.r = params["r"]
         self.sigma = params["sigma"]
-        self.init_state = params["x0"]
+        self.init_state = params["x0_lb"]
+        self.init_lb = params["x0_lb"]
+        self.init_ub = params["x0_ub"]
         self.params = params
 
         # Preserve these for reset
@@ -38,6 +41,9 @@ class BaseFishingEnv(gym.Env):
         self.years_passed = 0
         self.Tmax = Tmax
         self.file = file
+
+        self.np_random = None
+        self.seed()
 
         # for render() method only
         if file is not None:
@@ -67,7 +73,15 @@ class BaseFishingEnv(gym.Env):
         # Apply harvest and population growth
         self.harvest = min(self.fish_population, quota)
         self.fish_population = max(self.fish_population - self.harvest, 0.0)
-        self.fish_population = self.population_draw()
+
+        growth = self.r * self.fish_population * (1.0 - self.fish_population / self.K)
+        random_variation = self.fish_population * self.sigma * np.random.normal(0, 1)
+        self.fish_population = np.maximum(
+            self.fish_population
+            + growth
+            + random_variation,
+            0.0,
+        )
 
         # Map population back to system state (normalized space):
         self.state = self.get_state(self.fish_population)
@@ -82,7 +96,12 @@ class BaseFishingEnv(gym.Env):
 
         return self.state, self.reward, done, {}
 
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+
     def reset(self):
+        self.init_state = self.np_random.uniform(self.init_lb, self.init_ub)
         self.state = np.array([self.init_state / self.K - 1])
         self.fish_population = self.init_state
         self.years_passed = 0
@@ -110,19 +129,6 @@ class BaseFishingEnv(gym.Env):
 
     def plot_policy(self, df, output="results.png"):
         return plot_policyfn(self, df, output)
-
-    def population_draw(self):
-        """
-        Select a value for population to grow or decrease at each time step.
-        """
-        growth = self.r * self.fish_population * (1.0 - self.fish_population / self.K)
-        random_variation = self.fish_population * self.sigma * np.random.normal(0, 1)
-        return np.maximum(
-            self.fish_population
-            + growth
-            + random_variation,
-            0.0,
-        )
 
     def get_quota(self, action):
         """
@@ -152,3 +158,7 @@ class BaseFishingEnv(gym.Env):
 
     def get_state(self, fish_population):
         return np.array([fish_population / self.K - 1])
+
+    def set_state(self, fish_population):
+        self.state = self.get_state(fish_population)
+        return self.state

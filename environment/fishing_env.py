@@ -10,13 +10,14 @@ class FishingEnv(BaseFishingEnv):
             r=0.3,
             K=1,
             sigma=0.0,
-            n_actions=100,
-            init_state=0.75,
+            n_actions=10,
+            init_state_ub=0.75,
+            init_state_lb=0.70,
             Tmax=100,
             file=None,
     ):
         super().__init__(
-            params={"r": r, "K": K, "sigma": sigma, "x0": init_state},
+            params={"r": r, "K": K, "sigma": sigma, "x0_lb": init_state_lb, "x0_ub": init_state_ub},
             Tmax=Tmax,
             file=file,
         )

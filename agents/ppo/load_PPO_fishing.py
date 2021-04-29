@@ -16,7 +16,7 @@ register_env("fishing", env_creator)
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_lunar_hover/PPO_LunarHover_7ba4e_00000_0_2021-04-02_19-01-43/checkpoint_990/checkpoint-990")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_fishing/PPO_fishing_55f44_00000_0_2021-04-27_12-54-35/checkpoint_1460/checkpoint-1460")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_fishing/PPO_MonitoredFishingEnv_fc1cb_00000_0_2021-04-29_12-42-32/checkpoint_780/checkpoint-780")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
@@ -38,6 +38,7 @@ cumulative_reward = 0
 clock = pygame.time.Clock()
 for i in range(n_trials):
     state = env.reset()
+    state = env.set_state(0.75)
     print(state)
     # env.state[2] = 0.01
     # env.state[2] = 0.045
