@@ -18,6 +18,7 @@ class FishingExperiment(Experiment):
         self.post_fn_remote = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
+        self.assign_lbl_fn = self.assign_label
         self.template_2d: np.ndarray = np.array([[1]])
         self.input_boundaries: List = [0.75 - 1, -0.70 + 1]
         template = Experiment.box(1)
@@ -28,28 +29,49 @@ class FishingExperiment(Experiment):
         self.rounding_value = 2 ** 4
         # self.plotting_time_interval = 10
         p = Experiment.e(self.env_input_size, 0)
-        self.unsafe_zone: List[Tuple] = [([p], np.array([-0.9]))] #-0.55
+        self.minimum_percentage_population = -0.55
+        self.n_actions = 10
+        self.unsafe_zone: List[Tuple] = [([p], np.array([self.minimum_percentage_population]))]  # -0.55
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_fishing/PPO_MonitoredFishingEnv_fc1cb_00000_0_2021-04-29_12-42-32/checkpoint_780/checkpoint-780"
 
     @ray.remote
-    def post_milp(self, x, nn, output_flag, t, template):
+    def post_milp(self, x, x_label, nn, output_flag, t, template):
         post = []
-        for chosen_action in range(10):
-            gurobi_model = grb.Model()
-            gurobi_model.setParam('OutputFlag', output_flag)
-            gurobi_model.setParam('Threads', 2)
-            gurobi_model.params.NonConvex = 2
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-            feasible_action = FishingExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
-            if feasible_action:
-                # apply dynamic
-                x_prime = self.apply_dynamic(input, gurobi_model, chosen_action, env_input_size=self.env_input_size)
-                gurobi_model.update()
-                gurobi_model.optimize()
-                found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-                if found_successor:
-                    post.append((tuple(x_prime_results),x))
+        for unsafe_check in [True, False]:
+            for chosen_action in range(self.n_actions):
+                gurobi_model = grb.Model()
+                gurobi_model.setParam('OutputFlag', output_flag)
+                gurobi_model.setParam('Threads', 2)
+                gurobi_model.params.NonConvex = 2
+                input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+
+                feasible_action = FishingExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
+                if feasible_action:
+                    # apply dynamic
+                    x_prime = self.apply_dynamic(input, gurobi_model, chosen_action, env_input_size=self.env_input_size)
+                    for A, b in self.unsafe_zone:  # splits the input based on the decision boundary of the ltl property
+                        if unsafe_check:
+                            Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size)
+                        else:
+                            Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=True)
+                    gurobi_model.update()
+                    gurobi_model.optimize()
+                    found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
+                    if found_successor:
+                        post.append((tuple(x_prime_results), (x, x_label)))
         return post
+
+    def check_unsafe(self, template, bnds, x_label):
+        if x_label >= 5:
+            return True
+        else:
+            return False
+
+    def assign_label(self, x_prime, parent, parent_lbl) -> int:
+        if x_prime[0] <= self.minimum_percentage_population:
+            return parent_lbl + 1
+        else:
+            return 0
 
     @staticmethod
     def apply_dynamic(input, gurobi_model: grb.Model, action, env_input_size):
