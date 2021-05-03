@@ -48,7 +48,7 @@ class FishingExperiment(Experiment):
                 gurobi_model.optimize()
                 found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
                 if found_successor:
-                    post.append(tuple(x_prime_results))
+                    post.append((tuple(x_prime_results),x))
         return post
 
     @staticmethod

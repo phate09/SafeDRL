@@ -80,7 +80,7 @@ class Experiment():
         root_list = [root]
         vertices_list = defaultdict(list)
         seen = []
-        frontier = [(0, x) for x in root_list]
+        frontier = [(0, x, None) for x in root_list]
         max_t = 0
         num_already_visited = 0
         widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
@@ -92,7 +92,7 @@ class Experiment():
         with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar:
             while len(frontier) != 0 or len(proc_ids) != 0:
                 while len(proc_ids) < self.n_workers and len(frontier) != 0:
-                    t, x = frontier.pop(0) if self.use_bfs else frontier.pop()
+                    t, x, predecessor = frontier.pop(0) if self.use_bfs else frontier.pop()
                     if max_t > self.time_horizon:
                         print(f"Reached horizon t={t}")
                         self.plot_fn(vertices_list, template, template_2d)
@@ -133,16 +133,16 @@ class Experiment():
                     x_primes_list = ray.get(ready_ids)
                     assert len(x_primes_list) != 0, "something is wrong with the calculation of the successor"
                     for x_primes in x_primes_list:
-                        for x_prime in x_primes:
+                        for x_prime, parent in x_primes:
                             if self.use_rounding:
                                 # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
                                 x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
                                 # x_prime_rounded should always be bigger than x_prime
                                 assert contained(x_prime, x_prime_rounded)
                                 x_prime = x_prime_rounded
-                            frontier = [(u, y) for u, y in frontier if not contained(y, x_prime)]
-                            if not any([contained(x_prime, y) for u, y in frontier]):
-                                frontier.append(((t + 1), x_prime))
+                            frontier = [(u, y, p) for u, y, p in frontier if not contained(y, x_prime)]
+                            if not any([contained(x_prime, y) for u, y, p in frontier]):
+                                frontier.append(((t + 1), x_prime, parent))
                                 # print(x_prime)
                             else:
                                 num_already_visited += 1
@@ -411,6 +411,7 @@ class Experiment():
                             wr.writerow(vertex)
                         wr.writerow(item[0])  # write back the first item
                     wr.writerow("")
+
     def generic_plot1d(self, title_x, title_y, vertices_list, template, template_2d):
         fig, simple_vertices = show_polygon_list31d(vertices_list, title_x, title_y, template, template_2d)
         if self.show_progress_plot:
@@ -434,6 +435,7 @@ class Experiment():
                             wr.writerow(vertex)
                         wr.writerow(item[0])  # write back the first item
                     wr.writerow("")
+
 
 def contained(x: tuple, y: tuple):
     # y contains x
