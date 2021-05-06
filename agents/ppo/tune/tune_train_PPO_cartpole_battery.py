@@ -63,7 +63,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "clip_rewards": 100,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
-              "batch_mode": "truncate_episodes",
+              "batch_mode": "complete_episodes", #truncate_episodes
               "evaluation_interval": 10,
               "evaluation_num_episodes": 20,
               "use_gae": True,  #
@@ -73,7 +73,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "sgd_minibatch_size": 1024,
               "rollout_fragment_length": 200,
               "framework": "torch",
-              "horizon": 8000,
+              "horizon": 2000,
               "seed": seed,
               "evaluation_config": {
                   # Example: overriding env_config, exploration, etc:
@@ -81,7 +81,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
                   "explore": False
               },
               "env_config": {"cost_fn": 0,  # tune.grid_search([0, 1, 2]),
-                             "tau": 0.001}  # tune.grid_search([0.001, 0.02, 0.005])}
+                             "tau": 0.02}  # tune.grid_search([0.001, 0.02, 0.005])}
               }
     return config
 
@@ -96,13 +96,14 @@ if __name__ == "__main__":
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(
         "PPO",
-        stop={"info/num_steps_trained": 2e7, "episode_reward_mean": 7950},
+        stop={"info/num_steps_trained": 8e7, "episode_reward_mean": 2000},
         config=config,
         name=f"tune_PPO_cartpole_battery",
         checkpoint_freq=10,
         checkpoint_at_end=True,
         log_to_file=True,
         callbacks=[MyCallback()],
+        keep_checkpoints_num=10,
         # resume="PROMPT",
         verbose=1,
     )

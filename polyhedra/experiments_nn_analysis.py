@@ -28,6 +28,7 @@ class Experiment():
         self.plot_fn = None
         self.post_fn_remote = None
         self.assign_lbl_fn = None
+        self.additional_seen_fn = None  # adds additional elements to seen list
         self.template_2d: np.ndarray = None
         self.input_template: np.ndarray = None
         self.input_boundaries: List = None
@@ -36,7 +37,7 @@ class Experiment():
         self.output_flag = False
         self.env_input_size: int = env_input_size
         self.n_workers = 8
-        self.plotting_time_interval = 60 * 2
+        self.plotting_time_interval = 60 * 5
         self.time_horizon = 100
         self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
@@ -85,6 +86,9 @@ class Experiment():
         root_list = [root_pair]
         vertices_list = defaultdict(list)
         seen = []
+        if self.additional_seen_fn is not None:
+            for extra in self.additional_seen_fn():
+                seen.append(extra)
         frontier = [(0, x) for x in root_list]
         if self.graph is not None:
             self.graph.add_node(root_pair)
@@ -282,7 +286,8 @@ class Experiment():
         return x_prime_results is not None, x_prime_results
 
     @staticmethod
-    def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0):
+    def generate_nn_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
+        gurobi_model.setParam("DualReductions", 0)
         gurobi_vars = []
         gurobi_vars.append(input)
         for i, layer in enumerate(nn):
@@ -299,7 +304,6 @@ class Experiment():
                 v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
 
                 z = gurobi_model.addMVar(shape=gurobi_vars[-1].shape, vtype=grb.GRB.BINARY, name=f"relu_{i}")  # lb=0, ub=1,
-                M = 1e2
                 # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
                 gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
                 gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")

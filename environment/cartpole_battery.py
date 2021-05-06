@@ -71,21 +71,21 @@ class CartPoleBatteryEnv(gym.Env):
         self.length = 0.5  # actually half the pole's length
         self.polemass_length = (self.masspole * self.length)
         self.force_mag = 10.0
-        self.tau = 0.001  # seconds between state updates
+        self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = 'euler'
         self.action_cost = 0.5
 
         # Angle at which to fail the episode
-        self.theta_threshold_radians = 12 * 2 * math.pi / 360
+        self.theta_threshold_radians = 30 * 2 * math.pi / 360
         self.x_threshold = 2.4
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation
         # is still within bounds.
         high = np.array([np.finfo(np.float32).max,
                          np.finfo(np.float32).max,
-                         self.theta_threshold_radians * 2,
+                         np.finfo(np.float32).max,  # self.theta_threshold_radians * 2,
                          np.finfo(np.float32).max,
-                         np.finfo(np.float32).max  # battery charge
+                         np.finfo(np.float32).max  # battery charge =100.0
                          ],
                         dtype=np.float32)
 
@@ -116,10 +116,10 @@ class CartPoleBatteryEnv(gym.Env):
         if battery > 0:
             if action == 1:
                 force = self.force_mag
-                battery -= self.action_cost
+                battery = max(0,battery - self.action_cost)
             elif action == 2:
                 force = -self.force_mag
-                battery -= self.action_cost
+                battery = max(0, battery - self.action_cost)
         else:
             force = 0
         costheta = math.cos(theta)
@@ -146,8 +146,8 @@ class CartPoleBatteryEnv(gym.Env):
         done = bool(
             # x < -self.x_threshold
             # or x > self.x_threshold
-            theta < -self.theta_threshold_radians
-            or theta > self.theta_threshold_radians
+            (theta < -self.theta_threshold_radians
+             or theta > self.theta_threshold_radians) or battery <= 0
         )
 
         if not done:
