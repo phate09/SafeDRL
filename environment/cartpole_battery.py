@@ -116,7 +116,7 @@ class CartPoleBatteryEnv(gym.Env):
         if battery > 0:
             if action == 1:
                 force = self.force_mag
-                battery = max(0,battery - self.action_cost)
+                battery = max(0, battery - self.action_cost)
             elif action == 2:
                 force = -self.force_mag
                 battery = max(0, battery - self.action_cost)
@@ -152,6 +152,7 @@ class CartPoleBatteryEnv(gym.Env):
 
         if not done:
             reward = 1.0
+            reward -= 0.1 if action != 0 else 0
             if self.cost_fn >= 1:
                 reward -= 0.5 * (theta ** 2)
                 reward -= 0.5 * (theta_dot ** 2)

@@ -14,7 +14,7 @@ import random
 from environment.bouncing_ball_old import BouncingBall
 from environment.cartpole_ray import CartPoleEnv
 from environment.lunar_hover import LunarHover
-from environment.pendulum import PendulumEnv
+from environment.pendulum import MonitoredPendulum
 from environment.stopping_car import StoppingCar
 from ray.tune import Callback
 
@@ -57,8 +57,8 @@ class MyCallback(Callback):
 
 def get_PPO_config(seed, use_gpu: float = 1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
-    config = {"env": PendulumEnv,  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
+    config = {"env": MonitoredPendulum,  #
+              "model": {"custom_model": "my_model", "fcnet_hiddens": [16, 16], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
@@ -67,7 +67,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "clip_rewards": 100,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
-              "batch_mode": "truncate_episodes",
+              "batch_mode": "complete_episodes",
               "evaluation_interval": 10,
               "evaluation_num_episodes": 20,
               "use_gae": True,  #
@@ -107,6 +107,7 @@ if __name__ == "__main__":
         checkpoint_at_end=True,
         log_to_file=True,
         callbacks=[MyCallback()],
+        keep_checkpoints_num=20,
         # resume="PROMPT",
         verbose=1,
     )

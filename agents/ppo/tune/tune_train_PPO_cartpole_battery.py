@@ -17,7 +17,7 @@ from ray.tune import Callback
 
 torch, nn = try_import_torch()
 
-custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
 
 
 class TorchCustomModel(TorchModelV2, nn.Module):
@@ -30,7 +30,8 @@ class TorchCustomModel(TorchModelV2, nn.Module):
         self.torch_sub_model = TorchFC(custom_input_space, action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        input_dict["obs"] = input_dict["obs"].float()[:, -3:]
+        if input_dict["obs"].shape[1]>2:
+            input_dict["obs"] = input_dict["obs"].float()[:, -3:-1]  # we ignore battery
         fc_out, _ = self.torch_sub_model(input_dict, state, seq_lens)
         return fc_out, []
 
@@ -54,7 +55,7 @@ class MyCallback(Callback):
 def get_PPO_config(seed, use_gpu: float = 1):
     ModelCatalog.register_custom_model("my_model", TorchCustomModel)
     config = {"env": CartPoleBatteryEnv,  #
-              "model": {"custom_model": "my_model", "fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
+              "model": {"custom_model": "my_model", "fcnet_hiddens": [16, 16], "fcnet_activation": "relu"},  # model config," "custom_model": "my_model"
               "vf_share_layers": False,
               "lr": 5e-4,
               "num_gpus": use_gpu,
@@ -63,7 +64,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "clip_rewards": 100,
               "num_workers": 3,  # parallelism
               "num_envs_per_worker": 10,
-              "batch_mode": "complete_episodes", #truncate_episodes
+              "batch_mode": "complete_episodes",  # truncate_episodes
               "evaluation_interval": 10,
               "evaluation_num_episodes": 20,
               "use_gae": True,  #

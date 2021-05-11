@@ -24,13 +24,16 @@ class PendulumEnv(gym.Env):
         self.m = 1.
         self.l = 1.
         self.viewer = None
-
-        high = np.array([1., 1., self.max_speed], dtype=np.float32)
-        self.action_space = spaces.Box(
-            low=-self.max_torque,
-            high=self.max_torque, shape=(1,),
-            dtype=np.float32
-        )
+        self.discrete_actions = True
+        high = np.array([1., 1., np.pi, self.max_speed], dtype=np.float32)
+        if not self.discrete_actions:
+            self.action_space = spaces.Box(
+                low=-self.max_torque,
+                high=self.max_torque, shape=(1,),
+                dtype=np.float32
+            )
+        else:
+            self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=-high,
             high=high,
@@ -43,15 +46,21 @@ class PendulumEnv(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def step(self, u):
+    def step(self, action):
         th, thdot = self.state  # th := theta
 
         g = self.g
         m = self.m
         l = self.l
         dt = self.dt
-
-        u = np.clip(u, -self.max_torque, self.max_torque)[0]
+        if not self.discrete_actions:
+            u = np.clip(action, -self.max_torque, self.max_torque)[0]
+        else:
+            u = 0
+            if action == 1:
+                u = -self.max_torque
+            if action == 2:
+                u = self.max_torque
         self.last_u = u  # for rendering
         costs = angle_normalize(th) ** 2 + .1 * thdot ** 2 + .001 * (u ** 2)
 
@@ -70,7 +79,7 @@ class PendulumEnv(gym.Env):
 
     def _get_obs(self):
         theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), thetadot])
+        return np.array([np.cos(theta), np.sin(theta), angle_normalize(theta), thetadot])
 
     def render(self, mode='human'):
         if self.viewer is None:
@@ -105,6 +114,25 @@ class PendulumEnv(gym.Env):
 
 def angle_normalize(x):
     return (((x + np.pi) % (2 * np.pi)) - np.pi)
+
+
+class MonitoredPendulum(PendulumEnv):
+    def __init__(self, conf=None):
+        super().__init__(conf)
+        self.max_steps = 20
+        self.failure_step = 0
+        self.max_angle = 90
+
+    def step(self, action):
+        obs, cost, done, _ = super().step(action)
+        if np.abs(self.state[0]) > 90:
+            self.failure_step += 1
+        else:
+            self.failure_step = 0
+        if self.failure_step >= self.max_steps:
+            done = True
+            cost -= 1000
+        return obs, cost, done, _
 
 
 if __name__ == '__main__':
