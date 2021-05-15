@@ -21,20 +21,20 @@ from ray.tune import Callback
 torch, nn = try_import_torch()
 
 
-# custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
+custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
 
 
 class TorchCustomModel(TorchModelV2, nn.Module):
     """Example of a PyTorch custom model that just delegates to a fc-net."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
+        TorchModelV2.__init__(self, custom_input_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
 
-        self.torch_sub_model = TorchFC(obs_space, action_space, num_outputs, model_config, name)
+        self.torch_sub_model = TorchFC(custom_input_space, action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        # input_dict["obs"] = input_dict["obs"].float()[:, -2:]
+        input_dict["obs"] = input_dict["obs"].float()[:, -2:]
         fc_out, _ = self.torch_sub_model(input_dict, state, seq_lens)
         return fc_out, []
 

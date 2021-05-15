@@ -151,7 +151,7 @@ class Experiment():
                                 # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
                                 x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
                                 # x_prime_rounded should always be bigger than x_prime
-                                assert contained(x_prime, x_prime_rounded)
+                                assert contained(x_prime, x_prime_rounded), f"{x_prime} not contained in {x_prime_rounded}"
                                 x_prime = x_prime_rounded
                             frontier = [(u, (y, y_label)) for u, (y, y_label) in frontier if not (y_label == x_prime_label and contained(y, x_prime))]
                             if not any([(y_label == x_prime_label and contained(x_prime, y)) for u, (y, y_label) in frontier]):
@@ -169,11 +169,17 @@ class Experiment():
     def round_tuple(x, rounding_value):
         rounded_x = []
         for val in x:
-            if val < 0:
-                rounded_x.append(-1 * math.floor(abs(val) * rounding_value) / rounding_value)
-            else:
-                rounded_x.append(math.ceil(abs(val) * rounding_value) / rounding_value)
+            rounded_value = Experiment.round_single(val, rounding_value)
+            rounded_x.append(rounded_value)
         return tuple(rounded_x)
+
+    @staticmethod
+    def round_single(val, rounding_value):
+        if val < 0:
+            rounded_value = -1 * math.floor(abs(val) * rounding_value) / rounding_value
+        else:
+            rounded_value = math.ceil(abs(val) * rounding_value) / rounding_value
+        return rounded_value
 
     def generate_root_polytope(self):
         gurobi_model = grb.Model()
@@ -300,6 +306,9 @@ class Experiment():
                     lin_expr = lin_expr + layer.bias.data.numpy()
                 gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
                 gurobi_vars.append(v)
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
             elif type(layer) is torch.nn.ReLU:
                 v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
 
@@ -310,9 +319,9 @@ class Experiment():
                 gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
                 gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
                 gurobi_vars.append(v)
-                # gurobi_model.update()
-                # gurobi_model.optimize()
-                # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
                 """
                 y = Relu(x)
                 0 <= z <= 1, z is integer
@@ -458,10 +467,10 @@ class Experiment():
                     wr.writerow("")
 
 
-def contained(x: tuple, y: tuple):
+def contained(x: tuple, y: tuple, eps=1e-9):
     # y contains x
     assert len(x) == len(y)
     for i in range(len(x)):
-        if x[i] > y[i]:
+        if x[i] > y[i]+eps:
             return False
     return True

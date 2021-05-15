@@ -67,6 +67,7 @@ class PendulumEnv(gym.Env):
         newthdot = thdot + (-3 * g / (2 * l) * np.sin(th + np.pi) + 3. / (m * l ** 2) * u) * dt
         newth = th + newthdot * dt
         newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
+        newth = angle_normalize(newth)
 
         self.state = np.array([newth, newthdot])
         return self._get_obs(), -costs, False, {}
@@ -79,7 +80,7 @@ class PendulumEnv(gym.Env):
 
     def _get_obs(self):
         theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), angle_normalize(theta), thetadot])
+        return np.array([np.cos(theta), np.sin(theta), theta, thetadot])
 
     def render(self, mode='human'):
         if self.viewer is None:
@@ -113,7 +114,7 @@ class PendulumEnv(gym.Env):
 
 
 def angle_normalize(x):
-    return (((x + np.pi) % (2 * np.pi)) - np.pi)
+    return (((x + np.pi) % (2 * np.pi)) - np.pi)  # normalise the angle between \pi and -\pi
 
 
 class MonitoredPendulum(PendulumEnv):

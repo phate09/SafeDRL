@@ -25,6 +25,7 @@ class CartpoleBatteryExperiment(Experiment):
         self.assign_lbl_fn = self.assign_label
         self.additional_seen_fn = self.additional_seen
         self.template_2d: np.ndarray = np.array([[0, 0, 1, 0, 0], [0, 0, 0, 1, 0]])
+        self.rounding_value = 2 ** 20  # 1024
         input_boundaries, input_template = self.get_template(0)
         self.input_boundaries: List = input_boundaries
         self.input_template: np.ndarray = input_template
@@ -37,7 +38,7 @@ class CartpoleBatteryExperiment(Experiment):
         self.unsafe_zone: List[Tuple] = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
         self.battery_split: List[Tuple] = [(battery, np.array([0]))]
         # self.use_rounding = False
-        self.rounding_value = 1024
+
         self.time_horizon = 3000
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole_battery/PPO_CartPoleBatteryEnv_e4e96_00000_0_2021-05-06_10-17-35/checkpoint_1640/checkpoint-1640"
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole_battery/PPO_CartPoleBatteryEnv_54127_00000_0_2021-05-08_16-37-42/checkpoint_1230/checkpoint-1230"
@@ -52,7 +53,7 @@ class CartpoleBatteryExperiment(Experiment):
         """milp method"""
         post = []
         for split_battery in [True, False]:  # split successor if battery if >0 or <0
-            for chosen_action in range(self.n_actions):
+            for chosen_action in range(self.n_actions):  # [2]:
                 if (chosen_action == 2 or chosen_action == 1) and x_label == 1:  # skip actions when battery is dead
                     continue
                 gurobi_model = grb.Model()
@@ -61,13 +62,14 @@ class CartpoleBatteryExperiment(Experiment):
                 # gurobi_model.setParam('DualReductions', 1)
                 input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)  # todo check battery >0
                 # gurobi_model.addConstr(input[4] <= 30.0)  # max battery cap at 100%
-                max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
+
                 feasible_action = CartpoleBatteryExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e04)
                 if feasible_action or x_label == 1:  # performs action 2 automatically when battery is dead
+                    max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
                     sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
                     thetaacc, xacc = CartpoleBatteryExperiment.generate_angle_milp(gurobi_model, input, sin_cos_table)
                     if gurobi_model.status != 2:
-                        continue
+                        assert gurobi_model.status == 2, f"LP wasn't optimally solved {x}"
                     # apply dynamic
                     x_prime = self.apply_dynamic(input, gurobi_model, thetaacc=thetaacc, xacc=xacc, env_input_size=self.env_input_size, action=chosen_action)
                     for A, b in self.battery_split:
@@ -148,8 +150,8 @@ class CartpoleBatteryExperiment(Experiment):
     def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
         assert min_theta <= max_theta, f"min_theta = {min_theta},max_theta={max_theta}"
         assert min_theta_dot <= max_theta_dot, f"min_theta_dot = {min_theta_dot},max_theta_dot={max_theta_dot}"
-        step_theta = 0.1
-        step_theta_dot = 0.1
+        step_theta = 0.1  # 0.1
+        step_theta_dot = 0.1  # 0.1
         step_thetaacc = 0.3
         min_theta = max(min_theta, -math.pi / 2)
         max_theta = min(max_theta, math.pi / 2)
@@ -168,7 +170,7 @@ class CartpoleBatteryExperiment(Experiment):
                 lb_theta_dot = t_dot
                 ub_theta_dot = min(t_dot + step_theta_dot, max_theta_dot)
                 lb = theta
-                ub = min(theta + step_theta, max_theta)
+                ub = min(theta + step_theta, max_theta) if theta >= 0 else min(min(theta + step_theta, max_theta), 0)  # split at 0
                 split.append((interval([lb_theta_dot, ub_theta_dot]), interval([lb, ub])))
         sin_cos_table = []
         while (len(split)):
@@ -178,7 +180,7 @@ class CartpoleBatteryExperiment(Experiment):
             temp = (force + env.polemass_length * theta_dot ** 2 * sintheta) / env.total_mass
             thetaacc: interval = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
             xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
-            if thetaacc[0].sup - thetaacc[0].inf > step_thetaacc:
+            if abs(thetaacc[0].sup - thetaacc[0].inf) > step_thetaacc:
                 # split theta theta_dot
                 mid_theta = (theta[0].sup + theta[0].inf) / 2
                 mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
@@ -226,6 +228,9 @@ class CartpoleBatteryExperiment(Experiment):
         sum_{i=1}^k l_{x,i} - l_{x,i}*z_i <= x <= sum_{i=1}^k u_{x,i} - u_{x,i}*z_i, for each variable x
         sum_{i=1}^k l_{theta,i} - l_{theta,i}*z_i <= theta <= sum_{i=1}^k u_{theta,i} - u_{theta,i}*z_i
         """
+        # gurobi_model.setParam('OptimalityTol', 1e-6)
+        # gurobi_model.setParam('FeasibilityTol', 1e-6)
+        # gurobi_model.setParam('IntFeasTol', 1e-9)
         theta = input[2]
         theta_dot = input[3]
         k = len(sin_cos_table)
@@ -244,18 +249,27 @@ class CartpoleBatteryExperiment(Experiment):
         thetaacc_ub = 0
         xacc_lb = 0
         xacc_ub = 0
+        round_value = 2 ** 20
         for i in range(k):
             theta_interval, theta_dot_interval, theta_acc_interval, xacc_interval = sin_cos_table[i]
-            theta_lb += theta_interval[0].inf - theta_interval[0].inf * zs[i]
-            theta_ub += theta_interval[0].sup - theta_interval[0].sup * zs[i]
-            theta_dot_lb += theta_dot_interval[0].inf - theta_dot_interval[0].inf * zs[i]
-            theta_dot_ub += theta_dot_interval[0].sup - theta_dot_interval[0].sup * zs[i]
+            theta_inf = Experiment.round_single(theta_interval[0].inf, round_value)
+            theta_sup = Experiment.round_single(theta_interval[0].sup, round_value)
+            theta_dot_inf = Experiment.round_single(theta_dot_interval[0].inf, round_value)
+            theta_dot_sup = Experiment.round_single(theta_dot_interval[0].sup, round_value)
+            theta_lb += theta_inf - theta_inf * zs[i]
+            theta_ub += theta_sup - theta_sup * zs[i]
+            theta_dot_lb += theta_dot_inf - theta_dot_inf * zs[i]
+            theta_dot_ub += theta_dot_sup - theta_dot_sup * zs[i]
 
-            thetaacc_lb += theta_acc_interval[0].inf - theta_acc_interval[0].inf * zs[i]
-            thetaacc_ub += theta_acc_interval[0].sup - theta_acc_interval[0].sup * zs[i]
+            theta_acc_interval__inf = Experiment.round_single(theta_acc_interval[0].inf, round_value)
+            theta_acc_interval__sup = Experiment.round_single(theta_acc_interval[0].sup, round_value)
+            xacc_interval__inf = Experiment.round_single(xacc_interval[0].inf, round_value)
+            xacc_interval__sup = Experiment.round_single(xacc_interval[0].sup, round_value)
 
-            xacc_lb += xacc_interval[0].inf - xacc_interval[0].inf * zs[i]
-            xacc_ub += xacc_interval[0].sup - xacc_interval[0].sup * zs[i]
+            thetaacc_lb += theta_acc_interval__inf - theta_acc_interval__inf * zs[i]
+            thetaacc_ub += theta_acc_interval__sup - theta_acc_interval__sup * zs[i]
+            xacc_lb += xacc_interval__inf - xacc_interval__inf * zs[i]
+            xacc_ub += xacc_interval__sup - xacc_interval__sup * zs[i]
 
         gurobi_model.addConstr(theta >= theta_lb, name=f"theta_guard1")
         gurobi_model.addConstr(theta <= theta_ub, name=f"theta_guard2")
@@ -269,8 +283,7 @@ class CartpoleBatteryExperiment(Experiment):
 
         gurobi_model.update()
         gurobi_model.optimize()
-        # if gurobi_model.status != 2:
-        #     assert gurobi_model.status == 2, "LP wasn't optimally solved"
+
         return thetaacc, xacc
 
     def plot(self, vertices_list, template, template_2d):
@@ -283,8 +296,12 @@ class CartpoleBatteryExperiment(Experiment):
         theta_dot = Experiment.e(self.env_input_size, 3)
         battery = Experiment.e(self.env_input_size, 4)
         if mode == 0:  # box directions with intervals
-            input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 30, -1]
-            # input_boundaries = [0.064453125, 0.0615234375, 0.1201171875, 0.0810546875, 0.18359375, 0.1416015625, 0.0791015625, 0.0966796875, 5, -5.0]
+            # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 30, -1]
+            # input_boundaries = (0.0986328125, 0.0908203125, 0.12890625, 0.1181640625, 0.2275390625, 0.2080078125, 0.08984375, 0.099609375, 27.908203125, 0.0)
+            # input_boundaries = (-0.13397, 0.134071, 0.119921, -0.115271, -0.014145, 0.018799, -0.249242, 0.253988, 26.008204, 0.0)
+            input_boundaries = (-0.124331, 0.176405, 0.039151, 0.071584, -0.101738, 0.235551, -0.081928, 0.189861, 3.608215, 0.0)
+            input_boundaries = (-0.10726, 0.193659, 0.127264, -0.037434, -0.010739, 0.156224, -0.171754, 0.288924, 3.108215, 0.0)
+            self.round_tuple(input_boundaries, self.rounding_value)
             # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
             # optimise in a direction
             template = []
@@ -292,7 +309,7 @@ class CartpoleBatteryExperiment(Experiment):
                 template.append(Experiment.e(self.env_input_size, dimension))
                 template.append(-Experiment.e(self.env_input_size, dimension))
             template = np.array(template)  # the 6 dimensions in 2 variables
-            return input_boundaries, template
+            return self.round_tuple(input_boundaries, self.rounding_value), template
         if mode == 1:  # directions to easily find fixed point
             input_boundaries = None
             template = np.array(
@@ -337,6 +354,7 @@ class CartpoleBatteryExperiment(Experiment):
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=False, log_to_driver=False)
+    ray.init(local_mode=True, log_to_driver=False)
     experiment = CartpoleBatteryExperiment()
+    experiment.n_workers = 1
     experiment.run_experiment()

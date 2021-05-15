@@ -28,18 +28,18 @@ ray.init()
 config = get_PPO_config(1234)
 trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_85b30_00000_0_2021-05-06_13-56-49/checkpoint_310/checkpoint-310")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333")
 
 policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-# l0 = torch.nn.Linear(4, 2, bias=False)
-# l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
-# layers = [l0]
-# for l in sequential_nn:
-#     layers.append(l)
-# nn = torch.nn.Sequential(*layers)
-nn = sequential_nn
+l0 = torch.nn.Linear(4, 2, bias=False)
+l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
+layers = [l0]
+for l in sequential_nn:
+    layers.append(l)
+nn = torch.nn.Sequential(*layers)
+# nn = sequential_nn
 env = MonitoredPendulum(None)
 
 plot_index = 0
@@ -56,7 +56,7 @@ for i in range(n_trials):
     state_np = np.array(state)
     print(state_np)
     position_list.append(state_np[plot_index])
-    for i in range(2000):
+    for i in range(200):
         state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)
         # state = torch.from_numpy(state_np).float().unsqueeze(0)
         action_score = nn(state_reduced)
