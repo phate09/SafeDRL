@@ -205,9 +205,10 @@ class Experiment():
         return input
 
     @staticmethod
-    def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size):
-        model.input = pyo.Var(range(env_input_size), domain=pyo.Reals, name="input")
-        Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size)
+    def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size, name="input"):
+        input = pyo.Var(range(env_input_size), domain=pyo.Reals, name=name)
+        model.add_component(name, input)
+        Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size, name=f"{name}_constraints")
         return model.input
 
     @staticmethod
@@ -223,20 +224,19 @@ class Experiment():
                 gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
 
     @staticmethod
-    def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False):
-
-        if model.component("region_constraints") is None:
-            model.region_constraints = pyo.ConstraintList()
+    def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
+        region_constraints = pyo.ConstraintList()
+        model.add_component(name, region_constraints)
         for j, template in enumerate(templates):
             multiplication = 0
             for i in range(env_input_size):
                 multiplication += template[i] * input[i]
             if not invert:
                 # gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-                model.region_constraints.add(multiplication <= boundaries[j])
+                region_constraints.add(multiplication <= boundaries[j])
             else:
                 # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
-                model.region_constraints.add(multiplication >= boundaries[j])
+                region_constraints.add(multiplication >= boundaries[j])
 
     def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
         results = []

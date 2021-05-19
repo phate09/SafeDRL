@@ -90,20 +90,29 @@ class CartpoleBatteryExperiment(Experiment):
                     model = pyo.ConcreteModel()
                     input = Experiment.generate_input_region_pyo(model, template, x, self.env_input_size)
                     feasible_action = CartpoleBatteryExperiment.generate_nn_guard_pyo(model, input, nn, action_ego=chosen_action, M=1e04)
+                    print("nn_guard")
                     if feasible_action or x_label == 1:  # performs action 2 automatically when battery is dead
                         max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds_pyo(model, input)
+                        print("get_theta_bounds_pyo")
                         sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
                         thetaacc, xacc = CartpoleBatteryExperiment.generate_angle_milp_pyo(model, input, sin_cos_table)
 
                         model.del_component(model.obj)
                         model.obj = pyo.Objective(expr=thetaacc, sense=pyo.maximize)
                         result = pyo.SolverFactory('glpk').solve(model)
+                        print("generate_angle_milp_pyo")
                         assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal), f"LP wasn't optimally solved {x}"
                         # apply dynamic
                         x_prime = self.apply_dynamic_pyo(input, model, thetaacc=thetaacc, xacc=xacc, env_input_size=self.env_input_size, action=chosen_action)
+                        print("apply_dynamic_pyo")
+                        index = 0
                         for A, b in self.battery_split:
-                            Experiment.generate_region_constraints_pyo(model, A, x_prime, b, self.env_input_size, invert=not split_battery)
-
+                            Experiment.generate_region_constraints_pyo(model, A, x_prime, b, self.env_input_size, invert=not split_battery, name=f"battery_constraints_{index}")
+                            index += 1
+                        model.del_component(model.obj)
+                        model.obj = pyo.Objective(expr=thetaacc, sense=pyo.maximize)
+                        result = pyo.SolverFactory('glpk').solve(model)
+                        print("generate_region_constraints_pyo")
                         x_prime_results = self.optimise_pyo(template, model, x_prime)
                         found_successor = x_prime_results is not None
                         if found_successor:
@@ -209,12 +218,12 @@ class CartpoleBatteryExperiment(Experiment):
         return z
 
     @staticmethod
-    def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
+    def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action, step_thetaacc=0.3):
         assert min_theta <= max_theta, f"min_theta = {min_theta},max_theta={max_theta}"
         assert min_theta_dot <= max_theta_dot, f"min_theta_dot = {min_theta_dot},max_theta_dot={max_theta_dot}"
         step_theta = 0.1  # 0.1
         step_theta_dot = 0.1  # 0.1
-        step_thetaacc = 100  # 0.3
+
         min_theta = max(min_theta, -math.pi / 2)
         max_theta = min(max_theta, math.pi / 2)
         split_theta1 = np.arange(min(min_theta, 0), min(max_theta, 0), step_theta)
@@ -243,17 +252,18 @@ class CartpoleBatteryExperiment(Experiment):
             thetaacc: interval = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
             xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
             if abs(thetaacc[0].sup - thetaacc[0].inf) > step_thetaacc:
-                # split theta theta_dot
-                mid_theta = (theta[0].sup + theta[0].inf) / 2
-                mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
-                theta_1 = interval([theta[0].inf, mid_theta])
-                theta_2 = interval([mid_theta, theta[0].sup])
-                theta_dot_1 = interval([theta_dot[0].inf, mid_theta_dot])
-                theta_dot_2 = interval([mid_theta_dot, theta_dot[0].sup])
-                split.append((theta_1, theta_dot_1))
-                split.append((theta_1, theta_dot_2))
-                split.append((theta_2, theta_dot_1))
-                split.append((theta_2, theta_dot_2))
+                if (theta[0].sup - theta[0].inf) > (theta_dot[0].sup - theta_dot[0].inf):
+                    mid_theta = (theta[0].sup + theta[0].inf) / 2
+                    theta_1 = interval([theta[0].inf, mid_theta])
+                    theta_2 = interval([mid_theta, theta[0].sup])
+                    split.append((theta_1, theta_dot))
+                    split.append((theta_2, theta_dot))
+                else:
+                    mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
+                    theta_dot_1 = interval([theta_dot[0].inf, mid_theta_dot])
+                    theta_dot_2 = interval([mid_theta_dot, theta_dot[0].sup])
+                    split.append((theta, theta_dot_1))
+                    split.append((theta, theta_dot_2))
             else:
                 sin_cos_table.append((theta, theta_dot, thetaacc, xacc))
         return sin_cos_table
@@ -517,7 +527,7 @@ class CartpoleBatteryExperiment(Experiment):
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=False, log_to_driver=False)
+    ray.init(local_mode=True, log_to_driver=False)
     experiment = CartpoleBatteryExperiment()
-    # experiment.n_workers = 1
+    experiment.n_workers = 1
     experiment.run_experiment()
