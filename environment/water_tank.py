@@ -54,8 +54,8 @@ class WaterTankEnv(gym.Env):
         return self.state, costs, False, {}
 
     def reset(self):
-        self.state = self.np_random.uniform(low=np.array([0, 0, 0], dtype=np.float32),
-                                            high=np.array([100, 6, 0], dtype=np.float32))
+        self.state = self.np_random.uniform(low=np.array([45, 0, 0], dtype=np.float32),
+                                            high=np.array([55, 6, 0], dtype=np.float32))
         self.state[2] = self.np_random.randint(2)
         return self.state
 
@@ -74,10 +74,12 @@ class MonitoredWaterTank(WaterTankEnv):
 
     def step(self, action):
         if self.state[1] < 3 and action != self.state[2]:
-            return self.state, -10, False, {}  # just punish wrong behaviour but don't execute action
-        obs, cost, done, _ = super().step(action)
+            obs, cost, done, _ = super().step(self.state[2])
+            return obs, cost - 10, done, {}  # just punish wrong behaviour but don't execute action
+        else:
+            obs, cost, done, _ = super().step(action)
         if self.state[0] >= 100 or self.state[0] <= 0:  # overflow / runs dry
-            done = True
+            # done = True
             cost -= 1000
         return obs, cost, done, _
 

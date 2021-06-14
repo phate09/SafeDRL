@@ -76,7 +76,7 @@ def get_PPO_config(seed, use_gpu: float = 1):
               "sgd_minibatch_size": 1024,
               "rollout_fragment_length": 200,
               "framework": "torch",
-              "horizon": 100,
+              "horizon": 500,
               "seed": seed,
               "evaluation_config": {
                   # Example: overriding env_config, exploration, etc:

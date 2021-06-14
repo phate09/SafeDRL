@@ -17,7 +17,7 @@ class ThermostatEnv(gym.Env):
 
     def __init__(self):
         # physical properties of the system
-        self.c = 1.
+        self.c = 1. #temperature resistance
         self.inv_c = 1. / self.c
         self.k = 1.
         self.Text = 20.
