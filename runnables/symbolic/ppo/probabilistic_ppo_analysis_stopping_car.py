@@ -8,6 +8,7 @@ import pypoman
 import ray
 import torch
 import plotly.graph_objects as go
+from colour import Color
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 
@@ -26,6 +27,7 @@ from polyhedra.experiments_nn_analysis import Experiment, contained
 import numpy as np
 import polyhedra.runnable.templates.polytope as polytope
 from utility.standard_progressbar import StandardProgressBar
+import pickle
 
 
 def sample_and_split(nn, template, boundaries):
@@ -50,20 +52,25 @@ def sample_and_split(nn, template, boundaries):
     return split1, split2
 
 
-def show_polygons(template, boundaries, template_2d):
+
+
+
+def show_polygons(template, boundaries, template_2d, colours=None):
     fig = go.Figure()
-    for boundary in boundaries:
+    import plotly.express as px
+    for i, boundary in enumerate(boundaries):
         vertices = windowed_projection(template, boundary, template_2d)
         # vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (template, np.array(boundaries)), canonicalize=False)
         assert vertices is not None
         sorted_vertices = PolygonSort(vertices)
-        trace = compute_trace_polygons([sorted_vertices])
+        trace = compute_trace_polygons([sorted_vertices], colours=[colours[i]])
         fig.add_trace(trace)
     fig.update_yaxes(
         scaleanchor="x",
         scaleratio=1,
     )
     fig.show()
+    return fig
 
 
 def get_nn():
@@ -334,7 +341,7 @@ if __name__ == '__main__':
     save_dir = "/home/edoardo/Development/SafeDRL/"
     load = False
     explore = True
-    save = True
+    save = False
     output_flag = False
     show_graph = True
     use_entropy_split = True
@@ -406,6 +413,7 @@ if __name__ == '__main__':
                         bar_main.update(force=True)
                         bar_main.fd.flush()
                         print("", file=sys.stderr)  # new line
+                        # new_frontier = pickle.load(open("new_frontier.p","rb"))
                         widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
                         with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar:
                             while len(to_split) != 0:
@@ -433,8 +441,15 @@ if __name__ == '__main__':
                                     # plot_frontier(new_frontier)
                                     graph.add_edge(x, split2, action="split")
                         # print("finished splitting")
+
+                        colours = []
+                        for _, x in new_frontier:
+                            ranges_probs1 = create_range_bounds_model(template, x, env_input_size, nn)
+                            colours.append(np.mean(ranges_probs1[0]))
                         print("", file=sys.stderr)  # new line
-                        # show_polygons(template, [x[1] for x in new_frontier], template_2d)
+                        fig = show_polygons(template, [x[1] for x in new_frontier], template_2d, colours)
+                        fig.write_html("new_frontier.html")
+                        print("", file=sys.stderr)  # new line
                     else:
                         for chosen_action in range(2):
                             gurobi_model = grb.Model()

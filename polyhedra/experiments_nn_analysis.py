@@ -398,6 +398,57 @@ class Experiment():
         return gurobi_model.status == 2 or gurobi_model.status == 5
 
     @staticmethod
+    def generate_nn_guard_positive(gurobi_model: grb.Model, input, nn: torch.nn.Sequential,positive, M=1e2):
+        gurobi_model.setParam("DualReductions", 0)
+        gurobi_vars = []
+        gurobi_vars.append(input)
+        for i, layer in enumerate(nn):
+
+            # print(layer)
+            if type(layer) is torch.nn.Linear:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=(int(layer.out_features)), name=f"layer_{i}")
+                lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
+                if layer.bias is not None:
+                    lin_expr = lin_expr + layer.bias.data.numpy()
+                gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
+                gurobi_vars.append(v)
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
+            elif type(layer) is torch.nn.ReLU:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+
+                z = gurobi_model.addMVar(shape=gurobi_vars[-1].shape, vtype=grb.GRB.BINARY, name=f"relu_{i}")  # lb=0, ub=1,
+                # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+                gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
+                gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
+                gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
+                gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
+                gurobi_vars.append(v)
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
+                """
+                y = Relu(x)
+                0 <= z <= 1, z is integer
+                y >= x
+                y <= x + Mz
+                y >= 0
+                y <= M - Mz"""
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        last_layer = gurobi_vars[-1]
+        if positive:
+            gurobi_model.addConstr(last_layer[0] >= 0, name="last_layer")
+        else:
+            gurobi_model.addConstr(last_layer[0] <= 0, name="last_layer")
+        gurobi_model.update()
+        gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        return gurobi_model.status == 2 or gurobi_model.status == 5
+    @staticmethod
     def generate_nn_guard_pyo(model: pyo.ConcreteModel, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
         model.nn_contraints = pyo.ConstraintList()
         gurobi_vars = []

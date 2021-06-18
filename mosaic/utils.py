@@ -251,9 +251,45 @@ def PolygonSort(corners):
     return cornersWithAngles  # map(lambda x: (x[0], x[1]), cornersWithAngles)
 
 
-def compute_trace_polygons(polygons: List[List], marker_size=1):
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def colorFader(c1, c2, mix=0):  # fade (linear interpolate) from color c1 (at mix=0) to c2 (mix=1)
+    c1 = np.array(mpl.colors.to_rgb(c1))
+    c2 = np.array(mpl.colors.to_rgb(c2))
+    return mpl.colors.to_hex((1 - mix) * c1 + mix * c2)
+
+
+def color_scale(c1, c2, n):
+    return [colorFader(c1, c2, x / n) for x in range(n + 1)]
+
+
+def create_red_blue_gradient(rounding=4):
+    # [0, "rgb(5,10,172)"],
+    # [0.35, "rgb(106,137,247)"],
+    # [0.5, "rgb(190,190,190)"],
+    # [0.6, "rgb(220,170,132)"],
+    # [0.7, "rgb(230,145,90)"],
+    # [1, "rgb(178,10,28)"],
+    gradient_list = []
+    # gradient_list.extend(Color(rgb=(5 / 255, 10 / 255, 172 / 255)).range_to(Color(rgb=(106 / 255, 137 / 255, 247 / 255)), int(0.35 * 10 ** rounding)))
+    # gradient_list.extend(Color(rgb=(106 / 255, 137 / 255, 247 / 255)).range_to(Color(rgb=(190 / 255, 190 / 255, 190 / 255)), int((0.5 - 0.35) * 10 ** rounding)))
+    # gradient_list.extend(Color(rgb=(190 / 255, 190 / 255, 190 / 255)).range_to(Color(rgb=(220 / 255, 170 / 255, 132 / 255)), int((0.6 - 0.5) * 10 ** rounding)))
+    # gradient_list.extend(Color(rgb=(220 / 255, 170 / 255, 132 / 255)).range_to(Color(rgb=(230 / 255, 145 / 255, 90 / 255)), int((0.7 - 0.6) * 10 ** rounding)))
+    # gradient_list.extend(Color(rgb=(230 / 255, 145 / 255, 90 / 255)).range_to(Color(rgb=(178 / 255, 10 / 255, 28 / 255)), int((1.0 - 0.7) * 10 ** rounding)))
+    # gradient_list.extend(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
+    gradient_list.extend(color_scale("blue", "red", (10 ** rounding) + 1))
+    return gradient_list
+
+
+def compute_trace_polygons(polygons: List[List], marker_size=1, colours: List[float] = None):
     # e.g polygons in the same trace = [[(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)], [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]]
     # corners need to be sorted
+    rounding = 4
+    colors = create_red_blue_gradient(rounding)  # list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
+
     x_list = []
     y_list = []
     for corners in polygons:
@@ -265,8 +301,12 @@ def compute_trace_polygons(polygons: List[List], marker_size=1):
         y.append(None)
         x_list.extend(x)
         y_list.extend(y)
-
-    trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', marker=dict(size=marker_size))
+    if colours is not None:
+        value_int = int(round(colours[0], rounding) * (10 ** rounding))
+        trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=colors[value_int],
+                            marker=dict(size=marker_size, colorscale='bluered', color=colours))
+    else:
+        trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', marker=dict(size=marker_size))
     return trace1
 
 
