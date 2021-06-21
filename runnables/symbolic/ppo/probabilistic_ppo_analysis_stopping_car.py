@@ -3,61 +3,30 @@ import sys
 from collections import defaultdict
 from typing import List, Tuple
 
+import gurobi as grb
+import networkx
+import numpy as np
+import plotly.graph_objects as go
 import progressbar
 import pypoman
 import ray
 import torch
-import plotly.graph_objects as go
-from colour import Color
-from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 
 from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential
-import gurobi as grb
-import networkx
-
 from mosaic.utils import PolygonSort, compute_trace_polygons
-from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
-from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment, StoppingCarExperiment2
-from polyhedra.runnable.templates.dikin_walk_simplified import sample_polyhedron, find_dimension_split, find_dimension_split2, find_dimension_split3, plot_points_and_prediction
-from polyhedra.runnable.templates.find_polyhedron_split import pick_longest_dimension, split_polyhedron
-from symbolic import unroll_methods
 from polyhedra.experiments_nn_analysis import Experiment, contained
-import numpy as np
-import polyhedra.runnable.templates.polytope as polytope
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range, create_range_bounds_model
+from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
+from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
+from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
+from polyhedra.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment2
 from utility.standard_progressbar import StandardProgressBar
-import pickle
-
-
-def sample_and_split(nn, template, boundaries):
-    # print("Performing split...", "")
-    repeat = True
-    while repeat:
-        repeat = False
-        try:
-            samples = polytope.sample(10000, template, boundaries)
-            # samples = sample_polyhedron(template, boundaries, 5000)
-        except Exception as e:
-            print("Warning: error during the sampling")
-            repeat = True
-    samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
-    predicted_label = samples_ontput.detach().numpy()[:, 0]
-    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
-    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d)
-    split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
-    # print("done")
-    # plot_points_and_prediction(samples, predicted_label)
-    # show_polygons(template, [split1, split2], template_2d)
-    return split1, split2
-
-
-
 
 
 def show_polygons(template, boundaries, template_2d, colours=None):
     fig = go.Figure()
-    import plotly.express as px
     for i, boundary in enumerate(boundaries):
         vertices = windowed_projection(template, boundary, template_2d)
         # vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (template, np.array(boundaries)), canonicalize=False)
@@ -86,57 +55,6 @@ def get_nn():
     nn = torch.nn.Sequential(*layers)
     return nn
     # return sequential_nn
-
-
-def get_range_bounds(input, nn, gurobi_model):
-    gurobi_vars = []
-    gurobi_vars.append(input)
-    for i, layer in enumerate(nn):
-
-        # print(layer)
-        if type(layer) is torch.nn.Linear:
-            v = gurobi_model.addMVar(lb=float("-inf"), shape=(layer.out_features), name=f"layer_{i}")
-            lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
-            if layer.bias is not None:
-                lin_expr = lin_expr + layer.bias.data.numpy()
-            gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
-            gurobi_vars.append(v)
-        elif type(layer) is torch.nn.ReLU:
-            v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
-            z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
-            M = 10e6
-            # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
-            gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
-            gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
-            gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
-            gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
-            gurobi_vars.append(v)
-            # gurobi_model.update()
-            # gurobi_model.optimize()
-            # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-            """
-            y = Relu(x)
-            0 <= z <= 1, z is integer
-            y >= x
-            y <= x + Mz
-            y >= 0
-            y <= M - Mz"""
-    # gurobi_model.update()
-    # gurobi_model.optimize()
-    # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-    last_layer = gurobi_vars[-1]
-    ranges = []
-    for i in range(last_layer.shape[0]):
-        gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MAXIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        ub = last_layer[i].X[0]
-        gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MINIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        lb = last_layer[i].X[0]
-        ranges.append((lb, ub))
-    return ranges
 
 
 def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple, env_input_size: int):
@@ -185,144 +103,9 @@ def merge_nodes(to_merge: list, merged_object: tuple, graph):
     networkx.relabel_nodes(graph, mapping, False)  # merge inplace, without making a copy of the graph
 
 
-def recreate_prism_PPO(graph, root, max_t: int = None):
-    gateway = JavaGateway(auto_field=True)
-    mc = gateway.jvm.explicit.IMDPModelChecker(None)
-    mdp = gateway.entry_point.reset_mdp()
-    eval = gateway.jvm.prism.Evaluator.createForDoubleIntervals()
-    mdp.setEvaluator(eval)
-    filter_by_action = False
-    gateway.entry_point.add_states(graph.number_of_nodes())
-    path_length = networkx.shortest_path_length(graph, source=root)
-    descendants_dict = defaultdict(bool)
-    descendants_true = []
-    for descendant in path_length.keys():
-        if max_t is None or path_length[descendant] <= max_t:  # limit descendants to depth max_t
-            descendants_dict[descendant] = True
-            descendants_true.append(descendant)
-    mapping = dict(zip(graph.nodes(), range(graph.number_of_nodes())))  # mapping between each node and an integer
-    with StandardProgressBar(prefix="Updating Prism ", max_value=len(descendants_dict) + 1).start() as bar:
-        for parent_id, edges in graph.adjacency():  # generate the edges
-            if descendants_dict[parent_id]:  # if it is within the filter
-                if len(edges.items()) != 0:  # filter out states with no successors (we want to add just edges)
-                    if filter_by_action:
-                        actions = set([edges[key].get("action") for key in edges])  # get unique actions
-                        for action in actions:
-                            distribution = gateway.jvm.explicit.Distribution(eval)
-                            filtered_edges = [key for key in edges if edges[key].get("action") == action]  # get only the edges matching the current action
-                            for successor in filtered_edges:
-                                edgeattr = edges[successor]
-                                ub = edgeattr.get("ub")
-                                lb = edgeattr.get("lb")
-                                assert ub is not None
-                                assert lb is not None
-                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
-                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, action)
-                    else:  # markov chain following the policy
-                        actions = set([edges[key].get("action") for key in edges])  # get unique actions
-                        if "split" in actions:
-                            # nondeterministic choice
-                            for successor in edges:
-                                distribution = gateway.jvm.explicit.Distribution(eval)
-                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(1.0, 1.0))
-                                mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "split")
-                        else:
-                            distribution = gateway.jvm.explicit.Distribution(eval)
-                            for successor in edges:
-                                edgeattr = edges[successor]
-                                ub = edgeattr.get("ub")
-                                lb = edgeattr.get("lb")
-                                assert ub is not None
-                                assert lb is not None
-                                distribution.add(int(mapping[successor]), gateway.jvm.common.Interval(lb, ub))
-                            mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, "policy")
-
-                else:
-                    # zero successors
-                    pass
-                bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
-
-    # print("prism updated")
-
-    mdp.exportToDotFile("imdppy.dot")
-    #
-    # terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
-
-    # half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
-    # half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
-    # # get probabilities from prism to encounter a terminal state
-    # solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
-    # solution_max = list(gateway.entry_point.check_state_list(half_terminal_states_java, False))
-    # # update the probabilities in the graph
-    # with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
-    #     for descendant in descendants_true:
-    #         graph.nodes[descendant]['ub'] = solution_max[mapping[descendant]]
-    #         graph.nodes[descendant]['lb'] = solution_min[mapping[descendant]]
-    #         bar.update(bar.value + 1)
-    # print("Prism updated with new data")
-    prism_needs_update = False
-    return gateway, mc, mdp, mapping
-
-
-def calculate_target_probabilities(gateway, model_checker, mdp, mapping, targets: List[Tuple]):
-    terminal_states = [mapping[x] for x in targets]
-    minmin, minmax, maxmin, maxmax = extract_probabilities(terminal_states, gateway, model_checker, mdp)
-    # print(f"minmin: {minmin}")
-    # print(f"minmax: {minmax}")
-    # print(f"maxmin: {maxmin}")
-    # print(f"maxmax: {maxmax}")
-    return minmin, minmax, maxmin, maxmax
-
-
-def extract_probabilities(targets: list, gateway, mc, mdp):
-    mdp.findDeadlocks(True)
-    target = gateway.jvm.java.util.BitSet()
-    for id in targets:
-        target.set(id)
-    steps = 10
-    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
-    minmin = res.soln[0]
-    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
-    minmax = res.soln[0]
-    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
-    maxmin = res.soln[0]
-    res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
-    maxmax = res.soln[0]
-    return minmin, minmax, maxmin, maxmax
-
-
 def evolutionary_merge(graph: networkx.DiGraph, template: np.ndarray):
     nodes = list(graph.nodes)
     n_nodes = graph.number_of_nodes()
-
-
-def create_range_bounds_model(template, x, env_input_size, nn, round=-1):
-    gurobi_model = grb.Model()
-    gurobi_model.setParam('OutputFlag', output_flag)
-    input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-    # observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
-    # epsilon = 0
-    # gurobi_model.addConstr(observation[1] <= input[0] - input[1] + epsilon / 2, name=f"obs_constr21")
-    # gurobi_model.addConstr(observation[1] >= input[0] - input[1] - epsilon / 2, name=f"obs_constr22")
-    # gurobi_model.addConstr(observation[0] <= input[2] - input[3] + epsilon / 2, name=f"obs_constr11")
-    # gurobi_model.addConstr(observation[0] >= input[2] - input[3] - epsilon / 2, name=f"obs_constr12")
-    ranges = get_range_bounds(input, nn, gurobi_model)
-    ranges_probs = unroll_methods.softmax_interval(ranges)
-    if round >= 0:
-        pass
-        # todo round the probabilities
-    return ranges_probs
-
-
-def acceptable_range(ranges_probs):
-    split_flag = False
-    for chosen_action in range(2):
-        prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
-        if prob_diff > 0.2:
-            # should split the input
-            split_flag = True
-            break
-    return split_flag
 
 
 def plot_frontier(new_frontier):
@@ -420,7 +203,7 @@ if __name__ == '__main__':
                                 bar.update(value=bar.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                                 to_analyse = to_split.pop()
                                 if use_entropy_split:
-                                    split1, split2 = sample_and_split(nn, template, np.array(to_analyse))
+                                    split1, split2 = sample_and_split(nn, template, np.array(to_analyse), env_input_size)
                                 else:
                                     dimension = pick_longest_dimension(template, x)
                                     split1, split2 = split_polyhedron(template, x, dimension)

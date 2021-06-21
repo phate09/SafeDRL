@@ -2,6 +2,7 @@ import csv
 import datetime
 import math
 import os
+import sys
 import time
 from collections import defaultdict
 from contextlib import nullcontext
@@ -16,41 +17,22 @@ import ray
 import torch
 from interval import interval, imath
 import plotly.graph_objects as go
+from py4j.java_gateway import JavaGateway
 from pyomo.core import TransformationFactory
 from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.util.infeasible import log_infeasible_constraints
 
+from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, create_range_bounds_model, acceptable_range
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
+from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
+from utility.standard_progressbar import StandardProgressBar
 
 
-class Experiment():
+class ProbabilisticExperiment(Experiment):
     def __init__(self, env_input_size: int):
-        self.before_start_fn = None
-        self.update_progress_fn = None
-        self.rounding_value = 1024
-        self.get_nn_fn = None
-        self.plot_fn = None
-        self.post_fn_remote = None
-        self.assign_lbl_fn = None
-        self.additional_seen_fn = None  # adds additional elements to seen list
-        self.template_2d: np.ndarray = None
-        self.input_template: np.ndarray = None
-        self.input_boundaries: List = None
-        self.analysis_template: np.ndarray = None
-        self.unsafe_zone: List[Tuple] = None
-        self.output_flag = False
-        self.env_input_size: int = env_input_size
-        self.n_workers = 8
-        self.plotting_time_interval = 60 * 5
-        self.time_horizon = 100
-        self.use_bfs = True  # use Breadth-first-search or Depth-first-search
-        self.local_mode = False  # disable multi processing
-        self.use_rounding = True
-        self.show_progressbar = True
-        self.show_progress_plot = True
-        self.save_dir = None
-        self.keep_model = False  # whether to keep the gurobi model for later timesteps
-        self.graph = networkx.Graph()  # set None to disable use of graph
+        super().__init__(env_input_size)
+        self.use_entropy_split = True
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -84,90 +66,193 @@ class Experiment():
         print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
         return elapsed_seconds, safe, max_t
 
+    class LoopStats():
+        def __init__(self):
+            self.seen = []
+            self.frontier = []  # contains the elements to explore
+            self.vertices_list = defaultdict(list)
+            self.max_t = 0
+            self.num_already_visited = 0
+            self.proc_ids = []
+            self.last_time_plot = None
+            self.exit_flag = False
+            self.is_agent_unsafe = False
+            self.root = None
+
     def main_loop(self, nn, template, template_2d):
         root = self.generate_root_polytope()
         root_pair = (root, 0)  # label for root is always 0
         root_list = [root_pair]
-        vertices_list = defaultdict(list)
-        seen = []
+        stats = ProbabilisticExperiment.LoopStats()
+        stats.root = root
         if self.additional_seen_fn is not None:
             for extra in self.additional_seen_fn():
-                seen.append(extra)
-        frontier = [(0, x) for x in root_list]
+                stats.seen.append(extra)
+        stats.frontier = [(0, x) for x in root_list]
         if self.graph is not None:
             self.graph.add_node(root_pair)
-        max_t = 0
-        num_already_visited = 0
         widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
                    progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
-        proc_ids = []
-        last_time_plot = None
         if self.before_start_fn is not None:
             self.before_start_fn(nn)
-        with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar:
-            while len(frontier) != 0 or len(proc_ids) != 0:
-                while len(proc_ids) < self.n_workers and len(frontier) != 0:
-                    t, (x, x_label) = frontier.pop(0) if self.use_bfs else frontier.pop()
-                    if max_t > self.time_horizon:
-                        print(f"Reached horizon t={t}")
-                        self.plot_fn(vertices_list, template, template_2d)
-                        return max_t, num_already_visited, vertices_list, False
-                    contained_flag = False
-                    to_remove = []
-                    for (s, s_label) in seen:
-                        if s_label == x_label:
-                            if contained(x, s):
-                                contained_flag = True
-                                break
-                            if contained(s, x):
-                                to_remove.append((s, s_label))
-                    for rem in to_remove:
-                        num_already_visited += 1
-                        seen.remove(rem)
-                    if contained_flag:
-                        num_already_visited += 1
-                        continue
-                    max_t = max(max_t, t)
-                    vertices_list[t].append(np.array(x))
-                    if self.check_unsafe(template, x, x_label):
-                        print(f"Unsafe state found at timestep t={t}")
-                        print((x, x_label))
-                        self.plot_fn(vertices_list, template, template_2d)
-                        return max_t, num_already_visited, vertices_list, True
-                    seen.append((x, x_label))
-                    proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))
-                if last_time_plot is None or time.time() - last_time_plot >= self.plotting_time_interval:
-                    if last_time_plot is not None:
-                        self.plot_fn(vertices_list, template, template_2d)
-                    last_time_plot = time.time()
-                if self.update_progress_fn is not None:
-                    self.update_progress_fn(n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, max_t=max_t)
-                if self.show_progressbar:
-                    bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
-                ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
-                if len(ready_ids) != 0:
-                    x_primes_list = ray.get(ready_ids)
-                    assert len(x_primes_list) != 0, "something is wrong with the calculation of the successor"
-                    for x_primes in x_primes_list:
-                        for x_prime, (parent, parent_lbl) in x_primes:
-                            x_prime_label = self.assign_lbl_fn(x_prime, parent, parent_lbl)
-                            if self.use_rounding:
-                                # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
-                                x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
-                                # x_prime_rounded should always be bigger than x_prime
-                                assert contained(x_prime, x_prime_rounded), f"{x_prime} not contained in {x_prime_rounded}"
-                                x_prime = x_prime_rounded
-                            frontier = [(u, (y, y_label)) for u, (y, y_label) in frontier if not (y_label == x_prime_label and contained(y, x_prime))]
-                            if not any([(y_label == x_prime_label and contained(x_prime, y)) for u, (y, y_label) in frontier]):
+        with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar_main:
+            while len(stats.frontier) != 0 or len(stats.proc_ids) != 0:
+                self.inner_loop_step(stats, template_2d, template, nn, bar_main)
+        self.plot_fn(stats.vertices_list, template, template_2d)
+        return stats.max_t, stats.num_already_visited, stats.vertices_list, stats.is_agent_unsafe
 
-                                frontier.append(((t + 1), (x_prime, x_prime_label)))
-                                if self.graph is not None:
-                                    self.graph.add_edge((parent, parent_lbl), (x_prime, x_prime_label))
-                                # print(x_prime)
-                            else:
-                                num_already_visited += 1
-        self.plot_fn(vertices_list, template, template_2d)
-        return max_t, num_already_visited, vertices_list, False
+    @ray.remote
+    def post_milp(self, x, x_label, nn, output_flag, t, template):
+        raise NotImplementedError()  # need to implement this method, remember to put @ray.remote as an attribute
+
+    def inner_loop_step(self, stats: LoopStats, template_2d, template, nn, bar_main):
+        # fills up the worker threads
+        while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
+            t, (x, x_label) = stats.frontier.pop(0) if self.use_bfs else stats.frontier.pop()
+            if stats.max_t > self.time_horizon:
+                print(f"Reached horizon t={t}")
+                stats.exit_flag = True
+                break
+            contained_flag = False
+            to_remove = []
+            for (s, s_label) in stats.seen:
+                if s_label == x_label:
+                    if contained(x, s):
+                        contained_flag = True
+                        break
+                    if contained(s, x):
+                        to_remove.append((s, s_label))
+            for rem in to_remove:
+                stats.num_already_visited += 1
+                stats.seen.remove(rem)
+            if contained_flag:
+                stats.num_already_visited += 1
+                continue
+            stats.max_t = max(stats.max_t, t)
+            stats.vertices_list[t].append(np.array(x))
+            stats.seen.append((x, x_label))
+
+            split_proc_id = self.check_split(t, x, nn, bar_main, stats, template, template_2d)
+            if split_proc_id is not None:  # splitting
+                stats.proc_ids.append(split_proc_id)
+            else:  # calculate successor
+                stats.proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))
+            if self.show_progressbar:
+                bar_main.update(value=bar_main.value + 1, n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited,
+                                last_visited_state=str(x),
+                                max_t=stats.max_t)
+
+        if stats.last_time_plot is None or time.time() - stats.last_time_plot >= self.plotting_time_interval:
+            if stats.last_time_plot is not None:
+                self.plot_fn(stats.vertices_list, template, template_2d)
+            stats.last_time_plot = time.time()
+        if self.update_progress_fn is not None:
+            self.update_progress_fn(n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited, max_t=stats.max_t)
+
+        # process the results (if any)
+        new_frontier = self.collect_results(stats, template)
+        # update prism
+        self.update_prism_step(stats.frontier, new_frontier, stats.root)
+        stats.new_frontier = []  # resets the new_frontier
+
+    def collect_results(self, stats, template):
+        """collects the results from the various processes, creates a list with the newly added states"""
+        new_frontier = []
+        ready_ids, stats.proc_ids = ray.wait(stats.proc_ids, num_returns=len(stats.proc_ids), timeout=0.5)
+        if len(ready_ids) != 0:
+            results_list = ray.get(ready_ids)
+            assert len(results_list) != 0, "something is wrong with the calculation of the successor"
+            for results in results_list:
+                for x_prime, (parent, parent_lbl), t_prime in results:  # these are the individual elements in the list which is returned by post_milp
+                    x_prime_label = self.assign_lbl_fn(x_prime, parent, parent_lbl)
+                    successor = (x_prime, x_prime_label)
+                    if self.use_rounding:
+                        x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
+
+                        assert contained(x_prime, x_prime_rounded), f"{x_prime} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
+                        x_prime = x_prime_rounded
+                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if not (y_label == x_prime_label and contained(y, x_prime))]
+                    # ---check contained
+                    if not any([(y_label == x_prime_label and contained(x_prime, y)) for u, (y, y_label) in stats.frontier]):  # todo in the case in which the state is contained, put it in the graph
+                        unsafe = self.check_unsafe(template, x_prime, self.unsafe_zone)
+                        if not unsafe:
+                            new_frontier.append((t_prime, successor))  # put the item back into the queue
+                        if self.graph is not None:
+                            self.graph.add_edge((parent, parent_lbl), successor)  # todo add action and probability ranges
+                        if unsafe:
+                            self.graph.nodes[successor]["safe"] = False
+                            stats.seen.append(successor)
+                        # print(x_prime)
+                    else:
+                        stats.num_already_visited += 1
+        return new_frontier
+
+    def update_prism_step(self, frontier, new_frontier, root):
+        gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root)
+        with StandardProgressBar(prefix="Updating probabilities ", max_value=len(new_frontier) + 1).start() as bar:
+            for t, x in new_frontier:
+                try:
+                    minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
+                    bar.update(bar.value + 1)
+                except Exception as e:
+                    print("warning")
+                if maxmax > 1e-6:  # check if state is irrelevant
+                    frontier.append((t, x))  # next computation only considers relevant states
+                else:
+                    self.graph.nodes[x]["irrelevant"] = True
+
+
+
+    def check_split(self, t, x, nn, bar_main, stats, template, template_2d) -> List:
+        # -------splitting
+        ranges_probs = create_range_bounds_model(template, x, self.env_input_size, nn)
+        split_flag = acceptable_range(ranges_probs)
+        new_frontier = []
+        if split_flag:
+            bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
+            to_split = []
+            to_split.append(x)
+            bar_main.update(force=True)
+            bar_main.fd.flush()
+            print("", file=sys.stderr)  # new line
+            # new_frontier = pickle.load(open("new_frontier.p","rb"))
+            widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
+            with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_main:
+                while len(to_split) != 0:
+                    # bar_main.update(value=bar_main.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
+                    to_analyse = to_split.pop()
+                    if self.use_entropy_split:
+                        split1, split2 = sample_and_split(nn, template, np.array(to_analyse), self.env_input_size)
+                    else:
+                        dimension = pick_longest_dimension(template, x)
+                        split1, split2 = split_polyhedron(template, x, dimension)
+                    ranges_probs1 = create_range_bounds_model(template, split1, self.env_input_size, nn)
+                    split_flag1 = acceptable_range(ranges_probs1)
+                    if split_flag1:
+                        to_split.append(split1)
+                    else:
+                        new_frontier.insert(0, split1)
+                        # plot_frontier(new_frontier)
+                        self.graph.add_edge(x, split1, action="split")
+                    ranges_probs2 = create_range_bounds_model(template, split2, self.env_input_size, nn)
+                    split_flag2 = acceptable_range(ranges_probs2)
+                    if split_flag2:
+                        to_split.append(split2)
+                    else:
+                        new_frontier.insert(0, split2)
+                        # plot_frontier(new_frontier)
+                        self.graph.add_edge(x, split2, action="split")
+            # print("finished splitting")
+            # ----for plotting
+            # colours = []
+            # for x in new_frontier:
+            #     ranges_probs1 = create_range_bounds_model(template, x, self.env_input_size, nn)
+            #     colours.append(np.mean(ranges_probs1[0]))
+            # print("", file=sys.stderr)  # new line
+            # fig = show_polygons(template, [x[1] for x in new_frontier], template_2d, colours)
+            # fig.write_html("new_frontier.html")
+            # print("", file=sys.stderr)  # new line
+        return []
 
     @staticmethod
     def round_tuple(x, rounding_value):
@@ -346,25 +431,6 @@ class Experiment():
         gurobi_model.setParam("DualReductions", 0)
         gurobi_vars = []
         gurobi_vars.append(input)
-        Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
-        # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
-        last_layer = gurobi_vars[-1]
-        for i in range(last_layer.shape[0]):
-            if i == action_ego:
-                continue
-            gurobi_model.addConstr(last_layer[action_ego] >= last_layer[i], name="last_layer")
-        # if action_ego == 0:
-        #     gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
-        # else:
-        #     gurobi_model.addConstr(last_layer[1] >= last_layer[0], name="last_layer")
-        gurobi_model.update()
-        gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        return gurobi_model.status == 2 or gurobi_model.status == 5
-
-    @staticmethod
-    def build_nn_model_core(gurobi_model, gurobi_vars, nn, M):
-        """Construct the MILP model for the body of the neural network (no last layer)"""
         for i, layer in enumerate(nn):
 
             # print(layer)
@@ -398,35 +464,66 @@ class Experiment():
                 y <= x + Mz
                 y >= 0
                 y <= M - Mz"""
-            elif type(layer) is torch.nn.Hardtanh:
-                layerTanh: torch.nn.Hardtanh = layer
-                min_val = layerTanh.min_val
-                max_val = layerTanh.max_val
-                # M = 10e3
-                v1 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
-                z1 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh1_{i}")
-                z2 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh2_{i}")
-                gurobi_model.addConstr(v1 >= gurobi_vars[-1], name=f"hardtanh1_constr_1_{i}")
-                gurobi_model.addConstr(v1 <= gurobi_vars[-1] + M * z1, name=f"hardtanh1_constr_2_{i}")
-                gurobi_model.addConstr(v1 >= min_val, name=f"hardtanh1_constr_3_{i}")
-                gurobi_model.addConstr(v1 <= min_val + M - M * z1, name=f"hardtanh1_constr_4_{i}")
-                gurobi_vars.append(v1)
-                v2 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
-                gurobi_model.addConstr(v2 <= gurobi_vars[-1], name=f"hardtanh2_constr_1_{i}")
-                gurobi_model.addConstr(v2 >= gurobi_vars[-1] - M * z2, name=f"hardtanh2_constr_2_{i}")
-                gurobi_model.addConstr(v2 <= max_val, name=f"hardtanh2_constr_3_{i}")
-                gurobi_model.addConstr(v2 >= max_val - M + M * z2, name=f"hardtanh2_constr_4_{i}")
-                gurobi_vars.append(v2)
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        last_layer = gurobi_vars[-1]
+        for i in range(last_layer.shape[0]):
+            if i == action_ego:
+                continue
+            gurobi_model.addConstr(last_layer[action_ego] >= last_layer[i], name="last_layer")
+        # if action_ego == 0:
+        #     gurobi_model.addConstr(last_layer[0] >= last_layer[1], name="last_layer")
+        # else:
+        #     gurobi_model.addConstr(last_layer[1] >= last_layer[0], name="last_layer")
         gurobi_model.update()
         gurobi_model.optimize()
-        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        return gurobi_model.status == 2 or gurobi_model.status == 5
 
     @staticmethod
     def generate_nn_guard_positive(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, positive, M=1e2):
         gurobi_model.setParam("DualReductions", 0)
         gurobi_vars = []
         gurobi_vars.append(input)
-        Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
+        for i, layer in enumerate(nn):
+
+            # print(layer)
+            if type(layer) is torch.nn.Linear:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=(int(layer.out_features)), name=f"layer_{i}")
+                lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
+                if layer.bias is not None:
+                    lin_expr = lin_expr + layer.bias.data.numpy()
+                gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
+                gurobi_vars.append(v)
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
+            elif type(layer) is torch.nn.ReLU:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+
+                z = gurobi_model.addMVar(shape=gurobi_vars[-1].shape, vtype=grb.GRB.BINARY, name=f"relu_{i}")  # lb=0, ub=1,
+                # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+                gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
+                gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
+                gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
+                gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
+                gurobi_vars.append(v)
+                gurobi_model.update()
+                gurobi_model.optimize()
+                assert gurobi_model.status == 2, "LP wasn't optimally solved"
+                """
+                y = Relu(x)
+                0 <= z <= 1, z is integer
+                y >= x
+                y <= x + Mz
+                y >= 0
+                y <= M - Mz"""
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # gurobi_model.setObjective(v[action_ego].sum(), grb.GRB.MAXIMIZE)  # maximise the output
         last_layer = gurobi_vars[-1]
         if positive:
             gurobi_model.addConstr(last_layer[0] >= 0, name="last_layer")
@@ -501,10 +598,63 @@ class Experiment():
             print(f"Solver status: {result.solver.status}")
 
     @staticmethod
-    def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, M=1e3):
+    def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential):
         gurobi_vars = []
         gurobi_vars.append(input)
-        Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
+        for i, layer in enumerate(nn):
+
+            # print(layer)
+            if type(layer) is torch.nn.Linear:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=(int(layer.out_features)), name=f"layer_{i}")
+                lin_expr = layer.weight.data.numpy() @ gurobi_vars[-1]
+                if layer.bias is not None:
+                    lin_expr = lin_expr + layer.bias.data.numpy()
+                gurobi_model.addConstr(v == lin_expr, name=f"linear_constr_{i}")
+                gurobi_vars.append(v)
+            elif type(layer) is torch.nn.ReLU:
+                v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                z = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"relu_{i}")
+                M = 1e3
+                # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
+                gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
+                gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
+                gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
+                gurobi_model.addConstr(v <= M - M * z, name=f"relu_constr_4_{i}")
+                gurobi_vars.append(v)
+                # gurobi_model.update()
+                # gurobi_model.optimize()
+                # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+                """
+                y = Relu(x)
+                0 <= z <= 1, z is integer
+                y >= x
+                y <= x + Mz
+                y >= 0
+                y <= M - Mz"""
+            elif type(layer) is torch.nn.Hardtanh:
+                layerTanh: torch.nn.Hardtanh = layer
+                min_val = layerTanh.min_val
+                max_val = layerTanh.max_val
+                M = 10e3
+                v1 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                z1 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh1_{i}")
+                z2 = gurobi_model.addMVar(lb=0, ub=1, shape=gurobi_vars[-1].shape, vtype=grb.GRB.INTEGER, name=f"hardtanh2_{i}")
+                gurobi_model.addConstr(v1 >= gurobi_vars[-1], name=f"hardtanh1_constr_1_{i}")
+                gurobi_model.addConstr(v1 <= gurobi_vars[-1] + M * z1, name=f"hardtanh1_constr_2_{i}")
+                gurobi_model.addConstr(v1 >= min_val, name=f"hardtanh1_constr_3_{i}")
+                gurobi_model.addConstr(v1 <= min_val + M - M * z1, name=f"hardtanh1_constr_4_{i}")
+                gurobi_vars.append(v1)
+                v2 = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
+                gurobi_model.addConstr(v2 <= gurobi_vars[-1], name=f"hardtanh2_constr_1_{i}")
+                gurobi_model.addConstr(v2 >= gurobi_vars[-1] - M * z2, name=f"hardtanh2_constr_2_{i}")
+                gurobi_model.addConstr(v2 <= max_val, name=f"hardtanh2_constr_3_{i}")
+                gurobi_model.addConstr(v2 >= max_val - M + M * z2, name=f"hardtanh2_constr_4_{i}")
+                gurobi_vars.append(v2)
+            else:
+                raise Exception("Unrecognised layer")
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
         last_layer = gurobi_vars[-1]
         gurobi_model.setObjective(last_layer[0].sum(), grb.GRB.MAXIMIZE)  # maximise the output
         gurobi_model.update()

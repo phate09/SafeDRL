@@ -20,6 +20,8 @@ from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 from sklearn.linear_model import LogisticRegression
 
+from polyhedra.partitioning import project_to_dimension
+
 
 def hessian(a, b, x):
     """Return log-barrier Hessian matrix at x."""
@@ -318,115 +320,9 @@ def find_dimension_split2(points, predicted_label, template):
     return chosen_dimension, decision_boundaries[chosen_dimension]
 
 
-# noinspection PyUnreachableCode
-def find_dimension_split3(points, predicted_label, template,template2d):
-    costs = []
-
-    decision_boundaries = []
-    proj2ds = []
-    classifier_predictions = []
-    indices = []
-    proc_ids = []
-    for dimension in template:
-        proc_id = remote_find_minimum.remote(dimension, points, predicted_label)
-        proc_ids.append(proc_id)
-    values = ray.get(proc_ids)
-    for value in values:
-        decision_boundary, min_cost, sorted_proj, proj2d, plot_costs = value
-        # plot_list(plot_costs)
-        costs.append(min_cost)
-        decision_boundaries.append(sorted_proj[decision_boundary])
-        indices.append(decision_boundary)
-        proj2ds.append(proj2d)
-    chosen_dimension = np.argmin([((i - len(points) / 2) / len(points)) ** 2 for i in indices])
-    chosen_dimension = np.argmin(costs)
-    max_value_y = np.max(predicted_label)
-    min_value_y = np.min(predicted_label)
-    delta_y = max_value_y - min_value_y
-    normalised_label = (predicted_label - min_value_y) / delta_y
-    # plot_points_and_prediction(points@template2d.T, normalised_label)
-    # plot_points_and_prediction(proj2ds[chosen_dimension], normalised_label)
-    # plot_points_and_prediction(proj2ds[chosen_dimension], [0 if x[0]>decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
-    # plot_points_and_prediction(points@template2d.T, [0 if x[0] > decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
-    return chosen_dimension, decision_boundaries[chosen_dimension]
 
 
-@remote
-def remote_find_minimum(dimension, points, predicted_label):
-    proj = project_to_dimension(points, dimension)
-    proj2d = np.array([[x, predicted_label[i]] for i, x in enumerate(proj)])
-    # plot_points_and_prediction(proj2d, predicted_label)
-    max_value_x = np.max(proj)
-    min_value_x = np.min(proj)
-    delta_x = max_value_x - min_value_x
-    min_absolute_delta_x = 0.0001
-    if delta_x < min_absolute_delta_x:
-        return 0, float('inf'), None, None, None  # aim to give a big negative reward to skip
-    mid_value_x = (max_value_x + min_value_x) / 2
-    max_value_y = np.max(predicted_label)
-    min_value_y = np.min(predicted_label)
-    mid_value_y = (max_value_y + min_value_y) / 2
-    delta_y = max_value_y - min_value_y
-    true_label = predicted_label >= mid_value_y
-    normalised_label = (predicted_label - min_value_y) / delta_y
-    # enumerate all points, find ranges of probabilities for each decision boundary
-    range_1 = (max_value_y, min_value_y)
-    range_2 = (max_value_y, min_value_y)
-    decision_boundary = -1
-    min_cost = 9999
-    max_cost = -99999
-    sorted_pred = normalised_label[np.argsort(proj)]
-    sorted_proj = np.sort(proj)
-    assert len(points) > 3
-    normalisation_quotient = max_value_y - min_value_y
-    costs = []
-    # true_label = predicted_label >= min_value_y + (max_value_y - min_value_y) * 0.7
-    min_percentage = 0.1  # the minimum relative distance of a slice
-    mode = 0
 
-    def f(i):
-        true_label = np.array(range(len(sorted_pred))) > i
-        if mode == 0:
-            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
-        elif mode == 1:
-            cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
-        else:
-            raise Exception("Unvalid choice")
-        return cost
-
-    method = "scipy"
-    if method == "scipy":
-        bounds = max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))
-        temp_cost = minimize_scalar(f, bounds=bounds, method='bounded')
-        decision_boundary = int(temp_cost.x)
-        min_cost = temp_cost.fun
-        return decision_boundary, min_cost, sorted_proj, proj2d, costs
-    else:
-        for i in range(max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))):
-            # range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
-            # range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
-            # range_1_inv = (1 - range_1_temp[1], 1 - range_1_temp[0])
-            # tolerance = (max_value_y - min_value_y) * 0.0
-            # cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance) / normalisation_quotient) + (
-            #         max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance) / normalisation_quotient)  # todo check
-            # cost = cost ** 2
-            true_label = np.array(range(len(sorted_pred))) > i
-            if np.all(true_label) or not np.any(true_label):
-                continue
-            if mode == 0:
-                cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
-            elif mode == 1:
-                cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
-            else:
-                raise Exception("Unvalid choice")
-            costs.append(cost)
-            if cost < min_cost:
-                # range_1 = range_1_temp
-                # range_2 = range_2_temp
-                min_cost = cost
-                decision_boundary = i
-        # plot_list(costs)
-        return decision_boundary, min_cost, sorted_proj, proj2d, costs
 
 
 @remote
@@ -526,10 +422,6 @@ def find_dimension_split(points, predicted_label, template):
     return chosen_dimension
 
 
-def project_to_dimension(points: np.ndarray, dimension: np.ndarray):
-    lengths = np.linalg.norm(dimension)
-    projs = np.dot(points, dimension)  # / lengths
-    return projs
 
 
 def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
