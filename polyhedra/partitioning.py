@@ -10,9 +10,10 @@ import sklearn
 from scipy.optimize import linprog, minimize, minimize_scalar
 
 
-def sample_and_split(nn, template, boundaries, env_input_size):
+def sample_and_split(pre_nn, nn, template, boundaries, env_input_size):
     # print("Performing split...", "")
     repeat = True
+    samples = None
     while repeat:
         repeat = False
         try:
@@ -21,10 +22,11 @@ def sample_and_split(nn, template, boundaries, env_input_size):
         except Exception as e:
             print("Warning: error during the sampling")
             repeat = True
-    samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
+    preprocessed = pre_nn(torch.tensor(samples).float())
+    samples_ontput = torch.softmax(nn(preprocessed), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
-    template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
-    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d)
+    # template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2) - Experiment.e(env_input_size, 3), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
+    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, None)
     split1, split2 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
     # print("done")
     # plot_points_and_prediction(samples, predicted_label)
@@ -73,43 +75,6 @@ def find_inverted_dimension(inverted_value, template):
             break
     assert inverted_dimension != -1, "Could not find inverted dimension"
     return inverted_dimension
-
-
-def create_range_bounds_model(template, x, env_input_size, nn, round=-1):
-    gurobi_model = grb.Model()
-    gurobi_model.setParam('OutputFlag', False)
-    input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
-    # observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
-    # epsilon = 0
-    # gurobi_model.addConstr(observation[1] <= input[0] - input[1] + epsilon / 2, name=f"obs_constr21")
-    # gurobi_model.addConstr(observation[1] >= input[0] - input[1] - epsilon / 2, name=f"obs_constr22")
-    # gurobi_model.addConstr(observation[0] <= input[2] - input[3] + epsilon / 2, name=f"obs_constr11")
-    # gurobi_model.addConstr(observation[0] >= input[2] - input[3] - epsilon / 2, name=f"obs_constr12")
-    ranges = get_range_bounds(input, nn, gurobi_model)
-    ranges_probs = unroll_methods.softmax_interval(ranges)
-    if round >= 0:
-        pass
-        # todo round the probabilities
-    return ranges_probs
-
-
-def get_range_bounds(input, nn, gurobi_model, M=1e6):
-    gurobi_vars = []
-    gurobi_vars.append(input)
-    Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
-    last_layer = gurobi_vars[-1]
-    ranges = []
-    for i in range(last_layer.shape[0]):
-        gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MAXIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        ub = last_layer[i].X[0]
-        gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MINIMIZE)  # maximise the output
-        gurobi_model.update()
-        gurobi_model.optimize()
-        lb = last_layer[i].X[0]
-        ranges.append((lb, ub))
-    return ranges
 
 
 def acceptable_range(ranges_probs):

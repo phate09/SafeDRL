@@ -11,3 +11,4 @@ pyzmq
 gym
 protobuf
 ray
+py4j

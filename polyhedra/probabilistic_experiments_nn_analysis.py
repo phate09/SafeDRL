@@ -7,8 +7,6 @@ import time
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Tuple, List
-import pyomo.environ as pyo
-import pyomo.gdp as gdp
 import gurobipy as grb
 import networkx
 import numpy as np
@@ -18,12 +16,9 @@ import torch
 from interval import interval, imath
 import plotly.graph_objects as go
 from py4j.java_gateway import JavaGateway
-from pyomo.core import TransformationFactory
-from pyomo.opt import SolverStatus, TerminationCondition
-from pyomo.util.infeasible import log_infeasible_constraints
 
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, create_range_bounds_model, acceptable_range
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
 from utility.standard_progressbar import StandardProgressBar
@@ -33,6 +28,7 @@ class ProbabilisticExperiment(Experiment):
     def __init__(self, env_input_size: int):
         super().__init__(env_input_size)
         self.use_entropy_split = True
+        self.use_split = False  # enable/disable splitting
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -84,7 +80,7 @@ class ProbabilisticExperiment(Experiment):
         root_pair = (root, 0)  # label for root is always 0
         root_list = [root_pair]
         stats = ProbabilisticExperiment.LoopStats()
-        stats.root = root
+        stats.root = root_pair
         if self.additional_seen_fn is not None:
             for extra in self.additional_seen_fn():
                 stats.seen.append(extra)
@@ -118,8 +114,9 @@ class ProbabilisticExperiment(Experiment):
             for (s, s_label) in stats.seen:
                 if s_label == x_label:
                     if contained(x, s):
-                        contained_flag = True
-                        break
+                        if not self.graph.has_predecessor((x, x_label), (s, x_label)):  # ensures that if there was a split it doesn't count as contained
+                            contained_flag = True
+                            break
                     if contained(s, x):
                         to_remove.append((s, s_label))
             for rem in to_remove:
@@ -132,7 +129,7 @@ class ProbabilisticExperiment(Experiment):
             stats.vertices_list[t].append(np.array(x))
             stats.seen.append((x, x_label))
 
-            split_proc_id = self.check_split(t, x, nn, bar_main, stats, template, template_2d)
+            split_proc_id = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
             if split_proc_id is not None:  # splitting
                 stats.proc_ids.append(split_proc_id)
             else:  # calculate successor
@@ -163,28 +160,36 @@ class ProbabilisticExperiment(Experiment):
             results_list = ray.get(ready_ids)
             assert len(results_list) != 0, "something is wrong with the calculation of the successor"
             for results in results_list:
-                for x_prime, (parent, parent_lbl), t_prime in results:  # these are the individual elements in the list which is returned by post_milp
-                    x_prime_label = self.assign_lbl_fn(x_prime, parent, parent_lbl)
-                    successor = (x_prime, x_prime_label)
+                successor_info: Experiment.SuccessorInfo
+                for successor_info in results:  # these are the individual elements in the list which is returned by post_milp
+                    successor_info.successor_lbl = self.assign_lbl_fn(successor_info.successor, successor_info.parent, successor_info.parent_lbl)
                     if self.use_rounding:
-                        x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
+                        x_prime_rounded = self.round_tuple(successor_info.successor, self.rounding_value)
 
-                        assert contained(x_prime, x_prime_rounded), f"{x_prime} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
-                        x_prime = x_prime_rounded
-                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if not (y_label == x_prime_label and contained(y, x_prime))]
+                        assert contained(successor_info.successor,
+                                         x_prime_rounded), f"{successor_info.successor} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
+                        successor_info.successor = x_prime_rounded
+                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]
+                    is_splitted = successor_info.action == "split"
                     # ---check contained
-                    if not any([(y_label == x_prime_label and contained(x_prime, y)) for u, (y, y_label) in stats.frontier]):  # todo in the case in which the state is contained, put it in the graph
-                        unsafe = self.check_unsafe(template, x_prime, self.unsafe_zone)
-                        if not unsafe:
-                            new_frontier.append((t_prime, successor))  # put the item back into the queue
+                    is_contained = False
+                    contained_item = None
+                    if not is_splitted:
+                        is_contained, contained_item = find_contained(successor_info, stats.seen)
+                    if is_splitted or not is_contained:  # any([(y_label == successor_info.successor_lbl and contained(successor_info.successor, y)) for u, (y, y_label) in stats.frontier]):
+                        unsafe = self.check_unsafe(template, successor_info.successor, self.unsafe_zone)
                         if self.graph is not None:
-                            self.graph.add_edge((parent, parent_lbl), successor)  # todo add action and probability ranges
-                        if unsafe:
-                            self.graph.nodes[successor]["safe"] = False
-                            stats.seen.append(successor)
+                            self.graph.add_edge(successor_info.get_parent_node(), successor_info.get_successor_node(), action=successor_info.action, lb=successor_info.lb, ub=successor_info.ub)
+                        if not unsafe:
+                            new_frontier.append((successor_info.t, successor_info.get_successor_node()))  # put the item back into the queue
+                        else:  # unsafe
+                            self.graph.nodes[successor_info.get_successor_node()]["safe"] = False
+                            stats.seen.append(successor_info.get_successor_node())
                         # print(x_prime)
                     else:
                         stats.num_already_visited += 1
+                        if self.graph is not None:
+                            self.graph.add_edge(successor_info.get_parent_node(), contained_item, action=successor_info.action, lb=successor_info.lb, ub=successor_info.ub)
         return new_frontier
 
     def update_prism_step(self, frontier, new_frontier, root):
@@ -201,15 +206,13 @@ class ProbabilisticExperiment(Experiment):
                 else:
                     self.graph.nodes[x]["irrelevant"] = True
 
-
-
-    def check_split(self, t, x, nn, bar_main, stats, template, template_2d) -> List:
+    def check_split(self, t, x, x_label, nn, bar_main, stats, template, template_2d) -> List[Experiment.SuccessorInfo]:
         # -------splitting
-        ranges_probs = create_range_bounds_model(template, x, self.env_input_size, nn)
+        ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
         split_flag = acceptable_range(ranges_probs)
         new_frontier = []
         if split_flag:
-            bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
+            # bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
             to_split = []
             to_split.append(x)
             bar_main.update(force=True)
@@ -217,31 +220,41 @@ class ProbabilisticExperiment(Experiment):
             print("", file=sys.stderr)  # new line
             # new_frontier = pickle.load(open("new_frontier.p","rb"))
             widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
-            with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_main:
+            with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_split:
                 while len(to_split) != 0:
-                    # bar_main.update(value=bar_main.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
+                    bar_split.update(value=bar_main.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                     to_analyse = to_split.pop()
                     if self.use_entropy_split:
-                        split1, split2 = sample_and_split(nn, template, np.array(to_analyse), self.env_input_size)
+                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size)
                     else:
                         dimension = pick_longest_dimension(template, x)
                         split1, split2 = split_polyhedron(template, x, dimension)
-                    ranges_probs1 = create_range_bounds_model(template, split1, self.env_input_size, nn)
-                    split_flag1 = acceptable_range(ranges_probs1)
+                    ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
+                    split_flag1 = acceptable_range(ranges_probs1) and self.use_split
                     if split_flag1:
                         to_split.append(split1)
                     else:
-                        new_frontier.insert(0, split1)
+                        successor_info = Experiment.SuccessorInfo()
+                        successor_info.successor = tuple(split1)
+                        successor_info.parent = x
+                        successor_info.parent_lbl = x_label
+                        successor_info.t = t
+                        successor_info.action = "split"
+                        new_frontier.append(successor_info)
                         # plot_frontier(new_frontier)
-                        self.graph.add_edge(x, split1, action="split")
-                    ranges_probs2 = create_range_bounds_model(template, split2, self.env_input_size, nn)
+                    ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
                     split_flag2 = acceptable_range(ranges_probs2)
                     if split_flag2:
                         to_split.append(split2)
                     else:
-                        new_frontier.insert(0, split2)
+                        successor_info = Experiment.SuccessorInfo()
+                        successor_info.successor = tuple(split2)
+                        successor_info.parent = x
+                        successor_info.parent_lbl = x_label
+                        successor_info.t = t
+                        successor_info.action = "split"
+                        new_frontier.append(successor_info)
                         # plot_frontier(new_frontier)
-                        self.graph.add_edge(x, split2, action="split")
             # print("finished splitting")
             # ----for plotting
             # colours = []
@@ -252,7 +265,9 @@ class ProbabilisticExperiment(Experiment):
             # fig = show_polygons(template, [x[1] for x in new_frontier], template_2d, colours)
             # fig.write_html("new_frontier.html")
             # print("", file=sys.stderr)  # new line
-        return []
+            return ray.put(new_frontier)
+        else:
+            return None  # we return none in the case where there was no splitting
 
     @staticmethod
     def round_tuple(x, rounding_value):
@@ -289,12 +304,6 @@ class ProbabilisticExperiment(Experiment):
         Experiment.generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
         return input
 
-    @staticmethod
-    def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size, name="input"):
-        input = pyo.Var(range(env_input_size), domain=pyo.Reals, name=name)
-        model.add_component(name, input)
-        Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size, name=f"{name}_constraints")
-        return model.input
 
     @staticmethod
     def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False):
@@ -308,26 +317,11 @@ class ProbabilisticExperiment(Experiment):
             else:
                 gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
 
-    @staticmethod
-    def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
-        region_constraints = pyo.ConstraintList()
-        model.add_component(name, region_constraints)
-        for j, template in enumerate(templates):
-            multiplication = 0
-            for i in range(env_input_size):
-                multiplication += template[i] * input[i]
-            if not invert:
-                # gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-                region_constraints.add(multiplication <= boundaries[j])
-            else:
-                # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
-                region_constraints.add(multiplication >= boundaries[j])
-
-    def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
+    def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: grb.MVar):
         results = []
         for template in templates:
-            gurobi_model.update()
             gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), grb.GRB.MAXIMIZE)
+            gurobi_model.update()
             gurobi_model.optimize()
             # print_model(gurobi_model)
             if gurobi_model.status == 5:
@@ -343,27 +337,9 @@ class ProbabilisticExperiment(Experiment):
             results.append(result)
         return np.array(results)
 
-    def optimise_pyo(self, templates: np.ndarray, model: pyo.ConcreteModel, x_prime):
-        results = []
-        for template in templates:
-            model.del_component(model.obj)
-            model.obj = pyo.Objective(expr=sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), sense=pyo.maximize)
-            result = pyo.SolverFactory('glpk').solve(model)
-            # assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal), f"LP wasn't optimally solved {x}"
-            # print_model(gurobi_model)
-            if (result.solver.status == SolverStatus.ok):
-                if (result.solver.termination_condition == TerminationCondition.optimal):
-                    result = pyo.value(model.obj)
-                    results.append(result)
-                elif (result.solver.termination_condition == TerminationCondition.unbounded):
-                    result = float("inf")
-                    results.append(result)
-                    continue
-                else:
-                    return None
-            else:
-                return None
-        return np.array(results)
+    def get_pre_nn(self):
+        """Returns the transformation operation to transform from input to observation"""
+        return torch.nn.Identity()
 
     def check_unsafe(self, template, bnds, x_label):
         for A, b in self.unsafe_zone:
@@ -535,69 +511,6 @@ class ProbabilisticExperiment(Experiment):
         return gurobi_model.status == 2 or gurobi_model.status == 5
 
     @staticmethod
-    def generate_nn_guard_pyo(model: pyo.ConcreteModel, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
-        model.nn_contraints = pyo.ConstraintList()
-        gurobi_vars = []
-        gurobi_vars.append(input)
-        for i, layer in enumerate(nn):
-            if type(layer) is torch.nn.Linear:
-                layer_size = int(layer.out_features)
-                v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.Reals)
-                model.add_component(name=f"layer_{i}", val=v)
-                lin_expr = np.zeros(layer_size)
-                weights = layer.weight.data.numpy()
-                bias = 0
-                if layer.bias is not None:
-                    bias = layer.bias.data.numpy()
-                else:
-                    bias = np.zeros(layer_size)
-                for j in range(layer_size):
-                    res = sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j]
-
-                for j in range(layer_size):
-                    model.nn_contraints.add(v[j] == sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j])
-                gurobi_vars.append(v)
-            elif type(layer) is torch.nn.ReLU:
-                layer_size = int(nn[i - 1].out_features)
-                v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.PositiveReals)
-                model.add_component(name=f"layer_{i}", val=v)
-
-                z = pyo.Var(range(layer_size), name=f"relu_{i}", within=pyo.Binary)
-                model.add_component(name=f"relu_{i}", val=z)
-                # for j in range(layer_size):
-                #     model.nn_contraints.add(expr=v[j] >= gurobi_vars[-1][j])
-                #     model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j] + M * z[j])
-                #     model.nn_contraints.add(expr=v[j] >= 0)
-                #     model.nn_contraints.add(expr=v[j] <= M - M * z[j])
-
-                for j in range(layer_size):
-                    # model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j])
-                    dis = gdp.Disjunction(expr=[[v[j] >= gurobi_vars[-1][j], v[j] <= gurobi_vars[-1][j], gurobi_vars[-1][j] >= 0], [v[j] == 0, gurobi_vars[-1][j] <= 0]])
-                    model.add_component(f"relu_{i}_{j}", dis)
-                gurobi_vars.append(v)
-                """
-                y = Relu(x)
-                0 <= z <= 1, z is integer
-                y >= x
-                y <= x + Mz
-                y >= 0
-                y <= M - Mz"""
-        for i in range(len(gurobi_vars[-1])):
-            if i == action_ego:
-                continue
-            model.nn_contraints.add(gurobi_vars[-1][action_ego] >= gurobi_vars[-1][i])
-        model.obj = pyo.Objective(expr=gurobi_vars[-1][action_ego], sense=pyo.minimize)
-        TransformationFactory('gdp.bigm').apply_to(model, bigM=M)
-        result = pyo.SolverFactory('glpk').solve(model)
-        if (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal):
-            return True
-        elif (result.solver.termination_condition == TerminationCondition.infeasible):
-            # log_infeasible_constraints(model)
-            return False
-        else:
-            print(f"Solver status: {result.solver.status}")
-
-    @staticmethod
     def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential):
         gurobi_vars = []
         gurobi_vars.append(input)
@@ -724,3 +637,10 @@ def contained(x: tuple, y: tuple, eps=1e-9):
         if x[i] > y[i] + eps:
             return False
     return True
+
+
+def find_contained(x_info: Experiment.SuccessorInfo, seen):
+    for i, i_label in seen:
+        if contained(x_info.successor, i) and x_info.successor_lbl == i_label:
+            return True, (i, i_label)
+    return False, -1

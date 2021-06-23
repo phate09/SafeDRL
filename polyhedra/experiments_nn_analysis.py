@@ -21,6 +21,7 @@ from pyomo.opt import SolverStatus, TerminationCondition
 from pyomo.util.infeasible import log_infeasible_constraints
 
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
+from symbolic import unroll_methods
 
 
 class Experiment():
@@ -31,7 +32,7 @@ class Experiment():
         self.get_nn_fn = None
         self.plot_fn = None
         self.post_fn_remote = None
-        self.assign_lbl_fn = None
+        self.assign_lbl_fn = self.assign_lbl_dummy
         self.additional_seen_fn = None  # adds additional elements to seen list
         self.template_2d: np.ndarray = None
         self.input_template: np.ndarray = None
@@ -50,7 +51,7 @@ class Experiment():
         self.show_progress_plot = True
         self.save_dir = None
         self.keep_model = False  # whether to keep the gurobi model for later timesteps
-        self.graph = networkx.Graph()  # set None to disable use of graph
+        self.graph = networkx.DiGraph()  # set None to disable use of graph
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -83,6 +84,45 @@ class Experiment():
         elapsed_seconds = round((experiment_end_time - experiment_start_time))
         print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
         return elapsed_seconds, safe, max_t
+
+    def assign_lbl_dummy(self, x_prime, parent, parent_lbl):
+        """assigns the same label to every state"""
+        return 0
+
+    def create_range_bounds_model(self, template, x, env_input_size, nn, round=-1):
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', False)
+        input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+        observation = self.get_observation_variable(input, gurobi_model)  # get the observation from the input
+        ranges = Experiment.get_range_bounds(observation, nn, gurobi_model)
+        ranges_probs = unroll_methods.softmax_interval(ranges)
+        if round >= 0:
+            pass
+            # todo round the probabilities
+        return ranges_probs
+
+    @staticmethod
+    def get_range_bounds(input, nn, gurobi_model, M=1e6):
+        gurobi_vars = []
+        gurobi_vars.append(input)
+        Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
+        last_layer = gurobi_vars[-1]
+        ranges = []
+        for i in range(last_layer.shape[0]):
+            gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MAXIMIZE)  # maximise the output
+            gurobi_model.update()
+            gurobi_model.optimize()
+            ub = last_layer[i].X[0]
+            gurobi_model.setObjective(last_layer[i].sum(), grb.GRB.MINIMIZE)  # maximise the output
+            gurobi_model.update()
+            gurobi_model.optimize()
+            lb = last_layer[i].X[0]
+            ranges.append((lb, ub))
+        return ranges
+
+    def get_observation_variable(self, input, gurobi_model):
+        """to override if the obsevation variable is different from the input (e.g. adversarial examples)"""
+        return input
 
     def main_loop(self, nn, template, template_2d):
         root = self.generate_root_polytope()
@@ -565,6 +605,23 @@ class Experiment():
                             wr.writerow(vertex)
                         wr.writerow(item[0])  # write back the first item
                     wr.writerow("")
+
+    class SuccessorInfo:
+        def __init__(self):
+            self.action = None
+            self.lb = 1.0
+            self.ub = 1.0
+            self.parent = None
+            self.parent_lbl = None
+            self.successor = None
+            self.successor_lbl = None
+            self.t = None
+
+        def get_successor_node(self):
+            return self.successor, self.successor_lbl
+
+        def get_parent_node(self):
+            return self.parent, self.parent_lbl
 
 
 def contained(x: tuple, y: tuple, eps=1e-9):
