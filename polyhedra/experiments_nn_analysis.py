@@ -6,8 +6,8 @@ import time
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Tuple, List
-import pyomo.environ as pyo
-import pyomo.gdp as gdp
+# import pyomo.environ as pyo
+# import pyomo.gdp as gdp
 import gurobipy as grb
 import networkx
 import numpy as np
@@ -16,9 +16,9 @@ import ray
 import torch
 from interval import interval, imath
 import plotly.graph_objects as go
-from pyomo.core import TransformationFactory
-from pyomo.opt import SolverStatus, TerminationCondition
-from pyomo.util.infeasible import log_infeasible_constraints
+# from pyomo.core import TransformationFactory
+# from pyomo.opt import SolverStatus, TerminationCondition
+# from pyomo.util.infeasible import log_infeasible_constraints
 
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
 from symbolic import unroll_methods
@@ -244,12 +244,12 @@ class Experiment():
         Experiment.generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
         return input
 
-    @staticmethod
-    def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size, name="input"):
-        input = pyo.Var(range(env_input_size), domain=pyo.Reals, name=name)
-        model.add_component(name, input)
-        Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size, name=f"{name}_constraints")
-        return model.input
+    # @staticmethod
+    # def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size, name="input"):
+    #     input = pyo.Var(range(env_input_size), domain=pyo.Reals, name=name)
+    #     model.add_component(name, input)
+    #     Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size, name=f"{name}_constraints")
+    #     return model.input
 
     @staticmethod
     def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False):
@@ -263,20 +263,20 @@ class Experiment():
             else:
                 gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
 
-    @staticmethod
-    def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
-        region_constraints = pyo.ConstraintList()
-        model.add_component(name, region_constraints)
-        for j, template in enumerate(templates):
-            multiplication = 0
-            for i in range(env_input_size):
-                multiplication += template[i] * input[i]
-            if not invert:
-                # gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-                region_constraints.add(multiplication <= boundaries[j])
-            else:
-                # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
-                region_constraints.add(multiplication >= boundaries[j])
+    # @staticmethod
+    # def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
+    #     region_constraints = pyo.ConstraintList()
+    #     model.add_component(name, region_constraints)
+    #     for j, template in enumerate(templates):
+    #         multiplication = 0
+    #         for i in range(env_input_size):
+    #             multiplication += template[i] * input[i]
+    #         if not invert:
+    #             # gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
+    #             region_constraints.add(multiplication <= boundaries[j])
+    #         else:
+    #             # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
+    #             region_constraints.add(multiplication >= boundaries[j])
 
     def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
         results = []
@@ -298,27 +298,27 @@ class Experiment():
             results.append(result)
         return np.array(results)
 
-    def optimise_pyo(self, templates: np.ndarray, model: pyo.ConcreteModel, x_prime):
-        results = []
-        for template in templates:
-            model.del_component(model.obj)
-            model.obj = pyo.Objective(expr=sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), sense=pyo.maximize)
-            result = pyo.SolverFactory('glpk').solve(model)
-            # assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal), f"LP wasn't optimally solved {x}"
-            # print_model(gurobi_model)
-            if (result.solver.status == SolverStatus.ok):
-                if (result.solver.termination_condition == TerminationCondition.optimal):
-                    result = pyo.value(model.obj)
-                    results.append(result)
-                elif (result.solver.termination_condition == TerminationCondition.unbounded):
-                    result = float("inf")
-                    results.append(result)
-                    continue
-                else:
-                    return None
-            else:
-                return None
-        return np.array(results)
+    # def optimise_pyo(self, templates: np.ndarray, model: pyo.ConcreteModel, x_prime):
+    #     results = []
+    #     for template in templates:
+    #         model.del_component(model.obj)
+    #         model.obj = pyo.Objective(expr=sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), sense=pyo.maximize)
+    #         result = pyo.SolverFactory('glpk').solve(model)
+    #         # assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal), f"LP wasn't optimally solved {x}"
+    #         # print_model(gurobi_model)
+    #         if (result.solver.status == SolverStatus.ok):
+    #             if (result.solver.termination_condition == TerminationCondition.optimal):
+    #                 result = pyo.value(model.obj)
+    #                 results.append(result)
+    #             elif (result.solver.termination_condition == TerminationCondition.unbounded):
+    #                 result = float("inf")
+    #                 results.append(result)
+    #                 continue
+    #             else:
+    #                 return None
+    #         else:
+    #             return None
+    #     return np.array(results)
 
     def check_unsafe(self, template, bnds, x_label):
         for A, b in self.unsafe_zone:
@@ -477,68 +477,68 @@ class Experiment():
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return gurobi_model.status == 2 or gurobi_model.status == 5
 
-    @staticmethod
-    def generate_nn_guard_pyo(model: pyo.ConcreteModel, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
-        model.nn_contraints = pyo.ConstraintList()
-        gurobi_vars = []
-        gurobi_vars.append(input)
-        for i, layer in enumerate(nn):
-            if type(layer) is torch.nn.Linear:
-                layer_size = int(layer.out_features)
-                v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.Reals)
-                model.add_component(name=f"layer_{i}", val=v)
-                lin_expr = np.zeros(layer_size)
-                weights = layer.weight.data.numpy()
-                bias = 0
-                if layer.bias is not None:
-                    bias = layer.bias.data.numpy()
-                else:
-                    bias = np.zeros(layer_size)
-                for j in range(layer_size):
-                    res = sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j]
-
-                for j in range(layer_size):
-                    model.nn_contraints.add(v[j] == sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j])
-                gurobi_vars.append(v)
-            elif type(layer) is torch.nn.ReLU:
-                layer_size = int(nn[i - 1].out_features)
-                v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.PositiveReals)
-                model.add_component(name=f"layer_{i}", val=v)
-
-                z = pyo.Var(range(layer_size), name=f"relu_{i}", within=pyo.Binary)
-                model.add_component(name=f"relu_{i}", val=z)
-                # for j in range(layer_size):
-                #     model.nn_contraints.add(expr=v[j] >= gurobi_vars[-1][j])
-                #     model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j] + M * z[j])
-                #     model.nn_contraints.add(expr=v[j] >= 0)
-                #     model.nn_contraints.add(expr=v[j] <= M - M * z[j])
-
-                for j in range(layer_size):
-                    # model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j])
-                    dis = gdp.Disjunction(expr=[[v[j] >= gurobi_vars[-1][j], v[j] <= gurobi_vars[-1][j], gurobi_vars[-1][j] >= 0], [v[j] == 0, gurobi_vars[-1][j] <= 0]])
-                    model.add_component(f"relu_{i}_{j}", dis)
-                gurobi_vars.append(v)
-                """
-                y = Relu(x)
-                0 <= z <= 1, z is integer
-                y >= x
-                y <= x + Mz
-                y >= 0
-                y <= M - Mz"""
-        for i in range(len(gurobi_vars[-1])):
-            if i == action_ego:
-                continue
-            model.nn_contraints.add(gurobi_vars[-1][action_ego] >= gurobi_vars[-1][i])
-        model.obj = pyo.Objective(expr=gurobi_vars[-1][action_ego], sense=pyo.minimize)
-        TransformationFactory('gdp.bigm').apply_to(model, bigM=M)
-        result = pyo.SolverFactory('glpk').solve(model)
-        if (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal):
-            return True
-        elif (result.solver.termination_condition == TerminationCondition.infeasible):
-            # log_infeasible_constraints(model)
-            return False
-        else:
-            print(f"Solver status: {result.solver.status}")
+    # @staticmethod
+    # def generate_nn_guard_pyo(model: pyo.ConcreteModel, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
+    #     model.nn_contraints = pyo.ConstraintList()
+    #     gurobi_vars = []
+    #     gurobi_vars.append(input)
+    #     for i, layer in enumerate(nn):
+    #         if type(layer) is torch.nn.Linear:
+    #             layer_size = int(layer.out_features)
+    #             v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.Reals)
+    #             model.add_component(name=f"layer_{i}", val=v)
+    #             lin_expr = np.zeros(layer_size)
+    #             weights = layer.weight.data.numpy()
+    #             bias = 0
+    #             if layer.bias is not None:
+    #                 bias = layer.bias.data.numpy()
+    #             else:
+    #                 bias = np.zeros(layer_size)
+    #             for j in range(layer_size):
+    #                 res = sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j]
+    #
+    #             for j in range(layer_size):
+    #                 model.nn_contraints.add(v[j] == sum(gurobi_vars[-1][k] * weights[j, k] for k in range(weights.shape[1])) + bias[j])
+    #             gurobi_vars.append(v)
+    #         elif type(layer) is torch.nn.ReLU:
+    #             layer_size = int(nn[i - 1].out_features)
+    #             v = pyo.Var(range(layer_size), name=f"layer_{i}", within=pyo.PositiveReals)
+    #             model.add_component(name=f"layer_{i}", val=v)
+    #
+    #             z = pyo.Var(range(layer_size), name=f"relu_{i}", within=pyo.Binary)
+    #             model.add_component(name=f"relu_{i}", val=z)
+    #             # for j in range(layer_size):
+    #             #     model.nn_contraints.add(expr=v[j] >= gurobi_vars[-1][j])
+    #             #     model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j] + M * z[j])
+    #             #     model.nn_contraints.add(expr=v[j] >= 0)
+    #             #     model.nn_contraints.add(expr=v[j] <= M - M * z[j])
+    #
+    #             for j in range(layer_size):
+    #                 # model.nn_contraints.add(expr=v[j] <= gurobi_vars[-1][j])
+    #                 dis = gdp.Disjunction(expr=[[v[j] >= gurobi_vars[-1][j], v[j] <= gurobi_vars[-1][j], gurobi_vars[-1][j] >= 0], [v[j] == 0, gurobi_vars[-1][j] <= 0]])
+    #                 model.add_component(f"relu_{i}_{j}", dis)
+    #             gurobi_vars.append(v)
+    #             """
+    #             y = Relu(x)
+    #             0 <= z <= 1, z is integer
+    #             y >= x
+    #             y <= x + Mz
+    #             y >= 0
+    #             y <= M - Mz"""
+    #     for i in range(len(gurobi_vars[-1])):
+    #         if i == action_ego:
+    #             continue
+    #         model.nn_contraints.add(gurobi_vars[-1][action_ego] >= gurobi_vars[-1][i])
+    #     model.obj = pyo.Objective(expr=gurobi_vars[-1][action_ego], sense=pyo.minimize)
+    #     TransformationFactory('gdp.bigm').apply_to(model, bigM=M)
+    #     result = pyo.SolverFactory('glpk').solve(model)
+    #     if (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal):
+    #         return True
+    #     elif (result.solver.termination_condition == TerminationCondition.infeasible):
+    #         # log_infeasible_constraints(model)
+    #         return False
+    #     else:
+    #         print(f"Solver status: {result.solver.status}")
 
     @staticmethod
     def generate_nn_guard_continuous(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, M=1e3):

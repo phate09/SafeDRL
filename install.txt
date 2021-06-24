@@ -4,8 +4,8 @@ conda create --name safedrl python=3.7 numpy pyzmq protobuf
 conda activate safedrl
 pip install torch gym
 conda config --add channels http://conda.anaconda.org/gurobi
-conda install gurobi=8
-pip install ray py4j bidict
+conda install gurobi
+pip install ray[rllib] py4j bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
 #local install mpmath
@@ -13,4 +13,4 @@ pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matpl
 
 conda install cython
 python setup.py build_ext --inplace
-pip install dm-tree opencv-python lz4
+pip install dm-tree opencv-python lz4 python-intervals pyinterval pypoman

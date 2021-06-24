@@ -132,10 +132,13 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             acceleration = const_acc
         else:
             acceleration = 0
-        v_ego_prime = gurobi_model.addMVar(shape=(1,))
-        v_next = v_ego + acceleration * dt
+        v_ego_prime_temp1 = gurobi_model.addVar()
+        v_ego_prime_temp2 = gurobi_model.addVar()
+        v_next = v_ego._vararr[0] + acceleration * dt
 
-        gurobi_model.addConstr(v_ego_prime == v_next, name=f"v_constr")
+        gurobi_model.addConstr(v_ego_prime_temp1 == v_next, name=f"v_constr")
+        gurobi_model.addConstr(v_ego_prime_temp2 == grb.min_(36.0,v_ego_prime_temp1), name=f"v_constr")
+        v_ego_prime= grb.MVar(v_ego_prime_temp2)
         # gurobi_model.addConstr(v_ego_prime >= -max_speed, name=f"v_constr")
         # gurobi_model.addConstr(a_lead == 0, name="a_lead_constr")
         v_lead_prime = v_lead
@@ -145,7 +148,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         # delta_v_prime = (v_lead + (a_lead + 0) * dt) - (v_ego + (a_ego + acceleration) * dt)
         gurobi_model.addConstr(z[0] == x_lead_prime, name=f"dyna_constr_1")
         gurobi_model.addConstr(z[1] == x_ego_prime, name=f"dyna_constr_2")
-        gurobi_model.addConstr(z[2] == grb.min_(v_ego_prime, max_speed), name=f"dyna_constr_3")
+        gurobi_model.addConstr(z[2] == v_ego_prime, name=f"dyna_constr_3")
         # gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
         # gurobi_model.addConstr(z[4] == 0, name=f"dyna_constr_5")  # no change in a_lead
         # gurobi_model.addConstr(z[5] == acceleration, name=f"dyna_constr_6")
@@ -315,5 +318,5 @@ if __name__ == '__main__':
     # experiment.input_template = Experiment.box(3)
     # input_boundaries = [40, -30, 10, -0, 36, -28]
     # experiment.input_boundaries = input_boundaries
-    experiment.time_horizon = 150
+    experiment.time_horizon = 6
     experiment.run_experiment()

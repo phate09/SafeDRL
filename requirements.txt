@@ -1,5 +1,6 @@
 jsonpickle
 python-intervals
+pyinterval
 torch
 mpmath
 scikit-learn
@@ -12,3 +13,8 @@ gym
 protobuf
 ray
 py4j
+gurobi
+networkx
+progressbar2
+sympy
+colour

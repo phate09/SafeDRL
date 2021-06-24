@@ -105,10 +105,13 @@ class ProbabilisticExperiment(Experiment):
         # fills up the worker threads
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = stats.frontier.pop(0) if self.use_bfs else stats.frontier.pop()
-            if stats.max_t > self.time_horizon:
-                print(f"Reached horizon t={t}")
-                stats.exit_flag = True
-                break
+            if t > self.time_horizon:
+                print(f"Discard timestep t={t}")
+                continue
+            # if stats.max_t > self.time_horizon:
+            #     print(f"Reached horizon t={t}")
+            #     stats.exit_flag = True
+            #     break
             contained_flag = False
             to_remove = []
             for (s, s_label) in stats.seen:
@@ -211,7 +214,7 @@ class ProbabilisticExperiment(Experiment):
         ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
         split_flag = acceptable_range(ranges_probs)
         new_frontier = []
-        if split_flag:
+        if split_flag and self.use_split:
             # bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
             to_split = []
             to_split.append(x)
@@ -303,7 +306,6 @@ class ProbabilisticExperiment(Experiment):
         input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
         Experiment.generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
         return input
-
 
     @staticmethod
     def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False):
