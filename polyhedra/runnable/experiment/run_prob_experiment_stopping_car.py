@@ -30,6 +30,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         x_ego = Experiment.e(env_input_size, 1)
         v_ego = Experiment.e(env_input_size, 2)
         template = Experiment.combinations([x_lead - x_ego, - v_ego])
+        # template = np.stack([x_lead - x_ego, -(x_lead - x_ego), - v_ego, v_ego])
         self.analysis_template: np.ndarray = template
         collision_distance = 0
         distance = [Experiment.e(self.env_input_size, 0) - Experiment.e(self.env_input_size, 1)]
@@ -98,6 +99,9 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
         gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
         gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return observation
 
     @staticmethod
@@ -116,13 +120,10 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
 
         '''
         v_lead = 28
-        max_speed = 36
+        max_speed = 36.0
         x_lead = input[0]
         x_ego = input[1]
-        # v_lead = input[2]
         v_ego = input[2]
-        # a_lead = input[4]
-        # a_ego = input[5]
         z = gurobi_model.addMVar(shape=(env_input_size,), lb=float("-inf"), name=f"x_prime")
         const_acc = 3
         dt = .1  # seconds
@@ -137,21 +138,14 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         v_next = v_ego._vararr[0] + acceleration * dt
 
         gurobi_model.addConstr(v_ego_prime_temp1 == v_next, name=f"v_constr")
-        gurobi_model.addConstr(v_ego_prime_temp2 == grb.min_(36.0,v_ego_prime_temp1), name=f"v_constr")
-        v_ego_prime= grb.MVar(v_ego_prime_temp2)
-        # gurobi_model.addConstr(v_ego_prime >= -max_speed, name=f"v_constr")
-        # gurobi_model.addConstr(a_lead == 0, name="a_lead_constr")
+        gurobi_model.addConstr(v_ego_prime_temp2 == grb.min_(max_speed, v_ego_prime_temp1), name=f"v_constr")
+        v_ego_prime = grb.MVar(v_ego_prime_temp2)  # convert from Var to MVar
         v_lead_prime = v_lead
         x_lead_prime = x_lead + v_lead_prime * dt
         x_ego_prime = x_ego + v_ego_prime * dt
-        # delta_x_prime = (x_lead + (v_lead + (a_lead + 0) * dt) * dt) - (x_ego + (v_ego + (a_ego + acceleration) * dt) * dt)
-        # delta_v_prime = (v_lead + (a_lead + 0) * dt) - (v_ego + (a_ego + acceleration) * dt)
         gurobi_model.addConstr(z[0] == x_lead_prime, name=f"dyna_constr_1")
         gurobi_model.addConstr(z[1] == x_ego_prime, name=f"dyna_constr_2")
         gurobi_model.addConstr(z[2] == v_ego_prime, name=f"dyna_constr_3")
-        # gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
-        # gurobi_model.addConstr(z[4] == 0, name=f"dyna_constr_5")  # no change in a_lead
-        # gurobi_model.addConstr(z[5] == acceleration, name=f"dyna_constr_6")
         return z
 
     def plot(self, vertices_list, template, template_2d):
@@ -303,13 +297,14 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=True)
+    ray.init(log_to_driver=False, local_mode=False)
     experiment = StoppingCarExperimentProbabilistic()
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
-    experiment.n_workers = 1
+    # experiment.n_workers = 1
+
     # x_lead = Experiment.e(experiment.env_input_size, 0)
     # x_ego = Experiment.e(experiment.env_input_size, 1)
     # v_ego = Experiment.e(experiment.env_input_size, 2)
@@ -317,6 +312,10 @@ if __name__ == '__main__':
     # experiment.analysis_template = template  # standard
     # experiment.input_template = Experiment.box(3)
     # input_boundaries = [40, -30, 10, -0, 36, -28]
+    # input_boundaries = [40, -30, 10, -0, 36, -28]
     # experiment.input_boundaries = input_boundaries
+    # experiment.input_template = experiment.analysis_template
+    # experiment.input_boundaries = (41.11888939, -37.82961296, -35.29123968,  35.53653031,
+    #      5.71856605, -73.12085264,  76.65541971,  -2.53837328)
     experiment.time_horizon = 6
     experiment.run_experiment()

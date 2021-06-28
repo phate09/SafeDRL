@@ -93,6 +93,9 @@ class Experiment():
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', False)
         input = Experiment.generate_input_region(gurobi_model, template, x, env_input_size)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
         observation = self.get_observation_variable(input, gurobi_model)  # get the observation from the input
         ranges = Experiment.get_range_bounds(observation, nn, gurobi_model)
         ranges_probs = unroll_methods.softmax_interval(ranges)
@@ -277,12 +280,12 @@ class Experiment():
     #         else:
     #             # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
     #             region_constraints.add(multiplication >= boundaries[j])
-
-    def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
+    @staticmethod
+    def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
         results = []
         for template in templates:
             gurobi_model.update()
-            gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), grb.GRB.MAXIMIZE)
+            gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(len(template))), grb.GRB.MAXIMIZE)
             gurobi_model.optimize()
             # print_model(gurobi_model)
             if gurobi_model.status == 5:

@@ -84,14 +84,14 @@ def show_polygon_list3(polygon_vertices_list, x_axis_title, y_axis_title, templa
 
 
 def show_polygon_list31d(polygon_vertices_list, x_axis_title, y_axis_title, template, template2d):
-    #only works for 1dimensional data
+    # only works for 1dimensional data
     traces = []
     projected_points = []
     for timestep in polygon_vertices_list:
         principal_components_list = []
         pol = polygon_vertices_list[timestep]
         for p in pol:
-            p1 = np.expand_dims(p*np.array([1,-1]), axis=1) #fixes the negative value
+            p1 = np.expand_dims(p * np.array([1, -1]), axis=1)  # fixes the negative value
             e = np.append(p1, np.ones((p.shape[0], 1)) * timestep, axis=1)
             principal_components_list.append(tuple([(y[1], y[0]) for y in PolygonSort(e)]))  # invert the axis
         # polygon = [for x in polygon_vertices_list[timestep]]
@@ -135,3 +135,24 @@ def compute_polygon_trace(principalComponents: List[List], marker_size=1):
     polygon1 = [PolygonSort(x) for x in principalComponents]
     trace1 = compute_trace_polygons(polygon1, marker_size)
     return trace1
+
+def project_to_dimension(points: np.ndarray, dimension: np.ndarray):
+    lengths = np.linalg.norm(dimension)
+    projs = np.dot(points, dimension)  # / lengths
+    return projs
+
+def show_polygons(template, boundaries, template_2d, colours=None):
+    fig = go.Figure()
+    for i, boundary in enumerate(boundaries):
+        vertices = windowed_projection(template, boundary, template_2d)
+        # vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (template, np.array(boundaries)), canonicalize=False)
+        assert vertices is not None
+        sorted_vertices = PolygonSort(vertices)
+        trace = compute_trace_polygons([sorted_vertices], colours=[colours[i]] if colours is not None else None)
+        fig.add_trace(trace)
+    fig.update_yaxes(
+        scaleanchor="x",
+        scaleratio=1,
+    )
+    fig.show()
+    return fig

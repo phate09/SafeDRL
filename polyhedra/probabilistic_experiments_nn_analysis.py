@@ -19,7 +19,7 @@ from py4j.java_gateway import JavaGateway
 
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range
-from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
+from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
 from utility.standard_progressbar import StandardProgressBar
 
@@ -28,7 +28,7 @@ class ProbabilisticExperiment(Experiment):
     def __init__(self, env_input_size: int):
         super().__init__(env_input_size)
         self.use_entropy_split = True
-        self.use_split = False  # enable/disable splitting
+        self.use_split = True  # enable/disable splitting
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -118,6 +118,7 @@ class ProbabilisticExperiment(Experiment):
                 if s_label == x_label:
                     if contained(x, s):
                         if not self.graph.has_predecessor((x, x_label), (s, x_label)):  # ensures that if there was a split it doesn't count as contained
+                            self.graph.add_edge((x, x_label), (s, x_label), action="contained", lb=1.0, ub=1.0)
                             contained_flag = True
                             break
                     if contained(s, x):
@@ -172,14 +173,18 @@ class ProbabilisticExperiment(Experiment):
                         assert contained(successor_info.successor,
                                          x_prime_rounded), f"{successor_info.successor} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
                         successor_info.successor = x_prime_rounded
-                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]
+                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if
+                                      not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]  # remove from frontier if the successor is bigger
                     is_splitted = successor_info.action == "split"
                     # ---check contained
                     is_contained = False
                     contained_item = None
                     if not is_splitted:
                         is_contained, contained_item = find_contained(successor_info, stats.seen)
-                    if is_splitted or not is_contained:  # any([(y_label == successor_info.successor_lbl and contained(successor_info.successor, y)) for u, (y, y_label) in stats.frontier]):
+                    else:
+                        if successor_info.get_parent_node() in stats.seen:
+                            stats.seen.remove(successor_info.get_parent_node())  # remove the parent node from seen if it has been split to prevent unnecessary loops
+                    if is_splitted or not is_contained:
                         unsafe = self.check_unsafe(template, successor_info.successor, self.unsafe_zone)
                         if self.graph is not None:
                             self.graph.add_edge(successor_info.get_parent_node(), successor_info.get_successor_node(), action=successor_info.action, lb=successor_info.lb, ub=successor_info.ub)
@@ -228,7 +233,9 @@ class ProbabilisticExperiment(Experiment):
                     bar_split.update(value=bar_main.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                     to_analyse = to_split.pop()
                     if self.use_entropy_split:
-                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size)
+                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size,template_2d)
+                        if split1 is None or split2 is None:
+                            split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
                     else:
                         dimension = pick_longest_dimension(template, x)
                         split1, split2 = split_polyhedron(template, x, dimension)
@@ -318,26 +325,6 @@ class ProbabilisticExperiment(Experiment):
                 gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
             else:
                 gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
-
-    def optimise(self, templates: np.ndarray, gurobi_model: grb.Model, x_prime: grb.MVar):
-        results = []
-        for template in templates:
-            gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), grb.GRB.MAXIMIZE)
-            gurobi_model.update()
-            gurobi_model.optimize()
-            # print_model(gurobi_model)
-            if gurobi_model.status == 5:
-                result = float("inf")
-                results.append(result)
-                continue
-            if gurobi_model.status == 4 or gurobi_model.status == 3:
-                return None
-            assert gurobi_model.status == 2, f"gurobi_model.status=={gurobi_model.status}"
-            # if gurobi_model.status != 2:
-            #     return None
-            result = gurobi_model.ObjVal
-            results.append(result)
-        return np.array(results)
 
     def get_pre_nn(self):
         """Returns the transformation operation to transform from input to observation"""
