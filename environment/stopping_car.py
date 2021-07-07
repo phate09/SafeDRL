@@ -26,10 +26,13 @@ class StoppingCar(gym.Env):
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
         self.epsilon_input = 0
         self.cost_function_index = 0
+        self.simplified_mode = False
         self.seed()
         if config is not None:
             self.cost_function_index = config.get("cost_fn", 0)
             self.epsilon_input = config.get("epsilon_input", 0)
+            self.simplified_mode = config.get("simplified", False)
+            self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2 if self.simplified_mode else 8,), dtype=np.float32)
 
     def reset(self):
         self.y_lead = self.y_ego = 0
@@ -39,7 +42,10 @@ class StoppingCar(gym.Env):
         self.x_lead = self.np_random.uniform(20, 60)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
-        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+        if not self.simplified_mode:
+            return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+        else:
+            return np.array([delta_v, delta_x])
 
     def random_sample(self):
         self.y_lead = self.y_ego = 0
@@ -49,7 +55,10 @@ class StoppingCar(gym.Env):
         self.x_lead = self.np_random.uniform(0, 60)
         delta_x = self.x_lead - self.x_ego
         delta_v = self.v_lead - self.v_ego
-        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+        if not self.simplified_mode:
+            return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+        else:
+            return np.array([delta_v, delta_x])
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -77,7 +86,10 @@ class StoppingCar(gym.Env):
             if delta_x < 0:  # crash
                 done = True
                 cost = -1000
-        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x]), cost, done, {}
+        if not self.simplified_mode:
+            return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x]), cost, done, {}
+        else:
+            return np.array([delta_v, delta_x]), cost, done, {}
 
     def perfect_action(self):
         delta_x = self.x_lead - self.x_ego
