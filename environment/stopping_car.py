@@ -41,6 +41,16 @@ class StoppingCar(gym.Env):
         delta_v = self.v_lead - self.v_ego
         return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
 
+    def random_sample(self):
+        self.y_lead = self.y_ego = 0
+        self.v_lead = self.np_random.uniform(20, 36)
+        self.v_ego = self.np_random.uniform(-36, 36)
+        self.x_ego = self.np_random.uniform(0, 0)
+        self.x_lead = self.np_random.uniform(0, 60)
+        delta_x = self.x_lead - self.x_ego
+        delta_v = self.v_lead - self.v_ego
+        return np.array([self.x_lead, self.x_ego, self.v_lead, self.v_ego, self.y_lead, self.y_ego, delta_v, delta_x])
+
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]

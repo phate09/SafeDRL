@@ -20,7 +20,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         self.post_fn_remote = self.post_milp
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
-        self.template_2d: np.ndarray = np.array([[1, 0, 0], [1, -1, 0]])
+        self.template_2d: np.ndarray = np.array([[0, 0, 1], [1, -1, 0]])
         self.input_boundaries = tuple([50, -40, 0, 0, 36, -28])
         self.input_template = Experiment.box(env_input_size)
         # self.input_boundaries: List = input_boundaries
@@ -65,9 +65,9 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
             # print(self.optimise(template, gurobi_model, input))
             # observation = self.get_observation_variable(input, gurobi_model)
-            if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
-                # skip action
-                continue
+            # if ranges_probs[chosen_action][1] <= 1e-6:  # ignore very small probabilities of happening
+            #     skip action
+                # continue
             x_prime = StoppingCarExperimentProbabilistic.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
@@ -86,7 +86,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             successor_info.parent = x
             successor_info.parent_lbl = x_label
             successor_info.t = t + 1
-            successor_info.action = chosen_action
+            successor_info.action = "policy"#chosen_action
             successor_info.lb = ranges_probs[chosen_action][0]
             successor_info.ub = ranges_probs[chosen_action][1]
             post.append(successor_info)

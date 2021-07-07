@@ -20,7 +20,7 @@ from py4j.java_gateway import JavaGateway
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
-from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
+from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
 from utility.standard_progressbar import StandardProgressBar
 
 
@@ -29,6 +29,8 @@ class ProbabilisticExperiment(Experiment):
         super().__init__(env_input_size)
         self.use_entropy_split = True
         self.use_split = True  # enable/disable splitting
+        self.load_graph = True
+        self.max_probability_split = 0.2
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -63,12 +65,15 @@ class ProbabilisticExperiment(Experiment):
         return elapsed_seconds, safe, max_t
 
     class LoopStats():
+        """Class that contains some information to share inbetween loops"""
+
         def __init__(self):
             self.seen = []
             self.frontier = []  # contains the elements to explore
             self.vertices_list = defaultdict(list)
             self.max_t = 0
             self.num_already_visited = 0
+            self.num_irrelevant = 0
             self.proc_ids = []
             self.last_time_plot = None
             self.exit_flag = False
@@ -79,22 +84,59 @@ class ProbabilisticExperiment(Experiment):
         root = self.generate_root_polytope()
         root_pair = (root, 0)  # label for root is always 0
         root_list = [root_pair]
-        stats = ProbabilisticExperiment.LoopStats()
-        stats.root = root_pair
-        if self.additional_seen_fn is not None:
-            for extra in self.additional_seen_fn():
-                stats.seen.append(extra)
-        stats.frontier = [(0, x) for x in root_list]
-        if self.graph is not None:
-            self.graph.add_node(root_pair)
-        widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
-                   progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
-        if self.before_start_fn is not None:
-            self.before_start_fn(nn)
-        with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar_main:
-            while len(stats.frontier) != 0 or len(stats.proc_ids) != 0:
-                self.inner_loop_step(stats, template_2d, template, nn, bar_main)
-        self.plot_fn(stats.vertices_list, template, template_2d)
+        if not self.load_graph:
+            stats = ProbabilisticExperiment.LoopStats()
+            stats.root = root_pair
+            if self.additional_seen_fn is not None:
+                for extra in self.additional_seen_fn():
+                    stats.seen.append(extra)
+            stats.frontier = [(0, x) for x in root_list]
+            if self.graph is not None:
+                self.graph.add_node(root_pair)
+            widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
+                       progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
+            if self.before_start_fn is not None:
+                self.before_start_fn(nn)
+            with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar_main:
+                while len(stats.frontier) != 0 or len(stats.proc_ids) != 0:
+                    self.inner_loop_step(stats, template_2d, template, nn, bar_main)
+            self.plot_fn(stats.vertices_list, template, template_2d)
+            gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
+            inv_map = {v: k for k, v in mapping.items()}
+            networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
+        else:
+            self.graph = networkx.read_gpickle(os.path.join(self.save_dir, "graph.p"))
+            gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
+        # ----for plotting
+        colours = []
+        to_plot = list(self.graph.successors(root_pair))
+        bad_nodes = []
+        for x in self.graph.adj:
+            safe = self.graph.nodes[x].get("safe")
+            infeasible = self.graph.nodes[x].get("irrelevant")
+            if safe is not None:
+                if safe is False:
+                    bad_nodes.append(x)
+            if infeasible is not None:
+                if infeasible is True:
+                    bad_nodes.append(x)
+        terminal_states_ids = [mapping[x] for x in bad_nodes]
+        for node in to_plot:
+            starting_id = mapping[node]
+            sum = 0
+            # for terminal_state_id in terminal_states_ids:
+            #     minmin, minmax, maxmin, maxmax = extract_probabilities([terminal_state_id], gateway, mc, mdp, root_id=starting_id)
+            #     sum+=maxmax
+            minmin, minmax, maxmin, maxmax = extract_probabilities(terminal_states_ids, gateway, mc, mdp, root_id=starting_id)
+            colours.append(np.mean([maxmin, maxmax]))
+        # for x,x_label in to_plot:
+        #     ranges_probs1 = self.create_range_bounds_model(template, x, self.env_input_size, nn)
+        #     colours.append(np.mean(ranges_probs1[0]))
+        print("", file=sys.stderr)  # new line
+        fig = show_polygons(template, [x[0] for x in to_plot], self.template_2d, colours)
+        fig.write_html("initial_state_unsafe_prob.html")
+        fig.show()
+        print("", file=sys.stderr)  # new line
         return stats.max_t, stats.num_already_visited, stats.vertices_list, stats.is_agent_unsafe
 
     @ray.remote
@@ -153,7 +195,7 @@ class ProbabilisticExperiment(Experiment):
         # process the results (if any)
         new_frontier = self.collect_results(stats, template)
         # update prism
-        self.update_prism_step(stats.frontier, new_frontier, stats.root)
+        self.update_prism_step(stats.frontier, new_frontier, stats.root, stats)
         stats.new_frontier = []  # resets the new_frontier
 
     def collect_results(self, stats, template):
@@ -173,9 +215,9 @@ class ProbabilisticExperiment(Experiment):
                         assert contained(successor_info.successor,
                                          x_prime_rounded), f"{successor_info.successor} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
                         successor_info.successor = x_prime_rounded
-                    stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if
-                                      not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]  # remove from frontier if the successor is bigger
-                    is_splitted = successor_info.action == "split"
+                    # stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if
+                    #                   not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]  # remove from frontier if the successor is bigger
+                    is_splitted = "split" in successor_info.action
                     # ---check contained
                     is_contained = False
                     contained_item = None
@@ -197,31 +239,37 @@ class ProbabilisticExperiment(Experiment):
                     else:
                         stats.num_already_visited += 1
                         if self.graph is not None:
-                            self.graph.add_edge(successor_info.get_parent_node(), contained_item, action=successor_info.action, lb=successor_info.lb, ub=successor_info.ub)
+                            self.graph.add_edge(successor_info.get_parent_node(), contained_item, action=successor_info.action, lb=successor_info.lb,
+                                                ub=successor_info.ub)  # todo double check this is how you want to contain
         return new_frontier
 
-    def update_prism_step(self, frontier, new_frontier, root):
+    def update_prism_step(self, frontier, new_frontier, root, stats):
         gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root)
+        inv_map = {v: k for k, v in mapping.items()}
         with StandardProgressBar(prefix="Updating probabilities ", max_value=len(new_frontier) + 1).start() as bar:
             for t, x in new_frontier:
                 try:
                     minmin, minmax, maxmin, maxmax = calculate_target_probabilities(gateway, mc, mdp, mapping, targets=[x])
+                    assert maxmax != 0
                     bar.update(bar.value + 1)
                 except Exception as e:
                     print("warning")
+                    print(e)
                 if maxmax > 1e-6:  # check if state is irrelevant
                     frontier.append((t, x))  # next computation only considers relevant states
                 else:
                     self.graph.nodes[x]["irrelevant"] = True
+                    stats.num_irrelevant += 1
 
     def check_split(self, t, x, x_label, nn, bar_main, stats, template, template_2d) -> List[Experiment.SuccessorInfo]:
         # -------splitting
         ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
-        split_flag = acceptable_range(ranges_probs)
+        split_flag = acceptable_range(ranges_probs, self.max_probability_split)
         new_frontier = []
         if split_flag and self.use_split:
             # bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
             to_split = []
+            n_splits = 0
             to_split.append(x)
             bar_main.update(force=True)
             bar_main.fd.flush()
@@ -233,48 +281,43 @@ class ProbabilisticExperiment(Experiment):
                     bar_split.update(value=bar_main.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                     to_analyse = to_split.pop()
                     if self.use_entropy_split:
-                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size,template_2d)
+                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
                         if split1 is None or split2 is None:
                             split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
                     else:
                         dimension = pick_longest_dimension(template, x)
                         split1, split2 = split_polyhedron(template, x, dimension)
                     ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
-                    split_flag1 = acceptable_range(ranges_probs1) and self.use_split
+                    split_flag1 = acceptable_range(ranges_probs1, self.max_probability_split) and self.use_split
                     if split_flag1:
                         to_split.append(split1)
                     else:
+                        n_splits += 1
                         successor_info = Experiment.SuccessorInfo()
                         successor_info.successor = tuple(split1)
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t
-                        successor_info.action = "split"
+                        successor_info.action = f"split{n_splits}"
                         new_frontier.append(successor_info)
                         # plot_frontier(new_frontier)
                     ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
-                    split_flag2 = acceptable_range(ranges_probs2)
+                    split_flag2 = acceptable_range(ranges_probs2, self.max_probability_split)
                     if split_flag2:
                         to_split.append(split2)
                     else:
+                        n_splits += 1
                         successor_info = Experiment.SuccessorInfo()
                         successor_info.successor = tuple(split2)
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t
-                        successor_info.action = "split"
+                        successor_info.action = f"split{n_splits}"
                         new_frontier.append(successor_info)
+
                         # plot_frontier(new_frontier)
             # print("finished splitting")
-            # ----for plotting
-            # colours = []
-            # for x in new_frontier:
-            #     ranges_probs1 = create_range_bounds_model(template, x, self.env_input_size, nn)
-            #     colours.append(np.mean(ranges_probs1[0]))
-            # print("", file=sys.stderr)  # new line
-            # fig = show_polygons(template, [x[1] for x in new_frontier], template_2d, colours)
-            # fig.write_html("new_frontier.html")
-            # print("", file=sys.stderr)  # new line
+
             return ray.put(new_frontier)
         else:
             return None  # we return none in the case where there was no splitting

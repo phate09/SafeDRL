@@ -17,21 +17,22 @@ def calculate_target_probabilities(gateway, model_checker, mdp, mapping, targets
     return minmin, minmax, maxmin, maxmax
 
 
-def extract_probabilities(targets: list, gateway, mc, mdp):
+def extract_probabilities(targets: list, gateway, mc, mdp, root_id=0):
     mdp.findDeadlocks(True)
     target = gateway.jvm.java.util.BitSet()
     for id in targets:
         target.set(id)
     steps = 10
     res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(True))
-    minmin = res.soln[0]
+    minmin = res.soln[root_id]
     res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.min().setMinUnc(False))
-    minmax = res.soln[0]
+    minmax = res.soln[root_id]
     res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(True))
-    maxmin = res.soln[0]
+    maxmin = res.soln[root_id]
     res = mc.computeBoundedReachProbs(mdp, target, steps, gateway.jvm.explicit.MinMax.max().setMinUnc(False))
-    maxmax = res.soln[0]
+    maxmax = res.soln[root_id]
     return minmin, minmax, maxmin, maxmax
+
 
 def recreate_prism_PPO(graph, root, max_t: int = None):
     gateway = JavaGateway(auto_field=True)
@@ -39,7 +40,7 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
     mdp = gateway.entry_point.reset_mdp()
     eval = gateway.jvm.prism.Evaluator.createForDoubleIntervals()
     mdp.setEvaluator(eval)
-    filter_by_action = False
+    group_by_action = True
     gateway.entry_point.add_states(graph.number_of_nodes())
     path_length = networkx.shortest_path_length(graph, source=root)
     descendants_dict = defaultdict(bool)
@@ -53,7 +54,7 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
         for parent_id, edges in graph.adjacency():  # generate the edges
             if descendants_dict[parent_id]:  # if it is within the filter
                 if len(edges.items()) != 0:  # filter out states with no successors (we want to add just edges)
-                    if filter_by_action:
+                    if group_by_action:  # the action represent the non-deterministic choice and the probability distribution lies beneath it
                         actions = set([edges[key].get("action") for key in edges])  # get unique actions
                         for action in actions:
                             distribution = gateway.jvm.explicit.Distribution(eval)
@@ -90,23 +91,6 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                     pass
                 bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
 
-    # print("prism updated")
 
-    mdp.exportToDotFile("imdppy.dot")
-    #
-    # terminal_states_java = ListConverter().convert(terminal_states, gateway._gateway_client)
-
-    # half_terminal_states = [mapping[x] for x in self.get_terminal_states_ids(half=True, dict_filter=descendants_dict)]
-    # half_terminal_states_java = ListConverter().convert(half_terminal_states, gateway._gateway_client)
-    # # get probabilities from prism to encounter a terminal state
-    # solution_min = list(gateway.entry_point.check_state_list(terminal_states_java, True))
-    # solution_max = list(gateway.entry_point.check_state_list(half_terminal_states_java, False))
-    # # update the probabilities in the graph
-    # with StandardProgressBar(prefix="Updating probabilities in the graph ", max_value=len(descendants_true)) as bar:
-    #     for descendant in descendants_true:
-    #         graph.nodes[descendant]['ub'] = solution_max[mapping[descendant]]
-    #         graph.nodes[descendant]['lb'] = solution_min[mapping[descendant]]
-    #         bar.update(bar.value + 1)
-    # print("Prism updated with new data")
-    prism_needs_update = False
+    # mdp.exportToDotFile("imdppy.dot")
     return gateway, mc, mdp, mapping

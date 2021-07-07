@@ -112,11 +112,11 @@ def find_inverted_dimension(inverted_value, template):
     return inverted_dimension
 
 
-def acceptable_range(ranges_probs):
+def acceptable_range(ranges_probs,max_prob_difference=0.2):
     split_flag = False
     for chosen_action in range(2):
         prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
-        if prob_diff > 0.2:
+        if prob_diff > max_prob_difference:
             # should split the input
             split_flag = True
             break

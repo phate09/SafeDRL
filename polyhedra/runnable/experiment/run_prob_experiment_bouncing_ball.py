@@ -61,7 +61,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                 successor_info.parent = x
                 successor_info.parent_lbl = x_label
                 successor_info.t = t + 1
-                successor_info.action = 0  # doesn't matter
+                successor_info.action = "case0"  # doesn't matter
                 successor_info.lb = 1.0
                 successor_info.ub = 1.0
                 post.append(successor_info)
@@ -86,7 +86,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t + 1
-                        successor_info.action = chosen_action
+                        successor_info.action = "policy"
                         successor_info.lb = ranges_probs[chosen_action][0]
                         successor_info.ub = ranges_probs[chosen_action][1]
                         post.append(successor_info)
@@ -105,7 +105,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t + 1
-                        successor_info.action = chosen_action
+                        successor_info.action = "policy"
                         successor_info.lb = ranges_probs[chosen_action][0]
                         successor_info.ub = ranges_probs[chosen_action][1]
                         post.append(successor_info)
@@ -124,7 +124,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t + 1
-                        successor_info.action = chosen_action
+                        successor_info.action = "policy"
                         successor_info.lb = ranges_probs[chosen_action][0]
                         successor_info.ub = ranges_probs[chosen_action][1]
                         post.append(successor_info)
@@ -143,7 +143,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                         successor_info.parent = x
                         successor_info.parent_lbl = x_label
                         successor_info.t = t + 1
-                        successor_info.action = chosen_action
+                        successor_info.action = "policy"
                         successor_info.lb = ranges_probs[chosen_action][0]
                         successor_info.ub = ranges_probs[chosen_action][1]
                         post.append(successor_info)
@@ -160,7 +160,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
                 successor_info.parent = x
                 successor_info.parent_lbl = x_label
                 successor_info.t = t + 1
-                successor_info.action = 0  # doesn't matter
+                successor_info.action = "case3"  # doesn't matter
                 successor_info.lb = 1.0
                 successor_info.ub = 1.0
                 post.append(successor_info)
@@ -311,5 +311,5 @@ if __name__ == '__main__':
     # experiment.input_template = experiment.analysis_template
     # experiment.input_boundaries = (41.11888939, -37.82961296, -35.29123968,  35.53653031,
     #      5.71856605, -73.12085264,  76.65541971,  -2.53837328)
-    experiment.time_horizon = 6
+    experiment.time_horizon = 20
     experiment.run_experiment()
