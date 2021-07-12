@@ -412,8 +412,8 @@ class StoppingCarExperiment2(StoppingCarExperiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=True)
-    experiment = StoppingCarExperiment2()
+    ray.init(log_to_driver=False, local_mode=False)
+    experiment = StoppingCarExperiment()
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True

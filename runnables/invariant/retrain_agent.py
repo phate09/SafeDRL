@@ -1,13 +1,17 @@
 import csv
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import random
+
 import ray
 import torch.nn
 import numpy as np
+from matplotlib import cm
+from matplotlib.colors import Normalize
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.training_operator import amp
 from ray.util.sgd.utils import NUM_SAMPLES
+from sklearn.model_selection import ParameterGrid
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
@@ -16,52 +20,22 @@ from agents.ray_utils import convert_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
 import ray.rllib.agents.ppo as ppo
 from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
-from sklearn.model_selection import ParameterGrid
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib.colors import Normalize
-import random
+import torch.nn.functional as F
 
+# config, trainer = get_PPO_trainer(use_gpu=0)
 print(torch.cuda.is_available())
-ray.init(local_mode=True)
 
 
-class TrainedPolicyDataset(torch.utils.data.Dataset):
-    def __init__(self, path, size=(500, 100), seed=1234):
-        self.size = size
-        config = get_PPO_config(1234, use_gpu=0)
-        trainer = ppo.PPOTrainer(config=config)
-        trainer.restore(path)
-        policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        config = {"cost_fn": 1, "simplified": True}
-        self.env = StoppingCar(config)
-        self.env.seed(seed)
+class GridSearchDataset(torch.utils.data.Dataset):
+    def __init__(self, size=16000):
         dataset = []
-        while len(dataset) < size[0]:
-            state_np = self.env.reset()  # only starting states
-            state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]  # pick just delta_x and delta_v
-            action = torch.argmax(sequential_nn(state_reduced)).item()
-            next_state_np, reward, done, _ = self.env.step(action)
-            dataset.append((torch.from_numpy(state_np).float(), torch.from_numpy(next_state_np).float(), 1))
         param_grid = {'delta_v': np.arange(-30, 30, 0.5), 'delta_x': np.arange(-10, 40, 0.5)}
         for parameters in ParameterGrid(param_grid):
             delta_v = parameters["delta_v"]
             delta_x = parameters["delta_x"]
-            self.env.reset()
-            self.env.x_lead = delta_x
-            self.env.x_ego = 0
-            self.env.v_lead = delta_v
-            self.env.v_ego = 0
-
             state_np = np.array([delta_v, delta_x])
-            state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]  # pick just delta_x and delta_v
-            action = torch.argmax(sequential_nn(state_reduced)).item()
-            next_state_np, reward, done, _ = self.env.step(action)
-            if done is True:  # only unsafe states
-                dataset.append((torch.from_numpy(state_np).float(), torch.from_numpy(next_state_np).float(), -1))
-            else:
-                dataset.append((torch.from_numpy(state_np).float(), torch.from_numpy(next_state_np).float(), 0))
+            dataset.append((torch.from_numpy(state_np).float()))
         self.dataset = dataset
 
     def __len__(self):
@@ -69,54 +43,54 @@ class TrainedPolicyDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         return self.dataset[index]
-        # state_np = self.env.random_sample()
-        # state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]  # pick just delta_x and delta_v
-        # action = torch.argmax(sequential_nn(state_reduced)).item()
-        # next_state_np, reward, done, _ = self.env.step(action)
-        # return torch.from_numpy(state_np).float(), torch.from_numpy(next_state_np).float()
 
 
-class SafetyLoss(_Loss):
-    def __init__(self, model):
+class RetrainLoss(_Loss):
+    def __init__(self, model, invariant_model):
         super().__init__()
         self.model = model
+        self.invariant_model = invariant_model
 
-    def forward(self, states: Tensor, successors: Tensor, flags: Tensor) -> Tensor:
-        mean = torch.tensor([0], device=self.model[0].weight.device).float()
-        for x, y, flag in zip(states, successors, flags):
-            if flag.item() == 1:
-                # A = torch.tensor([1], device=self.model.weight.device).float()
-                # B = torch.relu(-self.model(x))  # we want a positive value in the initial states so that cost goes to 0
-                mean += (1 - self.model(x)) ** 2 / len(states)
-            elif flag.item() == -1:
-                mean += (-1 - self.model(x)) ** 2 / len(states)
-                # A = torch.relu(self.model(x))  # we want a negative value in the unsafe states so taht cost goes to 0
-                # B = torch.tensor([1], device=self.model.weight.device).float()  # unsafe states contribute to cost
-            else:
-                A = torch.relu(self.model(x))  # we punish if the initial state is positive and the successor is negative
-                B = torch.relu(-self.model(y))
-                mean += A * B / len(states)
+    def forward(self, states: Tensor) -> Tensor:
+        device = self.model[0].weight.device
+        mean = torch.tensor([0], device=device).float()
+        for state in states:
+            action = torch.argmax(self.model(state)).item()
+            next_state_np, reward, done, _ = StoppingCar.compute_successor(state.cpu().numpy(), action)
+            next_state = torch.from_numpy(next_state_np).float().to(device)
+            A = torch.relu(self.invariant_model(state))  # we punish if the initial state is positive and the successor is negative
+            B = torch.relu(-self.invariant_model(next_state))
+            mean += A * B
         return mean  # torch.mean(torch.relu(self.model(input)) * torch.relu(-self.model(target)))
         # return F.mse_loss(input, target, reduction=self.reduction)
 
 
-class SafetyTrainingOperator(TrainingOperator):
+class SafetyRetrainingOperator(TrainingOperator):
 
     def setup(self, config):
         path1 = config["path"]
+        path_invariant = config["path_invariant"]
         batch_size = config["batch_size"]
-        train_data = TrainedPolicyDataset(path1, size=(500, 10), seed=3451)
-        val_data = TrainedPolicyDataset(path1, size=(0, 0), seed=4567)
+        train_data = GridSearchDataset()
+        val_data = GridSearchDataset()
         train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_data, batch_size=batch_size)
 
-        model = torch.nn.Sequential(torch.nn.Linear(train_data.env.observation_space.shape[0], 50),torch.nn.ReLU(),torch.nn.Linear(50, 1), torch.nn.Tanh())
+        invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
+        invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
+        invariant_model.cuda()
+        config = get_PPO_config(1234)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore(path1)
+        policy = trainer.get_policy()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cuda()  # load the agent model
+        model = sequential_nn
         optimizer = torch.optim.Adam(
             model.parameters(), lr=config.get("lr", 1e-3))
-        loss = SafetyLoss(model)  # torch.nn.MSELoss()
+        loss = RetrainLoss(model, invariant_model)  # torch.nn.MSELoss()
 
-        self.model, self.optimizer, self.criterion = self.register(
-            models=model,
+        (self.model, self.invariant_model), self.optimizer, self.criterion = self.register(
+            models=[model, invariant_model],
             optimizers=optimizer,
             criterion=loss)
 
@@ -167,27 +141,18 @@ class SafetyTrainingOperator(TrainingOperator):
             raise RuntimeError("Either set self.criterion in setup function "
                                "or override this method to implement a custom "
                                "training loop.")
-        model = self.model
+        # model = self.model
+        # invariant_model = self.invariant_model
         optimizer = self.optimizer
         criterion = self.criterion
         # unpack features into list to support multiple inputs model
-        features, targets, flags = batch
+        features = batch
         # Create non_blocking tensors for distributed training
         if self.use_gpu:
             features = features.cuda(non_blocking=True)
-            targets = targets.cuda(non_blocking=True)
-            flags = flags.cuda(non_blocking=True)
-            # features = [
-            #     feature.cuda(non_blocking=True) for feature in features
-            # ]
-            # targets = [
-            #     target.cuda(non_blocking=True) for target in targets
-            # ]
         # Compute output.
         with self.timers.record("fwd"):
-            # output = model(features)
-
-            loss = self.criterion(features, targets, flags)
+            loss = self.criterion(features)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
@@ -234,23 +199,21 @@ class SafetyTrainingOperator(TrainingOperator):
             raise RuntimeError("Either set self.criterion in setup function "
                                "or override this method to implement a custom "
                                "training loop.")
-        model = self.model
-        criterion = self.criterion
+        # model = self.model
+        # criterion = self.criterion
         # unpack features into list to support multiple inputs model
-        features, targets, flags = batch
+        features = batch
         if self.use_gpu:
             features = features.cuda(non_blocking=True)
-            targets = targets.cuda(non_blocking=True)
-            flags = flags.cuda(non_blocking=True)
 
         # compute output
 
         with self.timers.record("eval_fwd"):
-            loss = self.criterion(features, targets, flags)
+            loss = self.criterion(features)
             # loss = criterion(output, target)
             # _, predicted = torch.max(output.data, 1)
 
-        num_samples = targets.size(0)
+        num_samples = features.size(0)
         num_correct = 0  # todo find a good value (predicted == target).sum().item()
         return {
             "val_loss": loss.item(),
@@ -259,19 +222,22 @@ class SafetyTrainingOperator(TrainingOperator):
         }
 
 
-enable_training = True
+ray.init(local_mode=True)
 path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
-# path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10"
-val_data = TrainedPolicyDataset(path1, size=(0, 0), seed=4567)
+path_invariant = "/home/edoardo/Development/SafeDRL/runnables/invariant/invariant_checkpoint.pt"
 config = get_PPO_config(1234, use_gpu=0)
 trainer = ppo.PPOTrainer(config=config)
 trainer.restore(path1)
 policy = trainer.get_policy()
-sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+old_agent_model = convert_ray_policy_to_sequential(policy).cpu()
 
+
+
+
+enable_training = True
 if enable_training:
     trainer1 = TorchTrainer(
-        training_operator_cls=SafetyTrainingOperator,
+        training_operator_cls=SafetyRetrainingOperator,
         num_workers=1,
         use_gpu=True,
         config={
@@ -279,6 +245,7 @@ if enable_training:
             "hidden_size": 1,  # used in model_creator
             "batch_size": 128,  # used in data_creator
             "path": path1,  # path to load the agent nn
+            "path_invariant": path_invariant,  # the path to the invariant network
         },
         backend="auto",
         scheduler_step_freq="epoch")
@@ -288,44 +255,45 @@ if enable_training:
 
     print(trainer1.validate())
     torch.save(trainer1.state_dict(), "checkpoint.pt")
-    torch.save(trainer1.get_model().state_dict(),"invariant_checkpoint.pt")
-    m = trainer1.get_model()
-    print(f"trained weight: torch.tensor([[{m[0].weight.data.cpu().numpy()[0][0]},{m[0].weight.data.cpu().numpy()[0][1]}]]), bias: torch.tensor({m[0].bias.data.cpu().numpy()})")
-    # trainer1.shutdown()
-    print("success!")
+    torch.save(trainer1.get_model()[0].state_dict(), "retrained_agent.pt")
+    agent_model, invariant_model = trainer1.get_model()
 else:
-    # trained weight:  [[0.0018693  0.05228069]], bias: [-0.5533147] , train_loss = 0.0
-    # trained weight:  [[-0.01369903  0.03511396]], bias: [-0.6535952] , train_loss = 0.0
-    # trained weight:  [[0.00687088  0.26634103]], bias: [-0.6658108] , train_loss = 0.0
-    # trained weight: torch.tensor([[0.038166143000125885,0.16197167336940765]]), bias: torch.tensor([-2.3122551])
-    m = torch.nn.Linear(2, 1)
-    m.weight.data = torch.tensor([[0.03320010006427765,0.1952856183052063]])
-    m.bias.data = torch.tensor([-1.9543104])
-#%%
-m.cpu()
+    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+    sequential_nn.load_state_dict(torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/retrained_agent.pt"))
+    agent_model = sequential_nn
+    invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
+    invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
+# %%
+agent_model.cpu()
+invariant_model.cpu()
+old_agent_model.cpu()
+val_data = GridSearchDataset()
 random.seed(0)
 x_data = []
 xprime_data = []
+old_xprime_data = []
 y_data = []
 for data in random.sample(val_data.dataset, k=1500):
-    value = torch.tanh(m(data[0])).item()
-    # value = 1 if data[2] >= 0 else -1
-    # print(f"(delta_v,delta_x) {val_data[i][0].numpy()} value:{value}")
-    x_data.append(data[0].numpy())
-    xprime_data.append(data[1].numpy())
+    value = torch.tanh(invariant_model(data)).item()
+    x_data.append(data.numpy())
+    action = torch.argmax(agent_model(data)).item()
+    next_state_np, reward, done, _ = StoppingCar.compute_successor(data.numpy(), action)
+    xprime_data.append(next_state_np)
     y_data.append(value)
+
+    action = torch.argmax(old_agent_model(data)).item()
+    next_state_np, _, _, _ = StoppingCar.compute_successor(data.numpy(), action)
+    old_xprime_data.append(next_state_np)
 x_data = np.array(x_data)
 xprime_data = np.array(xprime_data)
-import plotly.figure_factory as ff
-
-# fig = ff.create_quiver(x_data[:, 0], x_data[:, 1], xprime_data[:, 0] - x_data[:, 0], xprime_data[:, 1] - x_data[:, 1], scale=1)
-# fig.show()
-
+old_xprime_data = np.array(old_xprime_data)
 
 x = x_data[:, 0]
 y = x_data[:, 1]
 u = xprime_data[:, 0] - x_data[:, 0]
 v = xprime_data[:, 1] - x_data[:, 1]
+old_u = old_xprime_data[:, 0] - x_data[:, 0]
+old_v = old_xprime_data[:, 1] - x_data[:, 1]
 colors = y_data
 
 norm = Normalize(vmax=1.0, vmin=-1.0)
@@ -335,6 +303,8 @@ norm.autoscale(colors)
 
 colormap = cm.bwr
 plt.figure()
+plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
+           scale_units='xy', scale=1, pivot='mid')
 plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy',
            scale_units='xy', scale=1, pivot='mid')  # colormap(norm(colors))
 '''
@@ -347,16 +317,3 @@ y=-0.00687088x/0.26634103+0.6658108
 # b = m.bias.data[0].item()
 # plt.plot(x, -w1 / w2 * x - b)
 plt.show()
-#%%
-m(torch.tensor([-20,15]).float())
-# %%
-env = StoppingCar()
-env.reset()
-env.x_lead = 20
-env.x_ego = 0
-env.v_lead = -15
-env.v_ego = 0
-state_np = np.array([env.v_lead - env.v_ego, env.x_lead - env.x_ego])
-state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
-action = torch.argmax(sequential_nn(state_reduced.float())).item()
-next_state_np, reward, done, _ = env.step(action)

@@ -71,7 +71,7 @@ class StoppingCar(gym.Env):
             acceleration = self.a_ego
         self.y_ego = acceleration  # -2 * self.y_ego * self.dt + 2 * acceleration
         self.v_ego += self.y_ego * self.dt
-        self.v_ego = min(max(self.v_ego, 0), 40)
+        # self.v_ego = min(max(self.v_ego, 0), 40)
         self.v_lead += self.y_lead * self.dt
         self.x_lead += self.v_lead * self.dt
         self.x_ego += self.v_ego * self.dt
@@ -101,6 +101,24 @@ class StoppingCar(gym.Env):
         else:
             action = 1
         return action
+
+    @staticmethod
+    def compute_successor(state, action):
+        delta_v, delta_x = state
+        dt = .1  # delta time
+        if action == 0:
+            acceleration = -3
+        else:
+            acceleration = 3
+        delta_v += acceleration * dt
+        delta_x += delta_v * dt
+        cost = 0
+        done = False
+        cost += 1
+        if delta_x < 0:  # crash
+            done = True
+            cost = -1000
+        return np.array([delta_v, delta_x]), cost, done, {}
 
 
 if __name__ == '__main__':

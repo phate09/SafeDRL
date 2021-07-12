@@ -17,8 +17,8 @@ trainer = ppo.PPOTrainer(config=config)
 # trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65") # 5e-2 ~19.8 delta x
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_e6ed1_00000_0_cost_fn=0_2021-01-15_19-57-40/checkpoint_440/checkpoint-440")
 # trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41")
-# trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58")
-trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10")
+trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58")
+# trainer.restore("/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10")
 policy = trainer.get_policy()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 l0 = torch.nn.Linear(6, 2, bias=False)
@@ -34,25 +34,25 @@ position_list = []
 x_list = []
 env = StoppingCar()
 env.reset()
-# env.x_lead = 30
-# env.x_ego = 0
-# env.v_lead = 28
-# env.v_ego = 36
+env.x_lead = 20
+env.x_ego = 0
+env.v_lead = 28
+env.v_ego = 28+10
 min_distance = 9999
 state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
 print(state_np)
 for n in range(1):
     cumulative_reward = 0
-    env.reset()
-    env.x_ego = env.np_random.uniform(0, 10)
-    env.x_lead = env.np_random.uniform(30, 40)
-    env.v_lead = 28
-    env.v_ego = 36
-    state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
+    # env.reset()
+    # env.x_ego = env.np_random.uniform(0, 10)
+    # env.x_lead = env.np_random.uniform(30, 40)
+    # env.v_lead = 28
+    # env.v_ego = 36
+    # state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
     # state_np = np.array(state)
     position_list.append(state_np[plot_index])
     x_list.append(state_np[x_index])
-    for i in range(1000):
+    for i in range(100):
         state = torch.from_numpy(state_np).float().unsqueeze(0)[:, :-2]
         state_reduced = torch.from_numpy(state_np).float().unsqueeze(0)[:, -2:]
         action_score = sequential_nn(state_reduced)
