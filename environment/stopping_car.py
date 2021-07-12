@@ -110,15 +110,15 @@ class StoppingCar(gym.Env):
             acceleration = -3
         else:
             acceleration = 3
-        delta_v += acceleration * dt
-        delta_x += delta_v * dt
+        delta_v_prime = delta_v + -acceleration * dt
+        delta_x_prime = delta_x + delta_v_prime * dt
         cost = 0
         done = False
         cost += 1
-        if delta_x < 0:  # crash
+        if delta_x < 0 or delta_x_prime < 0:  # crash
             done = True
             cost = -1000
-        return np.array([delta_v, delta_x]), cost, done, {}
+        return np.array([delta_v_prime, delta_x_prime]), cost, done, {}
 
 
 if __name__ == '__main__':

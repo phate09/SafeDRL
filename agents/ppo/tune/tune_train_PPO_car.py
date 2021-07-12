@@ -78,7 +78,7 @@ if __name__ == "__main__":
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    ray.init(local_mode=False, include_dashboard=True, log_to_driver=False)
+    ray.init(local_mode=True, include_dashboard=True, log_to_driver=False)
     config = get_PPO_config(use_gpu=0.5, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(

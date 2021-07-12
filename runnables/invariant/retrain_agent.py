@@ -13,6 +13,7 @@ from ray.util.sgd.torch.training_operator import amp
 from ray.util.sgd.utils import NUM_SAMPLES
 from sklearn.model_selection import ParameterGrid
 from torch import Tensor
+from torch.distributions import Categorical
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
 
@@ -30,7 +31,7 @@ print(torch.cuda.is_available())
 class GridSearchDataset(torch.utils.data.Dataset):
     def __init__(self, size=16000):
         dataset = []
-        param_grid = {'delta_v': np.arange(-30, 30, 0.5), 'delta_x': np.arange(-10, 40, 0.5)}
+        param_grid = {'delta_v': np.arange(-30, 30, 0.2), 'delta_x': np.arange(-10, 40, 0.2)}
         for parameters in ParameterGrid(param_grid):
             delta_v = parameters["delta_v"]
             delta_x = parameters["delta_x"]
@@ -46,23 +47,19 @@ class GridSearchDataset(torch.utils.data.Dataset):
 
 
 class RetrainLoss(_Loss):
-    def __init__(self, model, invariant_model):
+    def __init__(self, invariant_model):
         super().__init__()
-        self.model = model
         self.invariant_model = invariant_model
 
-    def forward(self, states: Tensor) -> Tensor:
-        device = self.model[0].weight.device
-        mean = torch.tensor([0], device=device).float()
-        for state in states:
-            action = torch.argmax(self.model(state)).item()
-            next_state_np, reward, done, _ = StoppingCar.compute_successor(state.cpu().numpy(), action)
-            next_state = torch.from_numpy(next_state_np).float().to(device)
-            A = torch.relu(self.invariant_model(state))  # we punish if the initial state is positive and the successor is negative
-            B = torch.relu(-self.invariant_model(next_state))
-            mean += A * B
-        return mean  # torch.mean(torch.relu(self.model(input)) * torch.relu(-self.model(target)))
-        # return F.mse_loss(input, target, reduction=self.reduction)
+    def forward(self, states: Tensor, actions_prob: Tensor, actions: Tensor) -> Tensor:
+        # device = states.device
+        accelerations = (actions - 0.5) * 6
+        next_delta_v = states[:, 0] + accelerations * 0.1
+        next_delta_x = states[:, 1] + next_delta_v * 0.1
+        next_states = torch.stack([next_delta_v.flatten(), next_delta_x.flatten()], dim=1)
+        A = F.relu(self.invariant_model(states))
+        B = F.relu(-self.invariant_model(next_states) * actions_prob)
+        return (A * B).sum()
 
 
 class SafetyRetrainingOperator(TrainingOperator):
@@ -78,22 +75,22 @@ class SafetyRetrainingOperator(TrainingOperator):
 
         invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
         invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
-        invariant_model.cuda()
+        # invariant_model.cuda()
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(path1)
         policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cuda()  # load the agent model
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()  # load the agent model
         model = sequential_nn
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.SGD(
             model.parameters(), lr=config.get("lr", 1e-3))
-        loss = RetrainLoss(model, invariant_model)  # torch.nn.MSELoss()
+        loss = RetrainLoss(invariant_model)  # torch.nn.MSELoss()
 
-        (self.model, self.invariant_model), self.optimizer, self.criterion = self.register(
+        self.models, self.optimizer, self.criterion = self.register(
             models=[model, invariant_model],
             optimizers=optimizer,
             criterion=loss)
-
+        self.model = self.models[0]
         self.register_data(
             train_loader=train_loader,
             validation_loader=val_loader)
@@ -145,6 +142,7 @@ class SafetyRetrainingOperator(TrainingOperator):
         # invariant_model = self.invariant_model
         optimizer = self.optimizer
         criterion = self.criterion
+        model = self.model
         # unpack features into list to support multiple inputs model
         features = batch
         # Create non_blocking tensors for distributed training
@@ -152,7 +150,10 @@ class SafetyRetrainingOperator(TrainingOperator):
             features = features.cuda(non_blocking=True)
         # Compute output.
         with self.timers.record("fwd"):
-            loss = self.criterion(features)
+            action_prob = torch.softmax(model(features), dim=1)
+            actions = torch.argmax(action_prob, dim=1)
+            log_probs = Categorical(action_prob).log_prob(actions)
+            loss = criterion(features, log_probs, actions)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
@@ -199,8 +200,8 @@ class SafetyRetrainingOperator(TrainingOperator):
             raise RuntimeError("Either set self.criterion in setup function "
                                "or override this method to implement a custom "
                                "training loop.")
-        # model = self.model
-        # criterion = self.criterion
+        model = self.model
+        criterion = self.criterion
         # unpack features into list to support multiple inputs model
         features = batch
         if self.use_gpu:
@@ -209,7 +210,10 @@ class SafetyRetrainingOperator(TrainingOperator):
         # compute output
 
         with self.timers.record("eval_fwd"):
-            loss = self.criterion(features)
+            action_prob = torch.softmax(model(features), dim=1)
+            actions = torch.argmax(action_prob, dim=1)
+            log_probs = Categorical(action_prob).log_prob(actions)
+            loss = criterion(features, log_probs, actions)
             # loss = criterion(output, target)
             # _, predicted = torch.max(output.data, 1)
 
@@ -231,17 +235,14 @@ trainer.restore(path1)
 policy = trainer.get_policy()
 old_agent_model = convert_ray_policy_to_sequential(policy).cpu()
 
-
-
-
 enable_training = True
 if enable_training:
     trainer1 = TorchTrainer(
         training_operator_cls=SafetyRetrainingOperator,
         num_workers=1,
-        use_gpu=True,
+        use_gpu=False,
         config={
-            "lr": 1e-2,  # used in optimizer_creator
+            "lr": 1e-1,  # used in optimizer_creator
             "hidden_size": 1,  # used in model_creator
             "batch_size": 128,  # used in data_creator
             "path": path1,  # path to load the agent nn
@@ -249,7 +250,7 @@ if enable_training:
         },
         backend="auto",
         scheduler_step_freq="epoch")
-    for i in range(10):
+    for i in range(100):
         stats = trainer1.train()
         print(stats)
 
@@ -270,31 +271,46 @@ old_agent_model.cpu()
 val_data = GridSearchDataset()
 random.seed(0)
 x_data = []
+x_data_full = []
 xprime_data = []
+xprime_data_full = []
 old_xprime_data = []
 y_data = []
-for data in random.sample(val_data.dataset, k=1500):
+y_data_full = []
+for data in random.sample(val_data.dataset, k=7000):
     value = torch.tanh(invariant_model(data)).item()
-    x_data.append(data.numpy())
+    y_data_full.append(value)
     action = torch.argmax(agent_model(data)).item()
     next_state_np, reward, done, _ = StoppingCar.compute_successor(data.numpy(), action)
-    xprime_data.append(next_state_np)
-    y_data.append(value)
+    old_action = torch.argmax(old_agent_model(data)).item()
+    next_state_np_old, _, _, _ = StoppingCar.compute_successor(data.numpy(), old_action)
+    x_data_full.append(data.numpy())
+    xprime_data_full.append(next_state_np)
+    if action!=old_action:
+        x_data.append(data.numpy())
+        xprime_data.append(next_state_np)
+        y_data.append(value)
+        old_xprime_data.append(next_state_np_old)
 
-    action = torch.argmax(old_agent_model(data)).item()
-    next_state_np, _, _, _ = StoppingCar.compute_successor(data.numpy(), action)
-    old_xprime_data.append(next_state_np)
 x_data = np.array(x_data)
+x_data_full = np.array(x_data_full)
 xprime_data = np.array(xprime_data)
+xprime_data_full = np.array(xprime_data_full)
 old_xprime_data = np.array(old_xprime_data)
 
 x = x_data[:, 0]
 y = x_data[:, 1]
 u = xprime_data[:, 0] - x_data[:, 0]
 v = xprime_data[:, 1] - x_data[:, 1]
+x_full = x_data_full[:, 0]
+y_full = x_data_full[:, 1]
+u_full = xprime_data_full[:, 0] - x_data_full[:, 0]
+v_full = xprime_data_full[:, 1] - x_data_full[:, 1]
+
 old_u = old_xprime_data[:, 0] - x_data[:, 0]
 old_v = old_xprime_data[:, 1] - x_data[:, 1]
 colors = y_data
+colors_full = y_data_full
 
 norm = Normalize(vmax=1.0, vmin=-1.0)
 norm.autoscale(colors)
@@ -302,18 +318,19 @@ norm.autoscale(colors)
 # which is [0, 1]
 
 colormap = cm.bwr
-plt.figure()
-plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
-           scale_units='xy', scale=1, pivot='mid')
+plt.figure(figsize=(18, 16), dpi=80)
+# plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
+#            scale_units='xy', scale=1, pivot='mid', zorder=1)
 plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy',
-           scale_units='xy', scale=1, pivot='mid')  # colormap(norm(colors))
-'''
-0.00687088x+ 0.26634103y-0.6658108=0
-z=0
-y=-0.00687088x/0.26634103+0.6658108
-'''
-# w1 = m.weight.data[0][0].item()
-# w2 = m.weight.data[0][1].item()
-# b = m.bias.data[0].item()
-# plt.plot(x, -w1 / w2 * x - b)
+           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+plt.xlim([-30,30])
+plt.ylim([-10,40])
+plt.show()
+plt.figure(figsize=(18, 16), dpi=80)
+# plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
+#            scale_units='xy', scale=1, pivot='mid', zorder=1)
+plt.quiver(x_full, y_full, u_full, v_full, color=colormap(norm(colors_full)), angles='xy',
+           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+plt.xlim([-30,30])
+plt.ylim([-10,40])
 plt.show()
