@@ -58,7 +58,7 @@ class RetrainLoss(_Loss):
         next_delta_x = states[:, 1] + next_delta_v * 0.1
         next_states = torch.stack([next_delta_v.flatten(), next_delta_x.flatten()], dim=1)
         A = F.relu(self.invariant_model(states))
-        B = F.relu(-self.invariant_model(next_states) * actions_prob)
+        B = F.relu(self.invariant_model(next_states) * actions_prob)
         return (A * B).sum()
 
 
@@ -211,6 +211,7 @@ class SafetyRetrainingOperator(TrainingOperator):
 
         with self.timers.record("eval_fwd"):
             action_prob = torch.softmax(model(features), dim=1)
+            # log_probs = torch.log(action_prob)
             actions = torch.argmax(action_prob, dim=1)
             log_probs = Categorical(action_prob).log_prob(actions)
             loss = criterion(features, log_probs, actions)
