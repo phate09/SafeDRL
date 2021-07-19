@@ -93,13 +93,14 @@ class StoppingCar(gym.Env):
 
     def perfect_action(self):
         delta_x = self.x_lead - self.x_ego
+        delta_v = (self.v_lead - self.v_ego)
         target_delta_x = self.d_default  # self.d_default + self.t_gap * self.v_ego
-        if delta_x < target_delta_x:
-            action = 0
-        elif self.v_set - self.v_ego < 0:  # keep target speed
-            action = 0
-        else:
+        # if delta_x > target_delta_x and delta_v>0:
+        # if delta_x > target_delta_x and (delta_x+0.1*(delta_v-0.3))>10:
+        if delta_x - target_delta_x > (delta_v ** 2) / (2 * 3) or (delta_v > 0 and delta_x > 10):
             action = 1
+        else:
+            action = 0
         return action
 
     @staticmethod

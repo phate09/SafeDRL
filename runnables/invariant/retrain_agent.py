@@ -51,15 +51,15 @@ class RetrainLoss(_Loss):
         super().__init__()
         self.invariant_model = invariant_model
 
-    def forward(self, states: Tensor, actions_prob: Tensor, actions: Tensor) -> Tensor:
+    def forward(self, states: Tensor, actions_prob: Tensor) -> Tensor:
         # device = states.device
-        accelerations = (actions - 0.5) * 6
-        next_delta_v = states[:, 0] + accelerations * 0.1
-        next_delta_x = states[:, 1] + next_delta_v * 0.1
+        accelerations = torch.tensor([[-3.0, 3.0]],device=states.get_device())  # (actions - 0.5) * 6
+        next_delta_v = states[:, 0].unsqueeze(1).repeat(1, 2) + accelerations * 0.1
+        next_delta_x = states[:, 1].unsqueeze(1).repeat(1, 2) + next_delta_v * 0.1
         next_states = torch.stack([next_delta_v.flatten(), next_delta_x.flatten()], dim=1)
-        A = F.relu(self.invariant_model(states))
-        B = F.relu(self.invariant_model(next_states) * actions_prob)
-        return (A * B).sum()
+        A = F.relu(self.invariant_model(states.repeat(2, 1)))
+        B = F.relu(self.invariant_model(next_states) * actions_prob.flatten().unsqueeze(1))
+        return (A * B).mean()
 
 
 class SafetyRetrainingOperator(TrainingOperator):
@@ -75,14 +75,16 @@ class SafetyRetrainingOperator(TrainingOperator):
 
         invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
         invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
-        # invariant_model.cuda()
+        invariant_model.cuda()
         config = get_PPO_config(1234)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(path1)
         policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()  # load the agent model
+        sequential_nn = convert_ray_policy_to_sequential(policy)  # load the agent model
+        sequential_nn.cuda()
+
         model = sequential_nn
-        optimizer = torch.optim.SGD(
+        optimizer = torch.optim.Adam(
             model.parameters(), lr=config.get("lr", 1e-3))
         loss = RetrainLoss(invariant_model)  # torch.nn.MSELoss()
 
@@ -151,9 +153,12 @@ class SafetyRetrainingOperator(TrainingOperator):
         # Compute output.
         with self.timers.record("fwd"):
             action_prob = torch.softmax(model(features), dim=1)
-            actions = torch.argmax(action_prob, dim=1)
-            log_probs = Categorical(action_prob).log_prob(actions)
-            loss = criterion(features, log_probs, actions)
+            eps = torch.finfo(action_prob.dtype).eps
+            action_prob = action_prob.clamp(min=eps, max=1 - eps)
+            log_probs = torch.log(action_prob)
+            # actions = torch.argmax(action_prob, dim=1)
+            # log_probs = Categorical(action_prob).log_prob(actions)
+            loss = criterion(features, log_probs)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
@@ -211,10 +216,12 @@ class SafetyRetrainingOperator(TrainingOperator):
 
         with self.timers.record("eval_fwd"):
             action_prob = torch.softmax(model(features), dim=1)
-            # log_probs = torch.log(action_prob)
-            actions = torch.argmax(action_prob, dim=1)
-            log_probs = Categorical(action_prob).log_prob(actions)
-            loss = criterion(features, log_probs, actions)
+            eps = torch.finfo(action_prob.dtype).eps
+            action_prob = action_prob.clamp(min=eps, max=1 - eps)
+            log_probs = torch.log(action_prob)
+            # actions = torch.argmax(action_prob, dim=1)
+            # log_probs = Categorical(action_prob).log_prob(actions)
+            loss = criterion(features, log_probs)
             # loss = criterion(output, target)
             # _, predicted = torch.max(output.data, 1)
 
@@ -241,17 +248,17 @@ if enable_training:
     trainer1 = TorchTrainer(
         training_operator_cls=SafetyRetrainingOperator,
         num_workers=1,
-        use_gpu=False,
+        use_gpu=True,
         config={
-            "lr": 1e-1,  # used in optimizer_creator
+            "lr": 1e-2,  # used in optimizer_creator
             "hidden_size": 1,  # used in model_creator
-            "batch_size": 128,  # used in data_creator
+            "batch_size": 1024,  # used in data_creator
             "path": path1,  # path to load the agent nn
             "path_invariant": path_invariant,  # the path to the invariant network
         },
         backend="auto",
         scheduler_step_freq="epoch")
-    for i in range(100):
+    for i in range(50):
         stats = trainer1.train()
         print(stats)
 
@@ -272,46 +279,41 @@ old_agent_model.cpu()
 val_data = GridSearchDataset()
 random.seed(0)
 x_data = []
-x_data_full = []
 xprime_data = []
-xprime_data_full = []
 old_xprime_data = []
 y_data = []
-y_data_full = []
-for data in random.sample(val_data.dataset, k=7000):
+changed_indices = []
+for i, data in enumerate(random.sample(val_data.dataset, k=7000)):
     value = torch.tanh(invariant_model(data)).item()
-    y_data_full.append(value)
     action = torch.argmax(agent_model(data)).item()
     next_state_np, reward, done, _ = StoppingCar.compute_successor(data.numpy(), action)
     old_action = torch.argmax(old_agent_model(data)).item()
     next_state_np_old, _, _, _ = StoppingCar.compute_successor(data.numpy(), old_action)
-    x_data_full.append(data.numpy())
-    xprime_data_full.append(next_state_np)
-    if action!=old_action:
-        x_data.append(data.numpy())
-        xprime_data.append(next_state_np)
-        y_data.append(value)
-        old_xprime_data.append(next_state_np_old)
+    x_data.append(data.numpy())
+    xprime_data.append(next_state_np)
+    y_data.append(value)
+    old_xprime_data.append(next_state_np_old)
+    if action != old_action:
+        changed_indices.append(i)
 
 x_data = np.array(x_data)
-x_data_full = np.array(x_data_full)
 xprime_data = np.array(xprime_data)
-xprime_data_full = np.array(xprime_data_full)
 old_xprime_data = np.array(old_xprime_data)
+changed_indices = np.array(changed_indices)
+y_data = np.array(y_data)
+x = x_data[:, 0][changed_indices]
+y = x_data[:, 1][changed_indices]
+u = xprime_data[:, 0][changed_indices] - x_data[:, 0][changed_indices]
+v = xprime_data[:, 1][changed_indices] - x_data[:, 1][changed_indices]
+x_full = x_data[:, 0]
+y_full = x_data[:, 1]
+u_full = xprime_data[:, 0] - x_data[:, 0]
+v_full = xprime_data[:, 1] - x_data[:, 1]
+u_old_full = old_xprime_data[:, 0] - x_data[:, 0]
+v_old_full = old_xprime_data[:, 1] - x_data[:, 1]
 
-x = x_data[:, 0]
-y = x_data[:, 1]
-u = xprime_data[:, 0] - x_data[:, 0]
-v = xprime_data[:, 1] - x_data[:, 1]
-x_full = x_data_full[:, 0]
-y_full = x_data_full[:, 1]
-u_full = xprime_data_full[:, 0] - x_data_full[:, 0]
-v_full = xprime_data_full[:, 1] - x_data_full[:, 1]
-
-old_u = old_xprime_data[:, 0] - x_data[:, 0]
-old_v = old_xprime_data[:, 1] - x_data[:, 1]
-colors = y_data
-colors_full = y_data_full
+colors = y_data[changed_indices]
+colors_full = y_data
 
 norm = Normalize(vmax=1.0, vmin=-1.0)
 norm.autoscale(colors)
@@ -324,14 +326,23 @@ plt.figure(figsize=(18, 16), dpi=80)
 #            scale_units='xy', scale=1, pivot='mid', zorder=1)
 plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy',
            scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
-plt.xlim([-30,30])
-plt.ylim([-10,40])
+plt.title("Diff")
+plt.xlim([-30, 30])
+plt.ylim([-10, 40])
 plt.show()
 plt.figure(figsize=(18, 16), dpi=80)
 # plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
 #            scale_units='xy', scale=1, pivot='mid', zorder=1)
 plt.quiver(x_full, y_full, u_full, v_full, color=colormap(norm(colors_full)), angles='xy',
            scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
-plt.xlim([-30,30])
-plt.ylim([-10,40])
+plt.title("New")
+plt.xlim([-30, 30])
+plt.ylim([-10, 40])
+plt.show()
+plt.figure(figsize=(18, 16), dpi=80)
+plt.quiver(x_full, y_full, u_old_full, v_old_full, color=colormap(norm(colors_full)), angles='xy',
+           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+plt.title("Old")
+plt.xlim([-30, 30])
+plt.ylim([-10, 40])
 plt.show()
