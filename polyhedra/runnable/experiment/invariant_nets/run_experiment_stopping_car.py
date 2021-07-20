@@ -1,3 +1,4 @@
+import itertools
 from typing import List, Tuple
 
 import gurobi as grb
@@ -55,38 +56,62 @@ class StoppingCarExperiment(InvariantNetExperiment):
 
         """milp method"""
         post = []
-        for chosen_action in range(2):
+        future_timesteps = 15
+        for chosen_actions in itertools.combinations_with_replacement([0, 1], future_timesteps):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             input = gurobi_model.addMVar(shape=self.env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
-            # feasible_safe = Experiment.generate_nn_guard_positive(gurobi_model, input, inv_nn.net, True)
-            feasible_safe = True
-            gurobi_model.addConstr(input[0] - input[1] >= 8, name=f"initial_constraint")
-            gurobi_model.addConstr(input[2] <= 100, name=f"initial_constraint")
+            observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation0")
+            gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
+            gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
+            gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
+            gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
+            # feasible_safe = True
+            gurobi_model.addConstr(input[0] - input[1] <= 30, name=f"initial_constraint")
+            # gurobi_model.addConstr(input[2] <= 100, name=f"initial_constraint")
             gurobi_model.update()
             gurobi_model.optimize()
-            if feasible_safe:
-                observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
-                gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
-                gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
-                gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
-                gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
-                feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
-                # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
-                if feasible_action:
-                    # apply dynamic
-                    x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=self.env_input_size)
-                    # gurobi_model.addConstr(x_prime[0] - x_prime[1] <= 0, name=f"check_invariant")
-                    # gurobi_model.addConstr(x_prime[2] <= 100, name=f"initial_constraint")
-                    # gurobi_model.update()
-                    # gurobi_model.optimize()
-                    # invariant_feasible = gurobi_model.status == 2  # or gurobi_model.status == 5
-                    feasible_unsafe = Experiment.generate_nn_guard_positive(gurobi_model, x_prime, inv_nn.net, False)
-                    assert not feasible_unsafe
-                    found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-                    # if found_successor:
-                    #     post.append(tuple(x_prime_results))
+            feasible = Experiment.generate_nn_guard_positive(gurobi_model, observation, inv_nn, True, eps=-0.2)  # initially filter for elements within the invariant
+            for timestep in range(future_timesteps):
+                if feasible:
+                    results = self.safe_timestep(gurobi_model, observation, nn, inv_nn, chosen_actions, input, index=timestep)
+                    if results is not None:
+                        feasible, input, observation = results
+                    else:
+                        feasible = False
+                        break
+                else:
+                    break
+            print(f"action sequence: {chosen_actions}")
+            assert not feasible
+            print("Safe")
         return post
+
+    def safe_timestep(self, gurobi_model, observation, nn, inv_nn, chosen_actions, input, index):
+        feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_actions[index])
+        if feasible_action:
+            # apply dynamic
+            x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_actions[index], env_input_size=self.env_input_size)
+            gurobi_model.update()
+            gurobi_model.optimize()
+            assert gurobi_model.status == 2
+            next_observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name=f"observation{index + 1}")
+            gurobi_model.addConstr(next_observation[1] <= x_prime[0] - x_prime[1] + self.input_epsilon / 2, name=f"obs_constr{index + 1}1")
+            gurobi_model.addConstr(next_observation[1] >= x_prime[0] - x_prime[1] - self.input_epsilon / 2, name=f"obs_constr{index + 1}2")
+            gurobi_model.addConstr(next_observation[0] <= self.v_lead - x_prime[2] + self.input_epsilon / 2, name=f"obs_constr{index + 1}3")
+            gurobi_model.addConstr(next_observation[0] >= self.v_lead - x_prime[2] - self.input_epsilon / 2, name=f"obs_constr{index + 1}4")
+            feasible_unsafe = Experiment.generate_nn_guard_positive(gurobi_model, next_observation, inv_nn, False, eps=0.1)
+            if feasible_unsafe:
+                for t in range(index + 2):
+                    delta_v = gurobi_model.getVarByName(f'observation{t}[0]').X
+                    delta_x = gurobi_model.getVarByName(f'observation{t}[1]').X
+                    tensor_input = torch.tensor([delta_v, delta_x])
+
+                    print(f"t:{t}, delta_v:{delta_v}, delta_x:{delta_x}, invariant: {inv_nn(tensor_input).item()}")
+            print("")
+            return feasible_unsafe, x_prime, next_observation
+        else:
+            return None
 
     @staticmethod
     def apply_dynamic(input, gurobi_model: grb.Model, action, env_input_size):
@@ -277,8 +302,10 @@ class StoppingCarExperiment(InvariantNetExperiment):
         return nn
 
     def get_invariant_nn(self):
-        nn = StoppingCarInvariantNet()
-        # ray.shutdown()
+        # nn = StoppingCarInvariantNet()
+        nn = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
+        checkpoint = torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/invariant_checkpoint.pt", map_location=torch.device("cpu"))
+        nn.load_state_dict(checkpoint)
         return nn
 
 

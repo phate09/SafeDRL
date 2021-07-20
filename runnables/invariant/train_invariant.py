@@ -39,8 +39,9 @@ class TrainedPolicyDataset(torch.utils.data.Dataset):
         self.env = StoppingCar(config)
         self.env.seed(seed)
         load_dataset = True
-        if load_dataset and traces:
-            dataset = pickle.load(open("dataset.p", "rb"))
+        file_name = "dataset_new.p"
+        if load_dataset and traces and os.path.exists(file_name):
+            dataset = pickle.load(open(file_name, "rb"))
         else:
             dataset = []
             while len(dataset) < size[0]:
@@ -68,6 +69,8 @@ class TrainedPolicyDataset(torch.utils.data.Dataset):
                     next_state_np, reward, done, _ = self.env.step(action)
                     temp_dataset.append((state_np, next_state_np))
                     state_np = next_state_np
+                    if next_state_np[1] < 0.5 and not done:
+                        done = True
                     if done is True:  # only unsafe states
                         break
                 if done:
@@ -77,7 +80,7 @@ class TrainedPolicyDataset(torch.utils.data.Dataset):
                     for state_np, next_state_np in temp_dataset:
                         dataset.append((state_np.astype(dtype=np.float32), next_state_np.astype(dtype=np.float32), 0))
             if traces:
-                pickle.dump(dataset, open("dataset.p", "wb+"))
+                pickle.dump(dataset, open(file_name, "wb+"))
         self.dataset = dataset
 
     def __len__(self):
@@ -280,10 +283,10 @@ class SafetyTrainingOperator(TrainingOperator):
         }
 
 
-enable_training = False
+enable_training = True
 path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
 # path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10"
-val_data = TrainedPolicyDataset(path1, size=(0, 0), seed=4567,traces=False)
+val_data = TrainedPolicyDataset(path1, size=(0, 0), seed=4567, traces=False)
 config = get_PPO_config(1234, use_gpu=0)
 trainer = ppo.PPOTrainer(config=config)
 trainer.restore(path1)
@@ -316,7 +319,7 @@ if enable_training:
     print("success!")
 else:
     m = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
-    checkpoint = torch.load("invariant_checkpoint.pt")
+    checkpoint = torch.load("invariant_checkpoint.pt", torch.device("cpu"))
     m.load_state_dict(checkpoint)
     # trained weight:  [[0.0018693  0.05228069]], bias: [-0.5533147] , train_loss = 0.0
     # trained weight:  [[-0.01369903  0.03511396]], bias: [-0.6535952] , train_loss = 0.0
@@ -329,7 +332,7 @@ x_data = []
 xprime_data = []
 y_data = []
 for data in random.sample(val_data.dataset, k=9000):
-    value = torch.tanh(m(torch.from_numpy(data[0]))).item()
+    value = min(max(m(torch.from_numpy(data[0])).item(), -1.0), 1.0)
     # value = 1 if data[2] >= 0 else -1
     # print(f"(delta_v,delta_x) {val_data[i][0].numpy()} value:{value}")
     x_data.append(data[0])
@@ -337,6 +340,7 @@ for data in random.sample(val_data.dataset, k=9000):
     y_data.append(value)
 x_data = np.array(x_data)
 xprime_data = np.array(xprime_data)
+y_data = np.array(y_data)
 import plotly.figure_factory as ff
 
 # fig = ff.create_quiver(x_data[:, 0], x_data[:, 1], xprime_data[:, 0] - x_data[:, 0], xprime_data[:, 1] - x_data[:, 1], scale=1)
@@ -359,7 +363,7 @@ plt.figure(figsize=(18, 16), dpi=80)
 line_x = np.linspace(-30, 30, 1000)
 plt.plot(line_x, np.array([0] * 1000))
 plt.plot(np.array([0] * 1000), np.linspace(-10, 40, 1000))
-plt.quiver(x, y, u, v, angles='xy', color=colormap(norm(colors)),
+plt.quiver(x, y, u, v, angles='xy', color=colormap(colors),
            scale_units='xy', scale=1, pivot='mid')  # colormap(norm(colors))
 plt.xlim([-30, 30])
 plt.ylim([-10, 40])

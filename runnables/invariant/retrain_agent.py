@@ -236,7 +236,7 @@ class SafetyRetrainingOperator(TrainingOperator):
 
 ray.init(local_mode=True)
 path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
-path_invariant = "/home/edoardo/Development/SafeDRL/runnables/invariant/invariant_checkpoint.pt"
+path_invariant = "/runnables/invariant/invariant_checkpoint_old.pt"
 config = get_PPO_config(1234, use_gpu=0)
 trainer = ppo.PPOTrainer(config=config)
 trainer.restore(path1)

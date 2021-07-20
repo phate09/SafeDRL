@@ -465,16 +465,16 @@ class Experiment():
         assert gurobi_model.status == 2, "LP wasn't optimally solved"
 
     @staticmethod
-    def generate_nn_guard_positive(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, positive, M=1e2):
+    def generate_nn_guard_positive(gurobi_model: grb.Model, input, nn: torch.nn.Sequential, positive, M=1e2, eps=0):
         gurobi_model.setParam("DualReductions", 0)
         gurobi_vars = []
         gurobi_vars.append(input)
         Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
         last_layer = gurobi_vars[-1]
         if positive:
-            gurobi_model.addConstr(last_layer[0] >= 0, name="last_layer")
+            gurobi_model.addConstr(last_layer[0] + eps >= 0, name="last_layer")
         else:
-            gurobi_model.addConstr(last_layer[0] <= 0, name="last_layer")
+            gurobi_model.addConstr(last_layer[0] + eps <= 0, name="last_layer")
         gurobi_model.update()
         gurobi_model.optimize()
         # assert gurobi_model.status == 2, "LP wasn't optimally solved"
