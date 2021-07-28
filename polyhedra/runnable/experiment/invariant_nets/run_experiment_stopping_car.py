@@ -57,7 +57,7 @@ class StoppingCarExperiment(InvariantNetExperiment):
         """milp method"""
         post = []
         future_timesteps = 15
-        for chosen_actions in itertools.combinations_with_replacement([0, 1], future_timesteps):
+        for chosen_actions in itertools.combinations([0, 1], future_timesteps):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             input = gurobi_model.addMVar(shape=self.env_input_size, lb=float("-inf"), ub=float("inf"), name="input")

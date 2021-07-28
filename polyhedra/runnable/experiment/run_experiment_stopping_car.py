@@ -417,14 +417,14 @@ if __name__ == '__main__':
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
-    experiment.show_progress_plot = False
+    experiment.show_progress_plot = True
     x_lead = Experiment.e(experiment.env_input_size, 0)
     x_ego = Experiment.e(experiment.env_input_size, 1)
     v_ego = Experiment.e(experiment.env_input_size, 2)
     template = np.array([-(x_lead - x_ego), v_ego, -v_ego])
     experiment.analysis_template = template  # standard
     experiment.input_template = Experiment.box(3)
-    input_boundaries = [40, -30, 10, -0, 36, -28]
-    experiment.input_boundaries = input_boundaries
+    # input_boundaries = [40, -30, 10, -0, 36, -28]
+    # experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()
