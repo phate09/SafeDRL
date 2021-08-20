@@ -271,7 +271,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234)
+        config = get_PPO_config(1234,0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()

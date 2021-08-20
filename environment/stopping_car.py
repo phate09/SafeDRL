@@ -115,10 +115,17 @@ class StoppingCar(gym.Env):
         delta_x_prime = delta_x + delta_v_prime * dt
         cost = 0
         done = False
-        cost += 1
+        cost += 8
+        # cost -= 0.6*math.log(max(1,1+abs(delta_x-10)))
+        # cost -= 0.2*math.log(max(1,1+abs(delta_v)))
+        # cost -= min(0.005*((delta_x-15)**2),6)
+        delta_x_cost = abs(delta_x - 20)
+        cost -= 6 / (1 + math.e ** (-0.6 * (delta_x_cost - 10)))
+        cost -= 2 / (1 + math.e ** (-0.6 * (abs(delta_v) - 10)))
+        # cost -= 0.001*((delta_v)**2)
         if delta_x < 0 or delta_x_prime < 0:  # crash
             done = True
-            cost = -1000
+            # cost = -1000
         return np.array([delta_v_prime, delta_x_prime]), cost, done, {}
 
 

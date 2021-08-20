@@ -7,6 +7,7 @@ import ray
 import torch
 from ray.rllib.agents.ppo import ppo
 
+from agents.dqn.safe_dqn_agent import InvariantAgent
 from agents.ppo.invariant_net.stopping_car_invariant_net import StoppingCarInvariantNet
 from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
@@ -56,8 +57,21 @@ class StoppingCarExperiment(InvariantNetExperiment):
 
         """milp method"""
         post = []
+        start_unsafe = []
         future_timesteps = 15
-        for chosen_actions in itertools.combinations([0, 1], future_timesteps):
+        for chosen_actions in itertools.product(range(2), repeat=future_timesteps):
+            already_visited = False
+            for start in start_unsafe:
+                same = True
+                for a, b in zip(start, chosen_actions):
+                    if a != b:
+                        same = False
+                        break
+                if same:
+                    already_visited = True
+                    break
+            if already_visited:
+                continue
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             input = gurobi_model.addMVar(shape=self.env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
@@ -67,11 +81,12 @@ class StoppingCarExperiment(InvariantNetExperiment):
             gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
             gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
             # feasible_safe = True
-            gurobi_model.addConstr(input[0] - input[1] <= 30, name=f"initial_constraint")
+            gurobi_model.addConstr(input[0] - input[1] <= 30, name=f"initial_constraint") #distac
+            gurobi_model.addConstr(input[0] - input[1] >= 0, name=f"initial_safety_constraint")
             # gurobi_model.addConstr(input[2] <= 100, name=f"initial_constraint")
             gurobi_model.update()
             gurobi_model.optimize()
-            feasible = Experiment.generate_nn_guard_positive(gurobi_model, observation, inv_nn, True, eps=-0.2)  # initially filter for elements within the invariant
+            feasible = Experiment.generate_nn_guard_positive(gurobi_model, observation, inv_nn, True, eps=0)  # initially filter for elements within the invariant
             for timestep in range(future_timesteps):
                 if feasible:
                     results = self.safe_timestep(gurobi_model, observation, nn, inv_nn, chosen_actions, input, index=timestep)
@@ -82,16 +97,18 @@ class StoppingCarExperiment(InvariantNetExperiment):
                         break
                 else:
                     break
-            print(f"action sequence: {chosen_actions}")
+            print(f"action sequence: {chosen_actions[:timestep+1]}")
+            start_unsafe.append(chosen_actions[:timestep+1])
             assert not feasible
             print("Safe")
         return post
 
     def safe_timestep(self, gurobi_model, observation, nn, inv_nn, chosen_actions, input, index):
-        feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_actions[index])
+        chose_action = chosen_actions[index]
+        feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chose_action)
         if feasible_action:
             # apply dynamic
-            x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chosen_actions[index], env_input_size=self.env_input_size)
+            x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chose_action, env_input_size=self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
             assert gurobi_model.status == 2
@@ -107,7 +124,7 @@ class StoppingCarExperiment(InvariantNetExperiment):
                     delta_x = gurobi_model.getVarByName(f'observation{t}[1]').X
                     tensor_input = torch.tensor([delta_v, delta_x])
 
-                    print(f"t:{t}, delta_v:{delta_v}, delta_x:{delta_x}, invariant: {inv_nn(tensor_input).item()}")
+                    print(f"t:{t}, delta_v:{delta_v}, delta_x:{delta_x}, invariant: {inv_nn(tensor_input)[chosen_actions[t]].item()}")
             print("")
             return feasible_unsafe, x_prime, next_observation
         else:
@@ -285,27 +302,42 @@ class StoppingCarExperiment(InvariantNetExperiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234)
-        trainer = ppo.PPOTrainer(config=config)
-        trainer.restore(self.nn_path)
-        policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        # l0 = torch.nn.Linear(6, 2, bias=False)
-        # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
-        # layers = [l0]
-        # for l in sequential_nn:
-        #     layers.append(l)
-        #
-        # nn = torch.nn.Sequential(*layers)
-        nn = sequential_nn
-        # ray.shutdown()
+        # config = get_PPO_config(1234)
+        # trainer = ppo.PPOTrainer(config=config)
+        # trainer.restore(self.nn_path)
+        # policy = trainer.get_policy()
+        # sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        # # l0 = torch.nn.Linear(6, 2, bias=False)
+        # # l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, -1, 0, 0], [1, -1, 0, 0, 0, 0]], dtype=torch.float32))
+        # # layers = [l0]
+        # # for l in sequential_nn:
+        # #     layers.append(l)
+        # #
+        # # nn = torch.nn.Sequential(*layers)
+        # nn = sequential_nn
+        # # ray.shutdown()
+
+        state_size = 2
+        action_size = 2
+        ALPHA = 0.6  # the higher the more aggressive the sampling towards high TD transitions
+        agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+        agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_14-55-31_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_1100.pth")
+        nn = agent.qnetwork_local.sequential
+        nn.cpu()
         return nn
 
     def get_invariant_nn(self):
         # nn = StoppingCarInvariantNet()
-        nn = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
-        checkpoint = torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/invariant_checkpoint.pt", map_location=torch.device("cpu"))
-        nn.load_state_dict(checkpoint)
+        # nn = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
+        # checkpoint = torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/invariant_checkpoint.pt", map_location=torch.device("cpu"))
+        # nn.load_state_dict(checkpoint)
+        state_size = 2
+        action_size = 2
+        ALPHA = 0.6  # the higher the more aggressive the sampling towards high TD transitions
+        agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+        agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_14-55-31_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_1100.pth")
+        nn = agent.inetwork_local
+        nn.cpu()
         return nn
 
 

@@ -29,17 +29,25 @@ class SafetyLoss(_Loss):
         self.model = model
         self.target_net = target
 
-    def forward(self, states: Tensor,actions:Tensor, successors: Tensor, flags: Tensor) -> Tensor:
+    def forward(self, states: Tensor, actions: Tensor, successors: Tensor, flags: Tensor) -> Tensor:
         mean = torch.tensor([0], device=self.model[0].weight.device).float()
         safe_states = states[(flags == 1).nonzero().squeeze()]
-        # mean += ((1 - self.model(safe_states)) ** 2).sum()
-        mean += torch.relu(-self.model(safe_states)).sum()
+        safe_action = actions[(flags == -1).nonzero().squeeze()]
+        mean += ((1 - self.model(safe_states).gather(1, safe_action.unsqueeze(-1))) ** 2).sum()
+        # mean += torch.relu(-self.model(safe_states)).sum()
         unsafe_states = states[(flags == -1).nonzero().squeeze()]
-        # mean += ((-1 - self.model(unsafe_states)) ** 2).sum()
-        mean += torch.relu(self.model(unsafe_states)).sum()
+        unsafe_action = actions[(flags == -1).nonzero().squeeze()]
+        mean += ((-1 - self.model(unsafe_states).gather(1, unsafe_action.unsqueeze(-1))) ** 2).sum()
+        # mean += torch.relu(self.model(unsafe_states)).sum()
         undefined_states = states[(flags == 0).nonzero().squeeze()]
+        undefined_action = actions[(flags == 0).nonzero().squeeze()]
         undefined_successors = successors[(flags == 0).nonzero().squeeze()]
-        mean += ((self.model(undefined_states) - self.target_net(undefined_successors)) ** 2).sum()
+        if len(undefined_states.size()) == 1:
+            undefined_states = undefined_states.unsqueeze(0)
+            undefined_action = undefined_action.unsqueeze(0)
+            undefined_successors = undefined_successors.unsqueeze(0)
+        next_actions = self.target_net(undefined_successors).max(1)[1]
+        mean += ((self.model(undefined_states).gather(1, undefined_action.unsqueeze(-1)) - self.target_net(undefined_successors).gather(1, next_actions.unsqueeze(-1))) ** 2).sum()
         # mean += (torch.relu(self.model(undefined_states)) * torch.relu(-self.model(undefined_successors))).sum()
         return mean / len(states)
 
@@ -147,7 +155,7 @@ class InvariantAgent:
             for chunk in chunks(self.invariant_dataset, 256):
                 states, actions, successors, flags = zip(*chunk)
                 loss = SafetyLoss(self.inetwork_local, self.inetwork_target)
-                loss_value = loss(torch.tensor(states).to(device), torch.tensor(successors).to(device), torch.tensor(flags, dtype=torch.float32).to(device))
+                loss_value = loss(torch.tensor(states).to(device), torch.tensor(actions).to(device), torch.tensor(successors).to(device), torch.tensor(flags, dtype=torch.float32).to(device))
                 loss_value.backward()
                 self.ioptimizer.step()  # updates the invariant
                 self.soft_update(self.inetwork_local, self.inetwork_target, TAU)
@@ -167,6 +175,10 @@ class InvariantAgent:
         self.qnetwork_local.eval()
         with torch.no_grad():
             action_values = self.qnetwork_local(state)
+            # action_values2 = action_values.clone()
+            # invariant_values = self.inetwork_local(state)
+            # action_values2 *= invariant_values
+            # final_action_values = action_values * eps + (1 - eps) * action_values2
         # self.qnetwork_local.train()
 
         # Epsilon-greedy action selection

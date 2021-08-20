@@ -29,7 +29,7 @@ print(torch.cuda.is_available())
 
 
 class GridSearchDataset(torch.utils.data.Dataset):
-    def __init__(self, size=16000):
+    def __init__(self,shuffle=False, size=16000):
         dataset = []
         param_grid = {'delta_v': np.arange(-30, 30, 0.2), 'delta_x': np.arange(-10, 40, 0.2)}
         for parameters in ParameterGrid(param_grid):
@@ -38,6 +38,8 @@ class GridSearchDataset(torch.utils.data.Dataset):
             state_np = np.array([delta_v, delta_x])
             dataset.append((torch.from_numpy(state_np).float()))
         self.dataset = dataset
+        if shuffle:
+            random.shuffle(self.dataset)
 
     def __len__(self):
         return len(self.dataset)
@@ -53,7 +55,7 @@ class RetrainLoss(_Loss):
 
     def forward(self, states: Tensor, actions_prob: Tensor) -> Tensor:
         # device = states.device
-        accelerations = torch.tensor([[-3.0, 3.0]],device=states.get_device())  # (actions - 0.5) * 6
+        accelerations = torch.tensor([[-3.0, 3.0]], device=states.get_device())  # (actions - 0.5) * 6
         next_delta_v = states[:, 0].unsqueeze(1).repeat(1, 2) + accelerations * 0.1
         next_delta_x = states[:, 1].unsqueeze(1).repeat(1, 2) + next_delta_v * 0.1
         next_states = torch.stack([next_delta_v.flatten(), next_delta_x.flatten()], dim=1)
@@ -234,115 +236,117 @@ class SafetyRetrainingOperator(TrainingOperator):
         }
 
 
-ray.init(local_mode=True)
-path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
-path_invariant = "/runnables/invariant/invariant_checkpoint_old.pt"
-config = get_PPO_config(1234, use_gpu=0)
-trainer = ppo.PPOTrainer(config=config)
-trainer.restore(path1)
-policy = trainer.get_policy()
-old_agent_model = convert_ray_policy_to_sequential(policy).cpu()
+if __name__ == '__main__':
 
-enable_training = True
-if enable_training:
-    trainer1 = TorchTrainer(
-        training_operator_cls=SafetyRetrainingOperator,
-        num_workers=1,
-        use_gpu=True,
-        config={
-            "lr": 1e-2,  # used in optimizer_creator
-            "hidden_size": 1,  # used in model_creator
-            "batch_size": 1024,  # used in data_creator
-            "path": path1,  # path to load the agent nn
-            "path_invariant": path_invariant,  # the path to the invariant network
-        },
-        backend="auto",
-        scheduler_step_freq="epoch")
-    for i in range(50):
-        stats = trainer1.train()
-        print(stats)
+    ray.init(local_mode=True)
+    path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
+    path_invariant = "/runnables/invariant/invariant_checkpoint_old.pt"
+    config = get_PPO_config(1234, use_gpu=0)
+    trainer = ppo.PPOTrainer(config=config)
+    trainer.restore(path1)
+    policy = trainer.get_policy()
+    old_agent_model = convert_ray_policy_to_sequential(policy).cpu()
 
-    print(trainer1.validate())
-    torch.save(trainer1.state_dict(), "checkpoint.pt")
-    torch.save(trainer1.get_model()[0].state_dict(), "retrained_agent.pt")
-    agent_model, invariant_model = trainer1.get_model()
-else:
-    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-    sequential_nn.load_state_dict(torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/retrained_agent.pt"))
-    agent_model = sequential_nn
-    invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
-    invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
-# %%
-agent_model.cpu()
-invariant_model.cpu()
-old_agent_model.cpu()
-val_data = GridSearchDataset()
-random.seed(0)
-x_data = []
-xprime_data = []
-old_xprime_data = []
-y_data = []
-changed_indices = []
-for i, data in enumerate(random.sample(val_data.dataset, k=7000)):
-    value = torch.tanh(invariant_model(data)).item()
-    action = torch.argmax(agent_model(data)).item()
-    next_state_np, reward, done, _ = StoppingCar.compute_successor(data.numpy(), action)
-    old_action = torch.argmax(old_agent_model(data)).item()
-    next_state_np_old, _, _, _ = StoppingCar.compute_successor(data.numpy(), old_action)
-    x_data.append(data.numpy())
-    xprime_data.append(next_state_np)
-    y_data.append(value)
-    old_xprime_data.append(next_state_np_old)
-    if action != old_action:
-        changed_indices.append(i)
+    enable_training = True
+    if enable_training:
+        trainer1 = TorchTrainer(
+            training_operator_cls=SafetyRetrainingOperator,
+            num_workers=1,
+            use_gpu=True,
+            config={
+                "lr": 1e-2,  # used in optimizer_creator
+                "hidden_size": 1,  # used in model_creator
+                "batch_size": 1024,  # used in data_creator
+                "path": path1,  # path to load the agent nn
+                "path_invariant": path_invariant,  # the path to the invariant network
+            },
+            backend="auto",
+            scheduler_step_freq="epoch")
+        for i in range(50):
+            stats = trainer1.train()
+            print(stats)
 
-x_data = np.array(x_data)
-xprime_data = np.array(xprime_data)
-old_xprime_data = np.array(old_xprime_data)
-changed_indices = np.array(changed_indices)
-y_data = np.array(y_data)
-x = x_data[:, 0][changed_indices]
-y = x_data[:, 1][changed_indices]
-u = xprime_data[:, 0][changed_indices] - x_data[:, 0][changed_indices]
-v = xprime_data[:, 1][changed_indices] - x_data[:, 1][changed_indices]
-x_full = x_data[:, 0]
-y_full = x_data[:, 1]
-u_full = xprime_data[:, 0] - x_data[:, 0]
-v_full = xprime_data[:, 1] - x_data[:, 1]
-u_old_full = old_xprime_data[:, 0] - x_data[:, 0]
-v_old_full = old_xprime_data[:, 1] - x_data[:, 1]
+        print(trainer1.validate())
+        torch.save(trainer1.state_dict(), "checkpoint.pt")
+        torch.save(trainer1.get_model()[0].state_dict(), "retrained_agent.pt")
+        agent_model, invariant_model = trainer1.get_model()
+    else:
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        sequential_nn.load_state_dict(torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/retrained_agent.pt"))
+        agent_model = sequential_nn
+        invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
+        invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model
+    # %%
+    agent_model.cpu()
+    invariant_model.cpu()
+    old_agent_model.cpu()
+    val_data = GridSearchDataset()
+    random.seed(0)
+    x_data = []
+    xprime_data = []
+    old_xprime_data = []
+    y_data = []
+    changed_indices = []
+    for i, data in enumerate(random.sample(val_data.dataset, k=7000)):
+        value = torch.tanh(invariant_model(data)).item()
+        action = torch.argmax(agent_model(data)).item()
+        next_state_np, reward, done, _ = StoppingCar.compute_successor(data.numpy(), action)
+        old_action = torch.argmax(old_agent_model(data)).item()
+        next_state_np_old, _, _, _ = StoppingCar.compute_successor(data.numpy(), old_action)
+        x_data.append(data.numpy())
+        xprime_data.append(next_state_np)
+        y_data.append(value)
+        old_xprime_data.append(next_state_np_old)
+        if action != old_action:
+            changed_indices.append(i)
 
-colors = y_data[changed_indices]
-colors_full = y_data
+    x_data = np.array(x_data)
+    xprime_data = np.array(xprime_data)
+    old_xprime_data = np.array(old_xprime_data)
+    changed_indices = np.array(changed_indices)
+    y_data = np.array(y_data)
+    x = x_data[:, 0][changed_indices]
+    y = x_data[:, 1][changed_indices]
+    u = xprime_data[:, 0][changed_indices] - x_data[:, 0][changed_indices]
+    v = xprime_data[:, 1][changed_indices] - x_data[:, 1][changed_indices]
+    x_full = x_data[:, 0]
+    y_full = x_data[:, 1]
+    u_full = xprime_data[:, 0] - x_data[:, 0]
+    v_full = xprime_data[:, 1] - x_data[:, 1]
+    u_old_full = old_xprime_data[:, 0] - x_data[:, 0]
+    v_old_full = old_xprime_data[:, 1] - x_data[:, 1]
 
-norm = Normalize(vmax=1.0, vmin=-1.0)
-norm.autoscale(colors)
-# we need to normalize our colors array to match it colormap domain
-# which is [0, 1]
+    colors = y_data[changed_indices]
+    colors_full = y_data
 
-colormap = cm.bwr
-plt.figure(figsize=(18, 16), dpi=80)
-# plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
-#            scale_units='xy', scale=1, pivot='mid', zorder=1)
-plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy',
-           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
-plt.title("Diff")
-plt.xlim([-30, 30])
-plt.ylim([-10, 40])
-plt.show()
-plt.figure(figsize=(18, 16), dpi=80)
-# plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
-#            scale_units='xy', scale=1, pivot='mid', zorder=1)
-plt.quiver(x_full, y_full, u_full, v_full, color=colormap(norm(colors_full)), angles='xy',
-           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
-plt.title("New")
-plt.xlim([-30, 30])
-plt.ylim([-10, 40])
-plt.show()
-plt.figure(figsize=(18, 16), dpi=80)
-plt.quiver(x_full, y_full, u_old_full, v_old_full, color=colormap(norm(colors_full)), angles='xy',
-           scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
-plt.title("Old")
-plt.xlim([-30, 30])
-plt.ylim([-10, 40])
-plt.show()
+    norm = Normalize(vmax=1.0, vmin=-1.0)
+    norm.autoscale(colors)
+    # we need to normalize our colors array to match it colormap domain
+    # which is [0, 1]
+
+    colormap = cm.bwr
+    plt.figure(figsize=(18, 16), dpi=80)
+    # plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
+    #            scale_units='xy', scale=1, pivot='mid', zorder=1)
+    plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy',
+               scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+    plt.title("Diff")
+    plt.xlim([-30, 30])
+    plt.ylim([-10, 40])
+    plt.show()
+    plt.figure(figsize=(18, 16), dpi=80)
+    # plt.quiver(x, y, old_u, old_v, color="yellow", angles='xy',
+    #            scale_units='xy', scale=1, pivot='mid', zorder=1)
+    plt.quiver(x_full, y_full, u_full, v_full, color=colormap(norm(colors_full)), angles='xy',
+               scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+    plt.title("New")
+    plt.xlim([-30, 30])
+    plt.ylim([-10, 40])
+    plt.show()
+    plt.figure(figsize=(18, 16), dpi=80)
+    plt.quiver(x_full, y_full, u_old_full, v_old_full, color=colormap(norm(colors_full)), angles='xy',
+               scale_units='xy', scale=1, pivot='mid', zorder=0)  # colormap(norm(colors))
+    plt.title("Old")
+    plt.xlim([-30, 30])
+    plt.ylim([-10, 40])
+    plt.show()

@@ -16,9 +16,9 @@ import torch
 from interval import interval, imath
 import plotly.graph_objects as go
 from py4j.java_gateway import JavaGateway
-
+import pickle
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
 from utility.standard_progressbar import StandardProgressBar
@@ -29,8 +29,10 @@ class ProbabilisticExperiment(Experiment):
         super().__init__(env_input_size)
         self.use_entropy_split = True
         self.use_split = True  # enable/disable splitting
-        self.load_graph = True
-        self.max_probability_split = 0.2
+        self.load_graph = False
+        self.use_contained = False  # enable/disable containment check
+        self.max_probability_split = 0.33
+        self.save_graph = True
 
     def run_experiment(self):
         assert self.get_nn_fn is not None
@@ -70,7 +72,8 @@ class ProbabilisticExperiment(Experiment):
         def __init__(self):
             self.seen = []
             self.frontier = []  # contains the elements to explore
-            self.vertices_list = defaultdict(list)
+            self.to_replace_split = []  # elements to replace/split because they are too big
+            self.vertices_list = defaultdict(list)  # contains point at every timesteps, this is for plotting purposes only
             self.max_t = 0
             self.num_already_visited = 0
             self.num_irrelevant = 0
@@ -104,21 +107,25 @@ class ProbabilisticExperiment(Experiment):
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
             inv_map = {v: k for k, v in mapping.items()}
             networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
+            pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
         else:
             self.graph = networkx.read_gpickle(os.path.join(self.save_dir, "graph.p"))
+            stats: ProbabilisticExperiment.LoopStats = pickle.load(open(os.path.join(self.save_dir, "stats.p"), "rb"))
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
         # ----for plotting
         colours = []
-        to_plot = list(self.graph.successors(root_pair))
+        # to_plot = list(self.graph.successors(root_pair))
+        to_plot = list(self.graph.successors(list(self.graph.successors(root_pair))[0]))
+        to_plot = stats.vertices_list[1]
         bad_nodes = []
         for x in self.graph.adj:
             safe = self.graph.nodes[x].get("safe")
-            infeasible = self.graph.nodes[x].get("irrelevant")
+            irrelevant = self.graph.nodes[x].get("irrelevant")
             if safe is not None:
                 if safe is False:
                     bad_nodes.append(x)
-            if infeasible is not None:
-                if infeasible is True:
+            if irrelevant is not None:
+                if irrelevant is True:
                     bad_nodes.append(x)
         terminal_states_ids = [mapping[x] for x in bad_nodes]
         for node in to_plot:
@@ -154,32 +161,69 @@ class ProbabilisticExperiment(Experiment):
             #     print(f"Reached horizon t={t}")
             #     stats.exit_flag = True
             #     break
-            contained_flag = False
-            to_remove = []
-            for (s, s_label) in stats.seen:
+            just_split = False
+            for (s, s_label) in stats.to_replace_split:
                 if s_label == x_label:
-                    if contained(x, s):
-                        if not self.graph.has_predecessor((x, x_label), (s, x_label)):  # ensures that if there was a split it doesn't count as contained
-                            self.graph.add_edge((x, x_label), (s, x_label), action="contained", lb=1.0, ub=1.0)
-                            contained_flag = True
-                            break
-                    if contained(s, x):
-                        to_remove.append((s, s_label))
-            for rem in to_remove:
-                stats.num_already_visited += 1
-                stats.seen.remove(rem)
-            if contained_flag:
-                stats.num_already_visited += 1
-                continue
+                    if s == x:
+                        just_split = True
+                        break
             stats.max_t = max(stats.max_t, t)
             stats.vertices_list[t].append(np.array(x))
             stats.seen.append((x, x_label))
 
-            split_proc_id = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
-            if split_proc_id is not None:  # splitting
-                stats.proc_ids.append(split_proc_id)
-            else:  # calculate successor
-                stats.proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))
+            if not just_split and self.use_contained:
+                contained_flag = False
+                to_remove = []
+                for (s, s_label) in stats.seen:
+                    if s_label == x_label:
+                        if contained(x, s):
+                            if not self.graph.has_predecessor((x, x_label), (s, x_label)):  # ensures that if there was a split it doesn't count as contained
+                                self.graph.add_edge((x, x_label), (s, x_label), action="contained", lb=1.0, ub=1.0)
+                                contained_flag = True
+                                break
+                        if contained(s, x):
+                            to_remove.append((s, s_label))
+                for rem in to_remove:
+                    stats.num_already_visited += 1
+                    stats.seen.remove(rem)
+                if contained_flag:
+                    stats.num_already_visited += 1
+                    continue
+
+            else:
+                if just_split:
+                    stats.vertices_list[t].remove(np.array(x))
+
+            if just_split:
+                self.graph.nodes[(x, x_label)]
+                # todo find parent
+                # todo find number of splits
+                # todo replace element with the splitted ones
+                new_frontier = []
+                split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(x), self.env_input_size, template_2d)
+                successor_info = Experiment.SuccessorInfo()
+                successor_info.successor = tuple(split1)
+                successor_info.parent = x
+                successor_info.parent_lbl = x_label
+                successor_info.t = t
+                successor_info.action = f"split{1}"
+                new_frontier.append(successor_info)
+                successor_info = Experiment.SuccessorInfo()
+                successor_info.successor = tuple(split2)
+                successor_info.parent = x
+                successor_info.parent_lbl = x_label
+                successor_info.t = t
+                successor_info.action = f"split{2}"
+                new_frontier.append(successor_info)
+                stats.proc_ids.append(ray.put(new_frontier))
+
+            else:
+                split_proc_id = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
+                if split_proc_id is not None:  # splitting
+                    stats.proc_ids.append(split_proc_id)
+                else:  # calculate successor
+                    stats.proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))
+
             if self.show_progressbar:
                 bar_main.update(value=bar_main.value + 1, n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited,
                                 last_visited_state=str(x),
@@ -196,7 +240,11 @@ class ProbabilisticExperiment(Experiment):
         new_frontier = self.collect_results(stats, template)
         # update prism
         self.update_prism_step(stats.frontier, new_frontier, stats.root, stats)
+        # todo go through the tree and decide if we want to split already visited nodes based on the max and min probability of encountering a terminal state
         stats.new_frontier = []  # resets the new_frontier
+        if self.save_graph:
+            networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
+            pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
 
     def collect_results(self, stats, template):
         """collects the results from the various processes, creates a list with the newly added states"""
@@ -261,10 +309,34 @@ class ProbabilisticExperiment(Experiment):
                     self.graph.nodes[x]["irrelevant"] = True
                     stats.num_irrelevant += 1
 
+        bad_nodes = []
+        for x in self.graph.adj:
+            safe = self.graph.nodes[x].get("safe")
+            irrelevant = self.graph.nodes[x].get("irrelevant")
+            if safe is not None:
+                if safe is False:
+                    bad_nodes.append(x)
+            if irrelevant is not None:
+                if irrelevant is True:
+                    bad_nodes.append(x)
+        terminal_states_ids = [mapping[x] for x in bad_nodes]
+        if len(terminal_states_ids) != 0:
+            # for node in self.graph.nodes:
+            #     if node in bad_nodes:
+            #         continue
+            starting_id = mapping[stats.root]
+            sum = 0
+            # for terminal_state_id in terminal_states_ids:
+            #     minmin, minmax, maxmin, maxmax = extract_probabilities([terminal_state_id], gateway, mc, mdp, root_id=starting_id)
+            #     sum+=maxmax
+            minmin, minmax, maxmin, maxmax = extract_probabilities(terminal_states_ids, gateway, mc, mdp, root_id=starting_id)
+            if maxmin > 0.2:
+                print(maxmin)
+
     def check_split(self, t, x, x_label, nn, bar_main, stats, template, template_2d) -> List[Experiment.SuccessorInfo]:
         # -------splitting
         ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
-        split_flag = acceptable_range(ranges_probs, self.max_probability_split)
+        split_flag = is_split_range(ranges_probs, self.max_probability_split)
         new_frontier = []
         if split_flag and self.use_split:
             # bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
@@ -288,7 +360,7 @@ class ProbabilisticExperiment(Experiment):
                         dimension = pick_longest_dimension(template, x)
                         split1, split2 = split_polyhedron(template, x, dimension)
                     ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
-                    split_flag1 = acceptable_range(ranges_probs1, self.max_probability_split) and self.use_split
+                    split_flag1 = is_split_range(ranges_probs1, self.max_probability_split) and self.use_split
                     if split_flag1:
                         to_split.append(split1)
                     else:
@@ -302,7 +374,7 @@ class ProbabilisticExperiment(Experiment):
                         new_frontier.append(successor_info)
                         # plot_frontier(new_frontier)
                     ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
-                    split_flag2 = acceptable_range(ranges_probs2, self.max_probability_split)
+                    split_flag2 = is_split_range(ranges_probs2, self.max_probability_split)
                     if split_flag2:
                         to_split.append(split2)
                     else:

@@ -17,7 +17,7 @@ from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ray_utils import convert_ray_policy_to_sequential
 from mosaic.utils import PolygonSort, compute_trace_polygons
 from polyhedra.experiments_nn_analysis import Experiment, contained
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, acceptable_range, create_range_bounds_model
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, create_range_bounds_model
 from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
@@ -187,7 +187,7 @@ if __name__ == '__main__':
                         exit_flag = True
                         break
                     ranges_probs = create_range_bounds_model(template, x, env_input_size, nn)
-                    split_flag = acceptable_range(ranges_probs)
+                    split_flag = is_split_range(ranges_probs)
                     # split_flag = False
                     if split_flag:
                         bar_main.update(value=bar_main.value + 1, current_t=t, last_action="split", last_polytope=str(x))
@@ -208,7 +208,7 @@ if __name__ == '__main__':
                                     dimension = pick_longest_dimension(template, x)
                                     split1, split2 = split_polyhedron(template, x, dimension)
                                 ranges_probs1 = create_range_bounds_model(template, split1, env_input_size, nn)
-                                split_flag1 = acceptable_range(ranges_probs1)
+                                split_flag1 = is_split_range(ranges_probs1)
                                 if split_flag1:
                                     to_split.append(split1)
                                 else:
@@ -216,7 +216,7 @@ if __name__ == '__main__':
                                     # plot_frontier(new_frontier)
                                     graph.add_edge(x, split1, action="split")
                                 ranges_probs2 = create_range_bounds_model(template, split2, env_input_size, nn)
-                                split_flag2 = acceptable_range(ranges_probs2)
+                                split_flag2 = is_split_range(ranges_probs2)
                                 if split_flag2:
                                     to_split.append(split2)
                                 else:
