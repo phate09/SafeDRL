@@ -39,7 +39,7 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
     # split3, split4 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
     split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
     # print("done")
-    # plot_points_and_prediction(samples, predicted_label)
+    # plot_points_and_prediction(samples@template_2d.T, predicted_label)
     # show_polygons(template, [split1, split2], template_2d)
     # show_polygons(template, [split3, split4], template_2d)
     return split1, split2

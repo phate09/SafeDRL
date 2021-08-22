@@ -32,19 +32,29 @@ class SafetyLoss(_Loss):
     def forward(self, states: Tensor, actions: Tensor, successors: Tensor, flags: Tensor) -> Tensor:
         mean = torch.tensor([0], device=self.model[0].weight.device).float()
         safe_states = states[(flags == 1).nonzero().squeeze()]
-        safe_action = actions[(flags == -1).nonzero().squeeze()]
+        if len(safe_states.size()) < 2:
+            safe_states = safe_states.unsqueeze(0)
+        safe_action = actions[(flags == 1).nonzero().squeeze()]
+        if len(safe_action.size()) < 1:
+            safe_action = safe_action.unsqueeze(0)
         mean += ((1 - self.model(safe_states).gather(1, safe_action.unsqueeze(-1))) ** 2).sum()
         # mean += torch.relu(-self.model(safe_states)).sum()
         unsafe_states = states[(flags == -1).nonzero().squeeze()]
+        if len(unsafe_states.size()) < 2:
+            unsafe_states = unsafe_states.unsqueeze(0)
         unsafe_action = actions[(flags == -1).nonzero().squeeze()]
+        if len(unsafe_action.size()) < 1:
+            unsafe_action = unsafe_action.unsqueeze(0)
         mean += ((-1 - self.model(unsafe_states).gather(1, unsafe_action.unsqueeze(-1))) ** 2).sum()
         # mean += torch.relu(self.model(unsafe_states)).sum()
         undefined_states = states[(flags == 0).nonzero().squeeze()]
-        undefined_action = actions[(flags == 0).nonzero().squeeze()]
-        undefined_successors = successors[(flags == 0).nonzero().squeeze()]
-        if len(undefined_states.size()) == 1:
+        if len(undefined_states.size()) < 2:
             undefined_states = undefined_states.unsqueeze(0)
+        undefined_action = actions[(flags == 0).nonzero().squeeze()]
+        if len(undefined_action.size()) < 1:
             undefined_action = undefined_action.unsqueeze(0)
+        undefined_successors = successors[(flags == 0).nonzero().squeeze()]
+        if len(undefined_successors.size()) < 2:
             undefined_successors = undefined_successors.unsqueeze(0)
         next_actions = self.target_net(undefined_successors).max(1)[1]
         mean += ((self.model(undefined_states).gather(1, undefined_action.unsqueeze(-1)) - self.target_net(undefined_successors).gather(1, next_actions.unsqueeze(-1))) ** 2).sum()
@@ -77,8 +87,8 @@ class InvariantAgent:
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # I-Net
-        self.inetwork_local = nn.Sequential(*[nn.Linear(state_size, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
-        self.inetwork_target = nn.Sequential(*[nn.Linear(state_size, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
+        self.inetwork_local = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
+        self.inetwork_target = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
         self.inetwork_target.load_state_dict(self.inetwork_local.state_dict())  # clones the weigths
         self.ioptimizer = optim.Adam(self.inetwork_local.parameters(), 1e-3)
 
@@ -251,12 +261,14 @@ class InvariantAgent:
             "optimiser_critic": self.optimizer.state_dict(),
         }, path)
 
-    def load(self, path):
+    def load(self, path,agent=True,invariant=True):
         checkpoint = torch.load(path, map_location=device)
-        self.qnetwork_local.load_state_dict(checkpoint["critic"])
-        self.qnetwork_target.load_state_dict(checkpoint["target_critic"])
+        if agent:
+            self.qnetwork_local.load_state_dict(checkpoint["critic"])
+            self.qnetwork_target.load_state_dict(checkpoint["target_critic"])
         self.optimizer.load_state_dict(checkpoint["optimiser_critic"])
-        self.inetwork_local.load_state_dict(checkpoint["invariant_net"])
-        self.inetwork_target.load_state_dict(checkpoint["target_invariant_net"])
+        if invariant:
+            self.inetwork_local.load_state_dict(checkpoint["invariant_net"])
+            self.inetwork_target.load_state_dict(checkpoint["target_invariant_net"])
         self.global_step = checkpoint["global_step"]
         print(f'Loading complete')

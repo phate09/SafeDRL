@@ -38,7 +38,7 @@ os.mkdir(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
-agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth")
+agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth",invariant=False)
 agent2 = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
 
 # agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
@@ -106,9 +106,9 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             writer.add_scalar('loss/invariant_loss', invariant_loss, i_episode)
 
         # eps = max(eps_end, eps_decay * eps)  # decrease epsilon
-        print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f}\t eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}', end="")
+        print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.4f}\t eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}', end="")
         if (i_episode + 1) % 100 == 0:
-            print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
+            print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.4f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
             agent2.save(os.path.join(log_dir, f"checkpoint_{i_episode + 1}.pth"), i_episode)
     agent2.save(os.path.join(log_dir, f"checkpoint_final.pth"), i_episode)
     return scores

@@ -255,16 +255,16 @@ class Experiment():
     #     return model.input
 
     @staticmethod
-    def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False):
+    def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False, eps=0):
         for j, template in enumerate(templates):
             gurobi_model.update()
             multiplication = 0
             for i in range(env_input_size):
                 multiplication += template[i] * input[i]
             if not invert:
-                gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
+                gurobi_model.addConstr(multiplication <= boundaries[j] - eps, name=f"input_constr_{j}")
             else:
-                gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
+                gurobi_model.addConstr(multiplication >= boundaries[j] + eps, name=f"input_constr_{j}")
 
     # @staticmethod
     # def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
