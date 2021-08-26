@@ -14,7 +14,7 @@ from scipy.optimize import linprog, minimize, minimize_scalar
 import plotly.graph_objects as go
 
 
-def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d):
+def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, minimum_length=0.1):
     # print("Performing split...", "")
     repeat = True
     samples = None
@@ -35,14 +35,17 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
         inverted_dimension = find_inverted_dimension(-dimension, template)
         dimension_length = boundaries[i] + boundaries[inverted_dimension]
         dimension_lengths.append(dimension_length)
-    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d, dimension_lengths)
+    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d, dimension_lengths, minimum_length)
     # split3, split4 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
-    split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
+    if decision_point is not None:
+        split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
+        return split1, split2
+    else:
+        raise Exception("could not find a split that satisfy the minimum length, consider increasing minimum_length parameter")
     # print("done")
     # plot_points_and_prediction(samples@template_2d.T, predicted_label)
     # show_polygons(template, [split1, split2], template_2d)
     # show_polygons(template, [split3, split4], template_2d)
-    return split1, split2
 
 
 # find corresponding dimension
@@ -124,9 +127,8 @@ def is_split_range(ranges_probs, max_prob_difference=0.2):
 
 
 # noinspection PyUnreachableCode
-def find_dimension_split3(points, predicted_label, template, template2d, dimension_lengths):
+def find_dimension_split3(points, predicted_label, template, template2d, dimension_lengths, minimum_length=0.1):
     costs = []
-    minimum_length = 0.1
     decision_boundaries = []
     proj2ds = []
     classifier_predictions = []

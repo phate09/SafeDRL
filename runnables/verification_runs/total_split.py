@@ -28,39 +28,40 @@ from numpy import array, hstack, ones, vstack, zeros
 class TotalSplit:
     def __init__(self):
         self.use_split = True
-        self.env_input_size: int = 3
+        self.env_input_size: int = 2
         self.max_probability_split = 0.33
         self.input_epsilon = 0
         self.v_lead = 28
         self.use_entropy_split = True
         self.output_flag = False
 
-        self.template_2d: np.ndarray = np.array([[0, 0, 1], [1, -1, 0]])
-        self.input_boundaries = tuple([50, 0, 0, 0, 36, 0])
+        self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
+        self.input_boundaries = tuple([50, 0, 36, 36])
         self.input_template = Experiment.box(self.env_input_size)
-        x_lead = Experiment.e(self.env_input_size, 0)
-        x_ego = Experiment.e(self.env_input_size, 1)
-        v_ego = Experiment.e(self.env_input_size, 2)
+        delta_x = Experiment.e(self.env_input_size, 0)
+        # x_ego = Experiment.e(self.env_input_size, 1)
+        v_ego = Experiment.e(self.env_input_size, 1)
         # template = Experiment.combinations([1 / 4.5*(x_lead - x_ego), - v_ego])
-        template = np.array([x_lead - x_ego, -(x_lead - x_ego), v_ego, -v_ego, 1 / 4.5 * (x_lead - x_ego) + v_ego, 1 / 4.5 * (x_lead - x_ego) - v_ego, -1 / 4.5 * (x_lead - x_ego) + v_ego,
-                             -1 / 4.5 * (x_lead - x_ego) - v_ego])
+        template = np.array([delta_x, -delta_x, v_ego, -v_ego, 1 / 4.5 * delta_x + v_ego, 1 / 4.5 * delta_x - v_ego, -1 / 4.5 * delta_x + v_ego,
+                             -1 / 4.5 * delta_x - v_ego])
         self.analysis_template: np.ndarray = template
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
 
     def get_pre_nn(self):
         l0 = torch.nn.Linear(self.env_input_size, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, -1], [1, -1, 0]], dtype=torch.float32))
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, -1], [1, 0]], dtype=torch.float32))
         l0.bias = torch.nn.Parameter(torch.tensor([[28, 0]], dtype=torch.float32))
         layers = [l0]
         pre_nn = torch.nn.Sequential(*layers)
+        torch.nn.Identity()
         return pre_nn
 
     def get_observation_variable(self, input, gurobi_model):
         observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
-        gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
-        gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
-        gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
-        gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
+        gurobi_model.addConstr(observation[1] <= input[0] + self.input_epsilon / 2, name=f"obs_constr21")
+        gurobi_model.addConstr(observation[1] >= input[0] - self.input_epsilon / 2, name=f"obs_constr22")
+        gurobi_model.addConstr(observation[0] <= self.v_lead - input[1] + self.input_epsilon / 2, name=f"obs_constr11")
+        gurobi_model.addConstr(observation[0] >= self.v_lead - input[1] - self.input_epsilon / 2, name=f"obs_constr12")
         gurobi_model.update()
         gurobi_model.optimize()
         assert gurobi_model.status == 2, "LP wasn't optimally solved"
@@ -137,7 +138,7 @@ class TotalSplit:
                 to_analyse, ranges_probs = to_split.pop()
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
                 if split_flag:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
+                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d,minimum_length=0.2)
                     n_splits += 1
                     if split1 is None or split2 is None:
                         split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
@@ -154,7 +155,7 @@ class TotalSplit:
                     new_frontier.append((to_analyse, ranges_probs))
                     # plot_frontier(new_frontier)
 
-        pickle.dump(new_frontier, open("new_frontier2.p", "wb"))
+        pickle.dump(new_frontier, open("new_frontier3.p", "wb"))
         colours = []
         for x, ranges_probs in new_frontier + to_split:
             colours.append(np.mean(ranges_probs[0]))
@@ -170,8 +171,8 @@ class TotalSplit:
         return new_frontier
 
     def split_item(self, template):
-        frontier = pickle.load(open("new_frontier.p", "rb"))
-        input_boundaries = tuple([30, -10, 1, 0, 36, -28])
+        frontier = pickle.load(open("new_frontier3.p", "rb"))
+        input_boundaries = tuple([40, -35, 10, -0])
         root = self.generate_root_polytope(input_boundaries)
         chosen_polytopes = []
         to_split = [root]
@@ -181,39 +182,49 @@ class TotalSplit:
             choose = self.check_contained(x, root)
             if choose:
                 new_frontier.append((x, probs))
+        frontier = new_frontier  # shrink the selection of polytopes to only the ones which are relevant
 
-        frontier = new_frontier #shrink the selection of polytopes to only the ones which are relevant
 
-        while len(to_split) > 0:
-            current_polytope = to_split.pop()
-            split_happened = False
-            for x, probs in frontier:
-                choose = self.check_contained(x, current_polytope)
-                if choose:
-                    dimensions_volume = self.find_important_dimensions(current_polytope, x)
-                    if len(dimensions_volume) > 0:
-                        assert len(dimensions_volume) > 0
-                        min_idx = dimensions_volume[np.argmin(np.array(dimensions_volume)[:, 1])][0]
-                        splits = split_polyhedron_milp(self.analysis_template, current_polytope, min_idx, x[min_idx])
-                        chosen_polytopes.append((x, probs))
-                        to_split.append(tuple(splits[0]))
-                        to_split.append(tuple(splits[1]))
-                        split_happened =True
-                        break
-            if not split_happened:
-                processed.append(current_polytope)
+        # colours = []
+        # for x, ranges_probs in frontier:
+        #     colours.append(np.mean(ranges_probs[0]))
+        # print("", file=sys.stderr)  # new line
+        # fig = show_polygons(template, [x[0] for x in frontier], self.template_2d, colours)
 
-        colours = []
-        for x, ranges_probs in chosen_polytopes:
-            colours.append(np.mean(ranges_probs[0]))
-        print("", file=sys.stderr)  # new line
-        fig = show_polygons(template, [x[0] for x in chosen_polytopes] + to_split+processed, self.template_2d, colours + [0.5] * len(to_split)+[0.5] * len(processed))
+        widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
+        with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_split:
+            while len(to_split) > 0:
+                current_polytope = to_split.pop()
+                split_happened = False
+                for x, probs in frontier:
+                    choose = self.check_contained(x, current_polytope)
+                    if choose:
+                        dimensions_volume = self.find_important_dimensions(current_polytope, x)
+                        if len(dimensions_volume) > 0:
+                            assert len(dimensions_volume) > 0
+                            min_idx = dimensions_volume[np.argmin(np.array(dimensions_volume)[:, 1])][0]
+                            splits = split_polyhedron_milp(self.analysis_template, current_polytope, min_idx, x[min_idx])
+                            chosen_polytopes.append((x, probs))
+                            to_split.append(tuple(splits[0]))
+                            to_split.append(tuple(splits[1]))
+                            split_happened = True
+                            break
+                    bar_split.update(splitting_queue = len(to_split),frontier_size=len(processed))
+                if not split_happened:
+                    processed.append(current_polytope)
+
+        # colours = []
+        # for x, ranges_probs in frontier:
+        #     colours.append(np.mean(ranges_probs[0]))
+        # print("", file=sys.stderr)  # new line
+        # fig = show_polygons(template, [x[0] for x in frontier] + to_split + processed, self.template_2d, colours + [0.5] * len(to_split) + [0.5] * len(processed))
+        return processed
 
     def check_contained(self, poly1, poly2):
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', self.output_flag)
         input1 = Experiment.generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
-        Experiment.generate_region_constraints(gurobi_model, self.analysis_template, input1, poly2, self.env_input_size, eps=1e-5) #use epsilon to prevent single points
+        Experiment.generate_region_constraints(gurobi_model, self.analysis_template, input1, poly2, self.env_input_size, eps=1e-5)  # use epsilon to prevent single points
         x_results = self.optimise(self.analysis_template, gurobi_model, input1)
         if x_results is None:
             # not contained
@@ -253,8 +264,8 @@ class TotalSplit:
     def start(self):
         root = self.generate_root_polytope(self.input_boundaries)
         nn = self.get_nn()
+        # self.check_split(root, nn, self.analysis_template, self.template_2d)
         self.split_item(self.analysis_template)
-        self.check_split(root, nn, self.analysis_template, self.template_2d)
 
     def pypoman_compute_polytope_vertices(self, A, b):
         b = b.reshape((b.shape[0], 1))
