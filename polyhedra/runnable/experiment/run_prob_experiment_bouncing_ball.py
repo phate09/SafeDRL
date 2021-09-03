@@ -27,13 +27,17 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         self.input_template: np.ndarray = input_template
         _, template = self.get_template(0)
         self.analysis_template: np.ndarray = template
-        self.time_horizon = 500
+        self.time_horizon = 21
         self.rounding_value = 2 ** 8
+        self.load_graph = False
+        self.minimum_length = 0.2
+        self.max_probability_split = 0.20
         p = Experiment.e(self.env_input_size, 0)
         v = Experiment.e(self.env_input_size, 1)
-        self.unsafe_zone: List[Tuple] = [([p, -v, v], np.array([0, 1, 0]))]
-        self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"
+        self.unsafe_zone: List[Tuple] = [([p, -v, v], np.array([1, 7, 7]))]
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_10/checkpoint-10"
 
     @ray.remote
     def post_milp(self, x, x_label, nn, output_flag, t, template) -> List[Experiment.SuccessorInfo]:
@@ -252,7 +256,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         v = Experiment.e(self.env_input_size, 1)
         if mode == 0:  # box directions with intervals
             # input_boundaries = [0, 0, 10, 10]
-            input_boundaries = [9, -8, 0, 0.1]
+            input_boundaries = [6, -3, 1, 1]
             # optimise in a direction
             template = []
             for dimension in range(self.env_input_size):
@@ -277,7 +281,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234)
+        config = get_PPO_config(1234, use_gpu=0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()
@@ -291,25 +295,11 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    ray.init(log_to_driver=False, local_mode=True)
+    ray.init(log_to_driver=False, local_mode=False)
     experiment = BouncingBallExperimentProbabilistic()
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/test"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
     experiment.n_workers = 1
-
-    # x_lead = Experiment.e(experiment.env_input_size, 0)
-    # x_ego = Experiment.e(experiment.env_input_size, 1)
-    # v_ego = Experiment.e(experiment.env_input_size, 2)
-    # template = np.array([-(x_lead - x_ego), v_ego, -v_ego])
-    # experiment.analysis_template = template  # standard
-    # experiment.input_template = Experiment.box(3)
-    # input_boundaries = [40, -30, 10, -0, 36, -28]
-    # input_boundaries = [40, -30, 10, -0, 36, -28]
-    # experiment.input_boundaries = input_boundaries
-    # experiment.input_template = experiment.analysis_template
-    # experiment.input_boundaries = (41.11888939, -37.82961296, -35.29123968,  35.53653031,
-    #      5.71856605, -73.12085264,  76.65541971,  -2.53837328)
-    experiment.time_horizon = 20
     experiment.run_experiment()

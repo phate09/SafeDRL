@@ -30,22 +30,28 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
     samples_ontput = torch.softmax(nn(preprocessed), 1)
     predicted_label = samples_ontput.detach().numpy()[:, 0]
     # template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
+    at_least_one_valid_dimension = False
     dimension_lengths = []
     for i, dimension in enumerate(template):
         inverted_dimension = find_inverted_dimension(-dimension, template)
         dimension_length = boundaries[i] + boundaries[inverted_dimension]
         dimension_lengths.append(dimension_length)
-    chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d, dimension_lengths, minimum_length)
-    # split3, split4 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
-    if decision_point is not None:
-        split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
-        return split1, split2
+        if dimension_length > minimum_length:
+            at_least_one_valid_dimension = True
+    if at_least_one_valid_dimension:
+        chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d, dimension_lengths, minimum_length)
+        # split3, split4 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
+        if decision_point is not None:
+            split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
+            return split1, split2
+        else:
+            raise Exception("could not find a split that satisfy the minimum length, consider increasing minimum_length parameter")
+        # print("done")
+        # plot_points_and_prediction(samples@template_2d.T, predicted_label)
+        # show_polygons(template, [split1, split2], template_2d)
+        # show_polygons(template, [split3, split4], template_2d)
     else:
         raise Exception("could not find a split that satisfy the minimum length, consider increasing minimum_length parameter")
-    # print("done")
-    # plot_points_and_prediction(samples@template_2d.T, predicted_label)
-    # show_polygons(template, [split1, split2], template_2d)
-    # show_polygons(template, [split3, split4], template_2d)
 
 
 # find corresponding dimension

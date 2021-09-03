@@ -31,7 +31,6 @@ class TotalSplit:
         self.env_input_size: int = 2
         self.max_probability_split = 0.33
         self.input_epsilon = 0
-        self.v_lead = 28
         self.use_entropy_split = True
         self.output_flag = False
 
@@ -48,24 +47,10 @@ class TotalSplit:
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
 
     def get_pre_nn(self):
-        l0 = torch.nn.Linear(self.env_input_size, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, -1], [1, 0]], dtype=torch.float32))
-        l0.bias = torch.nn.Parameter(torch.tensor([[28, 0]], dtype=torch.float32))
-        layers = [l0]
-        pre_nn = torch.nn.Sequential(*layers)
-        torch.nn.Identity()
-        return pre_nn
+        raise NotImplementedError()
 
     def get_observation_variable(self, input, gurobi_model):
-        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
-        gurobi_model.addConstr(observation[1] <= input[0] + self.input_epsilon / 2, name=f"obs_constr21")
-        gurobi_model.addConstr(observation[1] >= input[0] - self.input_epsilon / 2, name=f"obs_constr22")
-        gurobi_model.addConstr(observation[0] <= self.v_lead - input[1] + self.input_epsilon / 2, name=f"obs_constr11")
-        gurobi_model.addConstr(observation[0] >= self.v_lead - input[1] - self.input_epsilon / 2, name=f"obs_constr12")
-        gurobi_model.update()
-        gurobi_model.optimize()
-        assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        return observation
+        raise NotImplementedError()
 
     def create_range_bounds_model(self, template, x, env_input_size, nn, round=-1):
         gurobi_model = grb.Model()
@@ -138,7 +123,7 @@ class TotalSplit:
                 to_analyse, ranges_probs = to_split.pop()
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
                 if split_flag:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d,minimum_length=0.2)
+                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=0.2)
                     n_splits += 1
                     if split1 is None or split2 is None:
                         split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
@@ -184,7 +169,6 @@ class TotalSplit:
                 new_frontier.append((x, probs))
         frontier = new_frontier  # shrink the selection of polytopes to only the ones which are relevant
 
-
         # colours = []
         # for x, ranges_probs in frontier:
         #     colours.append(np.mean(ranges_probs[0]))
@@ -209,7 +193,7 @@ class TotalSplit:
                             to_split.append(tuple(splits[1]))
                             split_happened = True
                             break
-                    bar_split.update(splitting_queue = len(to_split),frontier_size=len(processed))
+                    bar_split.update(splitting_queue=len(to_split), frontier_size=len(processed))
                 if not split_happened:
                     processed.append(current_polytope)
 
@@ -264,8 +248,8 @@ class TotalSplit:
     def start(self):
         root = self.generate_root_polytope(self.input_boundaries)
         nn = self.get_nn()
-        # self.check_split(root, nn, self.analysis_template, self.template_2d)
-        self.split_item(self.analysis_template)
+        self.check_split(root, nn, self.analysis_template, self.template_2d)
+        # self.split_item(self.analysis_template)
 
     def pypoman_compute_polytope_vertices(self, A, b):
         b = b.reshape((b.shape[0], 1))
@@ -316,6 +300,96 @@ class TotalSplit:
         return np.array(results)
 
     def get_nn(self):
+        return NotImplementedError()
+
+
+class TotalSplitStoppingCar(TotalSplit):
+    def __init__(self):
+        super().__init__()
+        self.v_lead = 28
+        self.env_input_size: int = 2
+        self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
+        self.input_boundaries = tuple([50, 0, 36, 36])
+        self.input_template = Experiment.box(self.env_input_size)
+        delta_x = Experiment.e(self.env_input_size, 0)
+        # x_ego = Experiment.e(self.env_input_size, 1)
+        v_ego = Experiment.e(self.env_input_size, 1)
+        # template = Experiment.combinations([1 / 4.5*(x_lead - x_ego), - v_ego])
+        template = np.array([delta_x, -delta_x, v_ego, -v_ego, 1 / 4.5 * delta_x + v_ego, 1 / 4.5 * delta_x - v_ego, -1 / 4.5 * delta_x + v_ego,
+                             -1 / 4.5 * delta_x - v_ego])
+        self.analysis_template: np.ndarray = template
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
+
+    def get_pre_nn(self):
+        l0 = torch.nn.Linear(self.env_input_size, 2, bias=False)
+        l0.weight = torch.nn.Parameter(torch.tensor([[0, -1], [1, 0]], dtype=torch.float32))
+        l0.bias = torch.nn.Parameter(torch.tensor([[28, 0]], dtype=torch.float32))
+        layers = [l0]
+        pre_nn = torch.nn.Sequential(*layers)
+        torch.nn.Identity()
+        return pre_nn
+
+    def get_observation_variable(self, input, gurobi_model):
+        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
+        gurobi_model.addConstr(observation[1] <= input[0] + self.input_epsilon / 2, name=f"obs_constr21")
+        gurobi_model.addConstr(observation[1] >= input[0] - self.input_epsilon / 2, name=f"obs_constr22")
+        gurobi_model.addConstr(observation[0] <= self.v_lead - input[1] + self.input_epsilon / 2, name=f"obs_constr11")
+        gurobi_model.addConstr(observation[0] >= self.v_lead - input[1] - self.input_epsilon / 2, name=f"obs_constr12")
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        return observation
+
+    def get_nn(self):
+        config = get_PPO_config(1234, 0)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore(self.nn_path)
+        policy = trainer.get_policy()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        nn = sequential_nn
+        return nn
+
+
+class TotalSplitBouncingBall(TotalSplit):
+    def __init__(self):
+        super().__init__()
+        self.v_lead = 28
+        self.max_probability_split = 0.15
+        self.env_input_size: int = 2
+        self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
+        self.input_boundaries = tuple([9, 0, 3, 3])
+        self.input_template = Experiment.box(self.env_input_size)
+        p = Experiment.e(self.env_input_size, 0)
+        # x_ego = Experiment.e(self.env_input_size, 1)
+        v = Experiment.e(self.env_input_size, 1)
+        template = np.array([p, -p, v, -v, 1 / 3 * (p - v), -1 / 3 * (p - v)])  # , 1 / 6 * p - v, -1 / 6 * p - v
+        # self.analysis_template: np.ndarray = Experiment.box(self.env_input_size)
+        self.analysis_template: np.ndarray = template
+        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"
+
+    def get_pre_nn(self):
+        # l0 = torch.nn.Linear(self.env_input_size, 2, bias=False)
+        # l0.weight = torch.nn.Parameter(torch.tensor([[0, -1], [1, 0]], dtype=torch.float32))
+        # l0.bias = torch.nn.Parameter(torch.tensor([[28, 0]], dtype=torch.float32))
+        # layers = [l0]
+        # pre_nn = torch.nn.Sequential(*layers)
+        # torch.nn.Identity()
+        return torch.nn.Identity()
+
+    def get_observation_variable(self, input, gurobi_model):
+        # observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
+        # gurobi_model.addConstr(observation[1] <= input[0] + self.input_epsilon / 2, name=f"obs_constr21")
+        # gurobi_model.addConstr(observation[1] >= input[0] - self.input_epsilon / 2, name=f"obs_constr22")
+        # gurobi_model.addConstr(observation[0] <= self.v_lead - input[1] + self.input_epsilon / 2, name=f"obs_constr11")
+        # gurobi_model.addConstr(observation[0] >= self.v_lead - input[1] - self.input_epsilon / 2, name=f"obs_constr12")
+        # gurobi_model.update()
+        # gurobi_model.optimize()
+        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        return input
+
+    def get_nn(self):
+        from agents.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
         config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -327,6 +401,6 @@ class TotalSplit:
 
 if __name__ == '__main__':
     ray.init()
-    agent = TotalSplit()
+    agent = TotalSplitBouncingBall()
     # agent.load_frontier()
     polytopes = agent.start()

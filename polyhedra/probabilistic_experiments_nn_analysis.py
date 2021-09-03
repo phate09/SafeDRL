@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 from py4j.java_gateway import JavaGateway
 import pickle
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp
+from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
 from polyhedra.runnable.templates import polytope
@@ -29,9 +29,10 @@ import heapq
 class ProbabilisticExperiment(Experiment):
     def __init__(self, env_input_size: int):
         super().__init__(env_input_size)
+        self.minimum_length = 0.1
         self.use_entropy_split = True
         self.use_split = True  # enable/disable splitting
-        self.load_graph = True
+        self.load_graph = False
         self.use_abstract_mapping = False  # decide whether to use the precomputed abstract mapping or compute it on the fly
         self.use_contained = True  # enable/disable containment check
         self.use_split_with_seen = False  # enable/disable splitting polytopes when they are partially contained within previously visited abstract states
@@ -216,21 +217,22 @@ class ProbabilisticExperiment(Experiment):
                         continue
                 else:  # split on the go
                     if len(list(self.graph.in_edges((x, x_label)))) == 0 or not "split" in self.graph.edges[list(self.graph.in_edges((x, x_label)))[0]].get("action"):
-                        splitted_elements = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
-                        n_fragments = len(splitted_elements)
-                        if n_fragments > 1:
-                            new_fragments = []
-                            stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
-                            for i, (splitted_polytope, probs_range) in enumerate(splitted_elements):
-                                successor_info = Experiment.SuccessorInfo()
-                                successor_info.successor = tuple(splitted_polytope)
-                                successor_info.parent = x
-                                successor_info.parent_lbl = x_label
-                                successor_info.t = t
-                                successor_info.action = f"split{i}"
-                                new_fragments.append(successor_info)
-                            stats.proc_ids.append(ray.put(new_fragments))
-                            continue
+                        if self.can_be_splitted(template, x):
+                            splitted_elements = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
+                            n_fragments = len(splitted_elements)
+                            if n_fragments > 1:
+                                new_fragments = []
+                                stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+                                for i, (splitted_polytope, probs_range) in enumerate(splitted_elements):
+                                    successor_info = Experiment.SuccessorInfo()
+                                    successor_info.successor = tuple(splitted_polytope)
+                                    successor_info.parent = x
+                                    successor_info.parent_lbl = x_label
+                                    successor_info.t = t
+                                    successor_info.action = f"split{i}"
+                                    new_fragments.append(successor_info)
+                                stats.proc_ids.append(ray.put(new_fragments))
+                                continue
 
             if self.use_split_with_seen:  # split according to the seen elements
                 splitted_elements2 = self.split_item_abstract_mapping(x, [m[0] for m in stats.seen])  # splits according to the seen list
@@ -455,8 +457,9 @@ class ProbabilisticExperiment(Experiment):
             # bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
             to_analyse, ranges_probs = to_split.pop()
             split_flag = is_split_range(ranges_probs, self.max_probability_split)
-            if split_flag:
-                split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=0.2)
+            can_be_split = self.can_be_splitted(template,to_analyse)
+            if split_flag and can_be_split:
+                split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length)
                 n_splits += 1
                 if split1 is None or split2 is None:
                     split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
@@ -481,6 +484,17 @@ class ProbabilisticExperiment(Experiment):
         # fig.write_html("new_frontier.html")
         print("", file=sys.stderr)  # new line
         return new_frontier
+
+    def can_be_splitted(self, template, x):
+        at_least_one_valid_dimension = False
+        dimension_lengths = []
+        for i, dimension in enumerate(template):
+            inverted_dimension = find_inverted_dimension(-dimension, template)
+            dimension_length = x[i] + x[inverted_dimension]
+            dimension_lengths.append(dimension_length)
+            if dimension_length > self.minimum_length:
+                at_least_one_valid_dimension = True
+        return at_least_one_valid_dimension
 
     def sample_probabilities(self, template, x, nn, pre_nn):
         samples = polytope.sample(10000, template, np.array(x))
