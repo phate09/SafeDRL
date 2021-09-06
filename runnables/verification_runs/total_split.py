@@ -459,8 +459,8 @@ class TotalSplitPendulum(TotalSplit):
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=True)
-    agent = TotalSplitPendulum()
+    ray.init(local_mode=False)
+    agent = TotalSplitBouncingBall()
     # agent.plot_2d_sample()
     # agent.load_frontier()
     polytopes = agent.start()

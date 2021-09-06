@@ -212,7 +212,6 @@ def remote_find_minimum(dimension, points, predicted_label):
     costs = []
     # true_label = predicted_label >= min_value_y + (max_value_y - min_value_y) * 0.7
     min_percentage = 0.05  # the minimum relative distance of a slice
-    mode = 1
     only_max = []
     max_so_far = 0
     for i, x in enumerate(sorted_pred):
@@ -220,23 +219,37 @@ def remote_find_minimum(dimension, points, predicted_label):
         only_max.append(max_so_far)
     only_max = np.array(only_max)
     proj2dmax = np.array([[x, only_max[i]] for i, x in enumerate(sorted_proj)])
+    mode = 0
+    back_forth = 0
 
     # plot_points_and_prediction(proj2d, only_max)
 
     def f(i):
-        true_label = np.array(range(len(only_max))) > i
-        if mode == 0:
-            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
-        elif mode == 1:
-            true_label = np.array(range(len(only_max))) > i
-            cost = sklearn.metrics.log_loss(true_label, only_max.astype(float))
-            true_label = np.array(range(len(only_max))) < i
-            cost = min(cost, sklearn.metrics.log_loss(true_label, only_max.astype(float)))
+        n_bins = 100
+        true_label = np.array(range(len(only_max))) > i if back_forth == 0 else np.array(range(len(only_max))) < i
+        if mode == 0:  # sorted_pred
+            histogram = np.histogram(sorted_pred.astype(float), n_bins, range=(0.0, 1.0))
+            digitized = np.digitize(sorted_pred.astype(float), np.linspace(0, 1.0, n_bins))
+            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float), sample_weight=1 / np.where(histogram[0]==0, 1, histogram[0])[digitized])  # .astype(int)
+        elif mode == 1:  # onlymax
+            histogram = np.histogram(only_max.astype(float), n_bins, range=(0.0, 1.0))
+            digitized = np.digitize(only_max.astype(float), np.linspace(0, 1.0, n_bins))
+            cost = sklearn.metrics.log_loss(true_label, only_max.astype(float), sample_weight=1 / histogram[0][digitized])
         elif mode == 2:
             decision_boundary = int(i)
             group1 = only_max[:decision_boundary]
             group2 = only_max[decision_boundary:]
             cost = (np.max(group1) - np.min(group1)) ** 2 + (np.max(group2) - np.min(group2)) ** 2
+        elif mode == 3:
+            # filter = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1]
+            # true_label = np.array(filter)
+            # slice_probabilities = only_max.astype(float)[int(i) - (len(filter) // 2):int(i) + (len(filter) // 2)]
+            # cost1 = sklearn.metrics.log_loss(true_label, slice_probabilities)
+            filter = [1] * 50 + [0] * 50  # [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+            true_label = np.array(filter)
+            slice_probabilities = only_max.astype(float)[int(i) - (len(filter) // 2):int(i) + (len(filter) // 2)]
+            cost2 = sklearn.metrics.log_loss(true_label, slice_probabilities)
+            cost = cost2
         else:
             raise Exception("Unvalid choice")
         return cost
@@ -246,23 +259,26 @@ def remote_find_minimum(dimension, points, predicted_label):
     stop = min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))
     if method == "scipy":
         bounds = start, stop
-        temp_cost = minimize_scalar(f, bounds=bounds, method='bounded')
-        decision_boundary = int(temp_cost.x)
-        decision_value = sorted_proj[decision_boundary]
-        # min_cost = temp_cost.fun
-        min_cost = sklearn.metrics.log_loss(np.array(range(len(only_max))) > decision_boundary, sorted_pred.astype(float))
-        min_cost = min(min_cost, sklearn.metrics.log_loss(np.array(range(len(only_max))) < decision_boundary, sorted_pred.astype(float)))
+        back_forth = 0
+        temp_cost1 = minimize_scalar(f, bounds=bounds, method='bounded')
+        decision_boundary1 = int(temp_cost1.x)
+        min_cost1 = temp_cost1.fun
+        # decision_value = sorted_proj[decision_boundary1]
+        back_forth = 1
+        temp_cost2 = minimize_scalar(f, bounds=bounds, method='bounded')
+        decision_boundary2 = int(temp_cost2.x)
+        min_cost2 = temp_cost2.fun
+        if min_cost1 < min_cost2:
+            return decision_boundary1, min_cost1, sorted_proj, proj2d, proj2dmax, costs, False  # last boolean is for not ignoring
+        else:
+            return decision_boundary2, min_cost2, sorted_proj, proj2d, proj2dmax, costs, False  # last boolean is for not ignoring
+        # min_cost = sklearn.metrics.log_loss(np.array(range(len(only_max))) > decision_boundary, sorted_pred.astype(float))
+        # min_cost = min(min_cost, sklearn.metrics.log_loss(np.array(range(len(only_max))) < decision_boundary, sorted_pred.astype(float)))
         # plot_points_and_prediction(proj2d, [1 if x > decision_value else 0 for x in sorted_proj])
-        return decision_boundary, min_cost, sorted_proj, proj2d, proj2dmax, costs, False  # last boolean is for not ignoring
+        # plot_points_and_prediction(proj2d, only_max)
+        # return decision_boundary, min_cost, sorted_proj, proj2d, proj2dmax, costs, False  # last boolean is for not ignoring
     elif method == "custom":
         for i in range(start, stop):  # , (stop - start) // 100
-            # range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
-            # range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
-            # range_1_inv = (1 - range_1_temp[1], 1 - range_1_temp[0])
-            # tolerance = (max_value_y - min_value_y) * 0.0
-            # cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance) / normalisation_quotient) + (
-            #         max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance) / normalisation_quotient)  # todo check
-            # cost = cost ** 2
             true_label = np.array(range(len(only_max))) > i
             if np.all(true_label) or not np.any(true_label):
                 continue
@@ -272,6 +288,11 @@ def remote_find_minimum(dimension, points, predicted_label):
                 cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
             elif mode == 2:
                 cost = sklearn.metrics.log_loss(true_label, np.array([1.0 if x > 0.5 else 0 for x in sorted_pred]))  # .astype(int)
+            elif mode == 3:
+                filter = [1] * 50 + [0] * 50  # [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+                true_label = np.array(filter)
+                slice_probabilities = only_max.astype(float)[int(i) - (len(filter) // 2):int(i) + (len(filter) // 2)]
+                cost = sklearn.metrics.log_loss(true_label, slice_probabilities)
             else:
                 raise Exception("Unvalid choice")
             costs.append(cost)
@@ -280,7 +301,7 @@ def remote_find_minimum(dimension, points, predicted_label):
                 # range_2 = range_2_temp
                 min_cost = cost
                 decision_boundary = i
-        plot_list(costs)
+        # plot_list(costs)
         decision_value = sorted_proj[decision_boundary]
         # plot_points_and_prediction(proj2d, [1 if x > decision_value else 0 for x in sorted_proj])
         return decision_boundary, min_cost, sorted_proj, proj2d, costs, False
