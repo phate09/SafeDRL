@@ -136,19 +136,21 @@ def compute_polygon_trace(principalComponents: List[List], marker_size=1):
     trace1 = compute_trace_polygons(polygon1, marker_size)
     return trace1
 
+
 def project_to_dimension(points: np.ndarray, dimension: np.ndarray):
     lengths = np.linalg.norm(dimension)
     projs = np.dot(points, dimension)  # / lengths
     return projs
 
-def show_polygons(template, boundaries, template_2d, colours=None):
+
+def show_polygons(template, boundaries, template_2d, colours=None, rgb=False):
     fig = go.Figure()
     for i, boundary in enumerate(boundaries):
         vertices = windowed_projection(template, boundary, template_2d)
         # vertices, rays = pypoman.projection.project_polyhedron((template_2d, np.array([0, 0])), (template, np.array(boundaries)), canonicalize=False)
         assert vertices is not None
         sorted_vertices = PolygonSort(vertices)
-        trace = compute_trace_polygons([sorted_vertices], colours=[colours[i]] if colours is not None else None)
+        trace = compute_trace_polygons([sorted_vertices], colours=[colours[i]] if colours is not None else None, rgb=rgb)
         fig.add_trace(trace)
     fig.update_yaxes(
         scaleanchor="x",

@@ -451,30 +451,31 @@ class ProbabilisticExperiment(Experiment):
         to_split = []
         n_splits = 0
         to_split.append((x, ranges_probs))
+        print("", file=sys.stderr)  # new line
         widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
-        # with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_split:
-        while len(to_split) != 0:
-            # bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
-            to_analyse, ranges_probs = to_split.pop()
-            split_flag = is_split_range(ranges_probs, self.max_probability_split)
-            can_be_split = self.can_be_splitted(template,to_analyse)
-            if split_flag and can_be_split:
-                split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length)
-                n_splits += 1
-                if split1 is None or split2 is None:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
-                ranges_probs1 = self.sample_probabilities(template, split1, nn, pre_nn)  # sampled version
-                if not is_split_range(ranges_probs1, self.max_probability_split):  # refine only if the range is small
-                    ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
-                ranges_probs2 = self.sample_probabilities(template, split2, nn, pre_nn)  # sampled version
-                if not is_split_range(ranges_probs2, self.max_probability_split):  # refine only if the range is small
-                    ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
-                to_split.append((tuple(split1), ranges_probs1))
-                to_split.append((tuple(split2), ranges_probs2))
+        with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_split:
+            while len(to_split) != 0:
+                bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
+                to_analyse, ranges_probs = to_split.pop()
+                split_flag = is_split_range(ranges_probs, self.max_probability_split)
+                can_be_split = self.can_be_splitted(template,to_analyse)
+                if split_flag and can_be_split:
+                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length)
+                    n_splits += 1
+                    if split1 is None or split2 is None:
+                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
+                    ranges_probs1 = self.sample_probabilities(template, split1, nn, pre_nn)  # sampled version
+                    if not is_split_range(ranges_probs1, self.max_probability_split):  # refine only if the range is small
+                        ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
+                    ranges_probs2 = self.sample_probabilities(template, split2, nn, pre_nn)  # sampled version
+                    if not is_split_range(ranges_probs2, self.max_probability_split):  # refine only if the range is small
+                        ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
+                    to_split.append((tuple(split1), ranges_probs1))
+                    to_split.append((tuple(split2), ranges_probs2))
 
-            else:
-                new_frontier.append((to_analyse, ranges_probs))
-                # plot_frontier(new_frontier)
+                else:
+                    new_frontier.append((to_analyse, ranges_probs))
+                    # plot_frontier(new_frontier)
 
         # colours = []
         # for x, ranges_probs in new_frontier + to_split:

@@ -284,10 +284,11 @@ def create_red_blue_gradient(rounding=4):
     return gradient_list
 
 
-def compute_trace_polygons(polygons: List[List], marker_size=1, colours: List[float] = None):
+def compute_trace_polygons(polygons: List[List], marker_size=1, colours: List[float] = None,rgb=False):
     # e.g polygons in the same trace = [[(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)], [(0, 0), (3, 0), (2, 10), (3, 4), (1, 5.5)]]
     # corners need to be sorted
     rounding = 4
+
     colors = create_red_blue_gradient(rounding)  # list(Color("blue").range_to(Color("red"), (10 ** rounding) + 1))
 
     x_list = []
@@ -302,8 +303,12 @@ def compute_trace_polygons(polygons: List[List], marker_size=1, colours: List[fl
         x_list.extend(x)
         y_list.extend(y)
     if colours is not None:
-        value_int = int(round(colours[0], rounding) * (10 ** rounding))
-        trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=colors[value_int],
+        if rgb:
+            trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=f"{Color(rgb=colours[0]).get_hex_l()}",
+                                marker=dict(size=marker_size, colorscale='bluered', color=colours))
+        else:
+            value_int = int(round(colours[0], rounding) * (10 ** rounding))
+            trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=colors[value_int],
                             marker=dict(size=marker_size, colorscale='bluered', color=colours))
     else:
         trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', marker=dict(size=marker_size))

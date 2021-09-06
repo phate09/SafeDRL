@@ -121,7 +121,7 @@ def find_inverted_dimension(inverted_value, template):
 
 def is_split_range(ranges_probs, max_prob_difference=0.2):
     split_flag = False
-    for chosen_action in range(2):
+    for chosen_action in range(len(ranges_probs)):
         prob_diff = ranges_probs[chosen_action][1] - ranges_probs[chosen_action][0]
         if prob_diff > max_prob_difference:
             # should split the input
@@ -230,7 +230,7 @@ def remote_find_minimum(dimension, points, predicted_label):
         if mode == 0:  # sorted_pred
             histogram = np.histogram(sorted_pred.astype(float), n_bins, range=(0.0, 1.0))
             digitized = np.digitize(sorted_pred.astype(float), np.linspace(0, 1.0, n_bins))
-            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float), sample_weight=1 / np.where(histogram[0]==0, 1, histogram[0])[digitized])  # .astype(int)
+            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float), sample_weight=1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized])  # .astype(int)
         elif mode == 1:  # onlymax
             histogram = np.histogram(only_max.astype(float), n_bins, range=(0.0, 1.0))
             digitized = np.digitize(only_max.astype(float), np.linspace(0, 1.0, n_bins))

@@ -74,7 +74,7 @@ class TotalSplit:
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         min_prob = np.min(samples_ontput.detach().numpy(), 0)
         max_prob = np.max(samples_ontput.detach().numpy(), 0)
-        result = [(min_prob[0], max_prob[0]), (min_prob[1], max_prob[1])]
+        result = list(zip(min_prob,max_prob))
         return result
 
     def find_direction_split(self, template, x, nn, pre_nn):
@@ -122,7 +122,7 @@ class TotalSplit:
                 bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                 to_analyse, ranges_probs = to_split.pop()
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
-                can_be_split = self.can_be_splitted(template, to_analyse)
+                can_be_split = self.can_be_split(template, to_analyse)
                 action_to_split = np.nanargmax([x[1] - x[0] for x in ranges_probs])
                 if split_flag and can_be_split:
                     split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
@@ -166,7 +166,7 @@ class TotalSplit:
         plot_points_and_prediction(samples @ self.template_2d.T, predicted_label)
         print("plot done")
 
-    def can_be_splitted(self, template, x):
+    def can_be_split(self, template, x):
         at_least_one_valid_dimension = False
         dimension_lengths = []
         for i, dimension in enumerate(template):
@@ -178,7 +178,12 @@ class TotalSplit:
         return at_least_one_valid_dimension
 
     def load_frontier(self):
-        new_frontier = pickle.load(open("new_frontier.p", "rb"))
+        new_frontier = pickle.load(open("new_frontier3.p", "rb"))
+        colours = []
+        for x, ranges_probs in new_frontier:
+            colours.append(np.mean(np.array(ranges_probs),1))
+        print("", file=sys.stderr)  # new line
+        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours,rgb=True)
         return new_frontier
 
     def split_item(self, template):
@@ -432,7 +437,7 @@ class TotalSplitPendulum(TotalSplit):
         self.max_probability_split = 0.33
         self.env_input_size: int = 2
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
-        self.input_boundaries = [np.pi, np.pi, 4, 4]
+        self.input_boundaries = [np.pi / 5, np.pi / 5, 1 / 5, 1 / 5]
         self.input_template = Experiment.box(self.env_input_size)
         # theta = Experiment.e(self.env_input_size, 0)
         # theta_dot = Experiment.e(self.env_input_size, 1)
@@ -460,7 +465,7 @@ class TotalSplitPendulum(TotalSplit):
 
 if __name__ == '__main__':
     ray.init(local_mode=False)
-    agent = TotalSplitBouncingBall()
+    agent = TotalSplitPendulum()
     # agent.plot_2d_sample()
-    # agent.load_frontier()
+    agent.load_frontier()
     polytopes = agent.start()

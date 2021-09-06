@@ -232,7 +232,7 @@ class PendulumExperimentProbabilistic(ProbabilisticExperiment):
         # battery = Experiment.e(self.env_input_size, 4)
         if mode == 0:  # box directions with intervals
             # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
-            input_boundaries = [np.pi, np.pi, 1, 1]
+            input_boundaries = [np.pi / 5, np.pi / 5, 1 / 5, 1 / 5]
             # input_boundaries = [3.13, 3.15, -0.08193365, 0.08193365]
             # input_boundaries = [1, 1, 1, 1]
             # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]
