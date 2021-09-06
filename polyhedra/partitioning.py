@@ -14,7 +14,7 @@ from scipy.optimize import linprog, minimize, minimize_scalar
 import plotly.graph_objects as go
 
 
-def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, minimum_length=0.1):
+def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, action=0, minimum_length=0.1):
     # print("Performing split...", "")
     repeat = True
     samples = None
@@ -28,7 +28,7 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
             repeat = True
     preprocessed = pre_nn(torch.tensor(samples).float())
     samples_ontput = torch.softmax(nn(preprocessed), 1)
-    predicted_label = samples_ontput.detach().numpy()[:, 0]
+    predicted_label = samples_ontput.detach().numpy()[:, action]
     # template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
     at_least_one_valid_dimension = False
     dimension_lengths = []
@@ -40,7 +40,6 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
             at_least_one_valid_dimension = True
     if at_least_one_valid_dimension:
         chosen_dimension, decision_point = find_dimension_split3(samples, predicted_label, template, template_2d, dimension_lengths, minimum_length)
-        # split3, split4 = split_polyhedron(template, boundaries, chosen_dimension, decision_point)
         if decision_point is not None:
             split1, split2 = split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point)
             return split1, split2
@@ -49,7 +48,6 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
         # print("done")
         # plot_points_and_prediction(samples@template_2d.T, predicted_label)
         # show_polygons(template, [split1, split2], template_2d)
-        # show_polygons(template, [split3, split4], template_2d)
     else:
         raise Exception("could not find a split that satisfy the minimum length, consider increasing minimum_length parameter")
 
@@ -137,6 +135,7 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
     costs = []
     decision_boundaries = []
     proj2ds = []
+    proj2dsmax = []
     classifier_predictions = []
     indices = []
     proc_ids = []
@@ -145,7 +144,7 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
         proc_ids.append(proc_id)
     values = ray.get(proc_ids)
     for i, value in enumerate(values):
-        decision_boundary, min_cost, sorted_proj, proj2d, plot_costs, ignore = value
+        decision_boundary, min_cost, sorted_proj, proj2d, proj2dmax, plot_costs, ignore = value
         # plot_list(plot_costs)
         dimension_lengths_i_ = dimension_lengths[i]
         if dimension_lengths_i_ > minimum_length and not ignore:  # tries to ignore extremely small dimensionss
@@ -153,21 +152,30 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
             decision_boundaries.append(sorted_proj[decision_boundary] if sorted_proj is not None else None)
             indices.append(decision_boundary)
             proj2ds.append(proj2d)
+            proj2dsmax.append(proj2dmax)
         else:
             costs.append(float("inf"))
             decision_boundaries.append(None)
             indices.append(None)
             proj2ds.append(None)
+            proj2dsmax.append(None)
     # chosen_dimension = np.argmin([((i - len(points) / 2) / len(points)) ** 2 for i in indices])
+    # slices_sizes = np.array([(i / len(points)) for i in indices])
+    # norm_costs = np.array(costs) / np.max(costs)
+    alpha = 1  # hyperparameter to decide the importance of cost vs the size of the slice
     chosen_dimension = np.argmin(costs)
+    # chosen_dimension = np.argmin( - (1 - alpha) * slices_sizes) #norm_costs * alpha
+    # chosen_dimension = np.argmin((slices_sizes - 0.5) ** 2)  # try to halve the shape
     max_value_y = np.max(predicted_label)
     min_value_y = np.min(predicted_label)
     delta_y = max_value_y - min_value_y
     normalised_label = (predicted_label - min_value_y) / delta_y
     # plot_points_and_prediction(points@template2d.T, normalised_label)
     # plot_points_and_prediction(proj2ds[chosen_dimension], normalised_label)
-    # plot_points_and_prediction(proj2ds[chosen_dimension], [0 if x[0]>decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
-    # plot_points_and_prediction(points@template2d.T, [0 if x[0] > decision_boundaries[chosen_dimension] else 1 for x in proj2ds[chosen_dimension]])
+    # plot_points_and_prediction(proj2ds[chosen_dimension], [1 if x[0]>decision_boundaries[chosen_dimension] else 0 for x in proj2ds[chosen_dimension]])
+    # plot_points_and_prediction(proj2dsmax[chosen_dimension], [x[1] for x in proj2dsmax[chosen_dimension]])
+    # plot_points_and_prediction(proj2dsmax[chosen_dimension], [1 if x[0]>decision_boundaries[chosen_dimension] else 0 for x in proj2dsmax[chosen_dimension]])
+    # plot_points_and_prediction(points@template2d.T, [1 if x>decision_boundaries[chosen_dimension] else 0 for x in points@template[chosen_dimension]])
     return chosen_dimension, decision_boundaries[chosen_dimension]
 
 
@@ -175,7 +183,6 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
 def remote_find_minimum(dimension, points, predicted_label):
     proj = project_to_dimension(points, dimension)
     proj2d = np.array([[x, predicted_label[i]] for i, x in enumerate(proj)])
-    # plot_points_and_prediction(proj2d, predicted_label)
     max_value_x = np.max(proj)
     min_value_x = np.min(proj)
     delta_x = max_value_x - min_value_x
@@ -197,33 +204,58 @@ def remote_find_minimum(dimension, points, predicted_label):
     min_cost = 9999
     max_cost = -99999
     sorted_pred = normalised_label[np.argsort(proj)]
+    # sorted_pred = np.array([1.0 if x > 0.5 else 0 for x in sorted_pred])  # simple classifier
+    sorted_pred = np.clip(sorted_pred, 1e-7, 1 - 1e-7)
     sorted_proj = np.sort(proj)
     assert len(points) > 3
     normalisation_quotient = max_value_y - min_value_y
     costs = []
     # true_label = predicted_label >= min_value_y + (max_value_y - min_value_y) * 0.7
-    min_percentage = 0.1  # the minimum relative distance of a slice
-    mode = 0
+    min_percentage = 0.05  # the minimum relative distance of a slice
+    mode = 1
+    only_max = []
+    max_so_far = 0
+    for i, x in enumerate(sorted_pred):
+        max_so_far = max(max_so_far, x)
+        only_max.append(max_so_far)
+    only_max = np.array(only_max)
+    proj2dmax = np.array([[x, only_max[i]] for i, x in enumerate(sorted_proj)])
+
+    # plot_points_and_prediction(proj2d, only_max)
 
     def f(i):
-        true_label = np.array(range(len(sorted_pred))) > i
+        true_label = np.array(range(len(only_max))) > i
         if mode == 0:
             cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
         elif mode == 1:
-            cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
+            true_label = np.array(range(len(only_max))) > i
+            cost = sklearn.metrics.log_loss(true_label, only_max.astype(float))
+            true_label = np.array(range(len(only_max))) < i
+            cost = min(cost, sklearn.metrics.log_loss(true_label, only_max.astype(float)))
+        elif mode == 2:
+            decision_boundary = int(i)
+            group1 = only_max[:decision_boundary]
+            group2 = only_max[decision_boundary:]
+            cost = (np.max(group1) - np.min(group1)) ** 2 + (np.max(group2) - np.min(group2)) ** 2
         else:
             raise Exception("Unvalid choice")
         return cost
 
     method = "scipy"
+    start = max(1, int(min_percentage * len(sorted_pred)))
+    stop = min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))
     if method == "scipy":
-        bounds = max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))
+        bounds = start, stop
         temp_cost = minimize_scalar(f, bounds=bounds, method='bounded')
         decision_boundary = int(temp_cost.x)
-        min_cost = temp_cost.fun
-        return decision_boundary, min_cost, sorted_proj, proj2d, costs, False  # last boolean is for not ignoring
-    else:
-        for i in range(max(1, int(min_percentage * len(sorted_pred))), min(len(sorted_pred) - 1, len(sorted_pred) - int(min_percentage * len(sorted_pred)))):
+        decision_value = sorted_proj[decision_boundary]
+        # min_cost = temp_cost.fun
+        min_cost = sklearn.metrics.log_loss(np.array(range(len(only_max))) > decision_boundary, sorted_pred.astype(float))
+        min_cost = min(min_cost, sklearn.metrics.log_loss(np.array(range(len(only_max))) < decision_boundary, sorted_pred.astype(float)))
+        # plot_points_and_prediction(proj2d, [1 if x > decision_value else 0 for x in sorted_proj])
+        return decision_boundary, min_cost, sorted_proj, proj2d, proj2dmax, costs, False  # last boolean is for not ignoring
+    elif method == "custom":
+        for i in range(start, stop):  # , (stop - start) // 100
             # range_1_temp = (min(min(sorted_pred[0:i]), range_1[0]), max(max(sorted_pred[0:i]), range_1[1]))
             # range_2_temp = (min(min(sorted_pred[i:]), range_2[0]), max(max(sorted_pred[i:]), range_2[1]))
             # range_1_inv = (1 - range_1_temp[1], 1 - range_1_temp[0])
@@ -231,13 +263,15 @@ def remote_find_minimum(dimension, points, predicted_label):
             # cost = (max(0, abs(range_1_temp[0] - range_1_temp[1]) - tolerance) / normalisation_quotient) + (
             #         max(0, abs(range_2_temp[0] - range_2_temp[1]) - tolerance) / normalisation_quotient)  # todo check
             # cost = cost ** 2
-            true_label = np.array(range(len(sorted_pred))) > i
+            true_label = np.array(range(len(only_max))) > i
             if np.all(true_label) or not np.any(true_label):
                 continue
             if mode == 0:
                 cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float))  # .astype(int)
             elif mode == 1:
                 cost = scipy.stats.entropy(true_label.astype(int), sorted_pred.astype(float))
+            elif mode == 2:
+                cost = sklearn.metrics.log_loss(true_label, np.array([1.0 if x > 0.5 else 0 for x in sorted_pred]))  # .astype(int)
             else:
                 raise Exception("Unvalid choice")
             costs.append(cost)
@@ -246,5 +280,21 @@ def remote_find_minimum(dimension, points, predicted_label):
                 # range_2 = range_2_temp
                 min_cost = cost
                 decision_boundary = i
-        # plot_list(costs)
-        return decision_boundary, min_cost, sorted_proj, proj2d, costs
+        plot_list(costs)
+        decision_value = sorted_proj[decision_boundary]
+        # plot_points_and_prediction(proj2d, [1 if x > decision_value else 0 for x in sorted_proj])
+        return decision_boundary, min_cost, sorted_proj, proj2d, costs, False
+    else:
+        decision_boundary = next(i for i, v in enumerate(sorted_pred) if v > 0.5)
+        decision_boundary = max(decision_boundary, start)
+        decision_boundary = min(decision_boundary, stop)
+        group1 = sorted_pred[:decision_boundary]
+        group2 = sorted_pred[decision_boundary:]
+        min_cost = (np.max(group1) - np.min(group1)) ** 2 + (np.max(group2) - np.min(group2)) ** 2
+        decision_value = sorted_proj[decision_boundary]
+        return decision_boundary, min_cost, sorted_proj, proj2d, costs, False
+
+
+def sigmoid(x):
+    ex = np.exp(x)
+    return ex / (1 + ex)

@@ -33,7 +33,7 @@ class TotalSplit:
         self.input_epsilon = 0
         self.use_entropy_split = True
         self.output_flag = False
-
+        self.minimum_length = 0.2
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
         self.input_boundaries = tuple([50, 0, 36, 36])
         self.input_template = Experiment.box(self.env_input_size)
@@ -122,11 +122,15 @@ class TotalSplit:
                 bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                 to_analyse, ranges_probs = to_split.pop()
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
-                if split_flag:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=0.2)
+                can_be_split = self.can_be_splitted(template, to_analyse)
+                action_to_split = np.nanargmax([x[1] - x[0] for x in ranges_probs])
+                if split_flag and can_be_split:
+                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
+                                                      minimum_length=self.minimum_length)
                     n_splits += 1
                     if split1 is None or split2 is None:
-                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)
+                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
+                                                          minimum_length=self.minimum_length)
                     ranges_probs1 = self.sample_probabilities(template, split1, nn, pre_nn)  # sampled version
                     if not is_split_range(ranges_probs1, self.max_probability_split):  # refine only if the range is small
                         ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
@@ -151,14 +155,36 @@ class TotalSplit:
         print("", file=sys.stderr)  # new line
         return new_frontier
 
+    def plot_2d_sample(self, sample_size=10000):
+        root = self.generate_root_polytope(self.input_boundaries)
+        pre_nn = self.get_pre_nn()
+        nn = self.get_nn()
+        samples = polytope.sample(sample_size, self.analysis_template, np.array(root))
+        preprocessed = pre_nn(torch.tensor(samples).float())
+        samples_ontput = torch.softmax(nn(preprocessed), 1)
+        predicted_label = samples_ontput.detach().numpy()[:, 0]
+        plot_points_and_prediction(samples @ self.template_2d.T, predicted_label)
+        print("plot done")
+
+    def can_be_splitted(self, template, x):
+        at_least_one_valid_dimension = False
+        dimension_lengths = []
+        for i, dimension in enumerate(template):
+            inverted_dimension = find_inverted_dimension(-dimension, template)
+            dimension_length = x[i] + x[inverted_dimension]
+            dimension_lengths.append(dimension_length)
+            if dimension_length > self.minimum_length:
+                at_least_one_valid_dimension = True
+        return at_least_one_valid_dimension
+
     def load_frontier(self):
         new_frontier = pickle.load(open("new_frontier.p", "rb"))
         return new_frontier
 
     def split_item(self, template):
+        '''takes an abstract mapping saved previously and splits a new input boundaries according to it'''
         frontier = pickle.load(open("new_frontier3.p", "rb"))
-        input_boundaries = tuple([40, -35, 10, -0])
-        root = self.generate_root_polytope(input_boundaries)
+        root = self.generate_root_polytope(self.input_boundaries)
         chosen_polytopes = []
         to_split = [root]
         processed = []
@@ -300,7 +326,7 @@ class TotalSplit:
         return np.array(results)
 
     def get_nn(self):
-        return NotImplementedError()
+        raise NotImplementedError()
 
 
 class TotalSplitStoppingCar(TotalSplit):
@@ -317,6 +343,7 @@ class TotalSplitStoppingCar(TotalSplit):
         # template = Experiment.combinations([1 / 4.5*(x_lead - x_ego), - v_ego])
         template = np.array([delta_x, -delta_x, v_ego, -v_ego, 1 / 4.5 * delta_x + v_ego, 1 / 4.5 * delta_x - v_ego, -1 / 4.5 * delta_x + v_ego,
                              -1 / 4.5 * delta_x - v_ego])
+        self.max_probability_split = 0.33
         self.analysis_template: np.ndarray = template
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
 
@@ -399,8 +426,41 @@ class TotalSplitBouncingBall(TotalSplit):
         return nn
 
 
+class TotalSplitPendulum(TotalSplit):
+    def __init__(self):
+        super().__init__()
+        self.max_probability_split = 0.33
+        self.env_input_size: int = 2
+        self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
+        self.input_boundaries = [np.pi, np.pi, 4, 4]
+        self.input_template = Experiment.box(self.env_input_size)
+        # theta = Experiment.e(self.env_input_size, 0)
+        # theta_dot = Experiment.e(self.env_input_size, 1)
+        # template = np.array([theta, -theta, theta_dot, -theta_dot])
+        template = Experiment.octagon(self.env_input_size)
+        self.analysis_template: np.ndarray = template
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333"
+
+    def get_pre_nn(self):
+        return torch.nn.Identity()
+
+    def get_observation_variable(self, input, gurobi_model):
+        return input
+
+    def get_nn(self):
+        from agents.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
+        config = get_PPO_config(1234, 0)
+        trainer = ppo.PPOTrainer(config=config)
+        trainer.restore(self.nn_path)
+        policy = trainer.get_policy()
+        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
+        nn = sequential_nn
+        return nn
+
+
 if __name__ == '__main__':
-    ray.init()
-    agent = TotalSplitBouncingBall()
+    ray.init(local_mode=True)
+    agent = TotalSplitPendulum()
+    # agent.plot_2d_sample()
     # agent.load_frontier()
     polytopes = agent.start()
