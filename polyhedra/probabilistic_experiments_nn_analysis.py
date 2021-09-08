@@ -38,6 +38,7 @@ class ProbabilisticExperiment(Experiment):
         self.use_split_with_seen = False  # enable/disable splitting polytopes when they are partially contained within previously visited abstract states
         self.max_probability_split = 0.33
         self.save_graph = True
+        self.rgb_plot = False  # enable/disable plotting probabilities as rgb (for 3 action agent)
         self.avoid_irrelevants = False  # enable/disable pruning of irrelevant (p<1e-6)
         self.abstract_mapping_path = "/home/edoardo/Development/SafeDRL/runnables/verification_runs/new_frontier3.p"
         self.abstract_mapping = []
@@ -126,8 +127,9 @@ class ProbabilisticExperiment(Experiment):
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
         # ----for plotting
         colours = []
-        to_plot = list(self.graph.successors(root_pair))
+        # to_plot = list(self.graph.successors(root_pair))
         # to_plot = stats.vertices_list[1]
+        to_plot = [root_pair]
         bad_nodes = []
         for x in self.graph.adj:
             safe = self.graph.nodes[x].get("safe")
@@ -198,7 +200,6 @@ class ProbabilisticExperiment(Experiment):
                                 max_t=stats.max_t)
             if self.use_split:
                 if self.use_abstract_mapping:
-
                     splitted_elements = self.split_item_abstract_mapping(x, [m[0] for m in self.abstract_mapping])
                     n_fragments = len(splitted_elements)
                     if n_fragments > 1:
@@ -393,6 +394,8 @@ class ProbabilisticExperiment(Experiment):
         '''finds which elements of abstract_mapping are relevant to current_polytope'''
         new_frontier = []
         for x in abstract_mapping:
+            if x == current_polytope:  # ignore itself
+                continue
             choose = self.check_intersection(x, current_polytope)
             if choose:
                 new_frontier.append(x)
@@ -458,7 +461,7 @@ class ProbabilisticExperiment(Experiment):
                 bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                 to_analyse, ranges_probs = to_split.pop()
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
-                can_be_split = self.can_be_splitted(template,to_analyse)
+                can_be_split = self.can_be_splitted(template, to_analyse)
                 if split_flag and can_be_split:
                     split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length)
                     n_splits += 1

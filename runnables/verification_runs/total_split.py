@@ -74,7 +74,7 @@ class TotalSplit:
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         min_prob = np.min(samples_ontput.detach().numpy(), 0)
         max_prob = np.max(samples_ontput.detach().numpy(), 0)
-        result = list(zip(min_prob,max_prob))
+        result = list(zip(min_prob, max_prob))
         return result
 
     def find_direction_split(self, template, x, nn, pre_nn):
@@ -145,13 +145,7 @@ class TotalSplit:
                     # plot_frontier(new_frontier)
 
         pickle.dump(new_frontier, open("new_frontier3.p", "wb"))
-        colours = []
-        for x, ranges_probs in new_frontier + to_split:
-            colours.append(np.mean(ranges_probs[0]))
-        print("", file=sys.stderr)  # new line
-        fig = show_polygons(template, [x[0] for x in new_frontier + to_split], template_2d, colours)
-        fig.write_html("new_frontier.html")
-        fig.show()
+        self.plot_frontier(new_frontier + to_split)
         print("", file=sys.stderr)  # new line
         return new_frontier
 
@@ -177,13 +171,16 @@ class TotalSplit:
                 at_least_one_valid_dimension = True
         return at_least_one_valid_dimension
 
-    def load_frontier(self):
-        new_frontier = pickle.load(open("new_frontier3.p", "rb"))
+    def plot_frontier(self, new_frontier):
         colours = []
         for x, ranges_probs in new_frontier:
-            colours.append(np.mean(np.array(ranges_probs),1))
+            colours.append(np.mean(ranges_probs[0]))
         print("", file=sys.stderr)  # new line
-        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours,rgb=True)
+        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours)
+
+    def load_frontier(self):
+        new_frontier = pickle.load(open("new_frontier3.p", "rb"))
+        self.plot_frontier(new_frontier)
         return new_frontier
 
     def split_item(self, template):
@@ -434,7 +431,7 @@ class TotalSplitBouncingBall(TotalSplit):
 class TotalSplitPendulum(TotalSplit):
     def __init__(self):
         super().__init__()
-        self.max_probability_split = 0.33
+        self.max_probability_split = 0.5
         self.env_input_size: int = 2
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
         self.input_boundaries = [np.pi / 5, np.pi / 5, 1 / 5, 1 / 5]
@@ -442,7 +439,7 @@ class TotalSplitPendulum(TotalSplit):
         # theta = Experiment.e(self.env_input_size, 0)
         # theta_dot = Experiment.e(self.env_input_size, 1)
         # template = np.array([theta, -theta, theta_dot, -theta_dot])
-        template = Experiment.octagon(self.env_input_size)
+        template = Experiment.box(self.env_input_size)
         self.analysis_template: np.ndarray = template
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333"
 
@@ -461,11 +458,16 @@ class TotalSplitPendulum(TotalSplit):
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         nn = sequential_nn
         return nn
-
+    def plot_frontier(self, new_frontier):
+        colours = []
+        for x, ranges_probs in new_frontier:
+            colours.append(np.mean(np.array(ranges_probs), 1))
+        print("", file=sys.stderr)  # new line
+        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours, rgb=True)
 
 if __name__ == '__main__':
     ray.init(local_mode=False)
     agent = TotalSplitPendulum()
     # agent.plot_2d_sample()
-    agent.load_frontier()
+    # agent.load_frontier()
     polytopes = agent.start()

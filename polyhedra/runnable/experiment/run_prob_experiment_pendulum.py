@@ -32,61 +32,72 @@ class PendulumExperimentProbabilistic(ProbabilisticExperiment):
         _, template = self.get_template(0)
         theta = Experiment.e(self.env_input_size, 0)
         theta_dot = Experiment.e(self.env_input_size, 1)
-        self.analysis_template: np.ndarray = template
+        self.analysis_template: np.ndarray = Experiment.box(env_input_size)
         self.time_horizon = 21
         self.rounding_value = 2 ** 8
         self.load_graph = False
         self.minimum_length = 0.2
+        # self.use_split_with_seen = True
         self.n_actions = 3
-        self.max_probability_split = 0.33
+        self.max_probability_split = 0.5
         p = Experiment.e(self.env_input_size, 0)
         v = Experiment.e(self.env_input_size, 1)
         self.tau = 0.02
-        self.safe_angle = 30 * 2 * math.pi / 360
+        self.safe_angle = 12 * 2 * math.pi / 360
         epsilon = 1e-4
         theta = [self.e(env_input_size, 0)]
         neg_theta = [-self.e(env_input_size, 0)]
+        safe_angle = 12 * 2 * math.pi / 360
         self.angle_split: List[Tuple] = [(theta, np.array([self.safe_angle - epsilon])), (neg_theta, np.array([self.safe_angle - epsilon]))]
-        self.unsafe_zone: List[Tuple] = [([p, -v, v], np.array([1, 7, 7]))]
+        self.unsafe_zone: List[Tuple] = [(theta, np.array([-safe_angle])), (neg_theta, np.array([-safe_angle]))]
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333"
 
     @ray.remote
     def post_milp(self, x, x_label, nn, output_flag, t, template):
         """milp method"""
+        ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
         post = []
-        for split_angle in itertools.product([True, False], repeat=2):  # split successor if theta is within safe_angle
-            for chosen_action in range(self.n_actions):
-                # if (chosen_action == 2 or chosen_action == 1) and x_label == 1:  # skip actions when battery is dead
-                #     continue
-                gurobi_model = grb.Model()
-                gurobi_model.setParam('OutputFlag', output_flag)
-                gurobi_model.setParam('Threads', 2)
-                input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-                max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
-                feasible_action = PendulumExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e03)
-                if feasible_action:  # performs action 2 automatically when battery is dead
-                    sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
-                    # for normalisation_split in [True,False]:
-                    newthdot, newtheta = PendulumExperiment.generate_angle_milp(gurobi_model, input, sin_cos_table)
-                    # gurobi_model.addConstr(newtheta >)
-                    # apply dynamic
-                    x_prime = self.apply_dynamic(input, gurobi_model, newthdot=newthdot, newtheta=newtheta, env_input_size=self.env_input_size, action=chosen_action)
-                    for i, (A, b) in enumerate(self.angle_split):
-                        Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=not split_angle[i])
-                    gurobi_model.update()
-                    gurobi_model.optimize()
-                    if gurobi_model.status != 2:
-                        continue
-                    found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
-                    if found_successor:
-                        post.append((tuple(x_prime_results), (x, x_label)))
+        # for split_angle in itertools.product([True, False], repeat=2):  # split successor if theta is within safe_angle
+        for chosen_action in range(self.n_actions):
+            # if (chosen_action == 2 or chosen_action == 1) and x_label == 1:  # skip actions when battery is dead
+            #     continue
+            gurobi_model = grb.Model()
+            gurobi_model.setParam('OutputFlag', output_flag)
+            gurobi_model.setParam('Threads', 2)
+            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
+            # feasible_action = PendulumExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e03)
+            # if feasible_action:  # performs action 2 automatically when battery is dead
+            sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
+            # for normalisation_split in [True,False]:
+            newthdot, newtheta = PendulumExperiment.generate_angle_milp(gurobi_model, input, sin_cos_table)
+            # gurobi_model.addConstr(newtheta >)
+            # apply dynamic
+            x_prime = self.apply_dynamic(input, gurobi_model, newthdot=newthdot, newtheta=newtheta, env_input_size=self.env_input_size, action=chosen_action)
+            # for i, (A, b) in enumerate(self.angle_split):
+            #     Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=not split_angle[i])
+            gurobi_model.update()
+            gurobi_model.optimize()
+            if gurobi_model.status != 2:
+                continue
+            found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
+            if found_successor:
+                successor_info = Experiment.SuccessorInfo()
+                successor_info.successor = tuple(x_prime_results)
+                successor_info.parent = x
+                successor_info.parent_lbl = x_label
+                successor_info.t = t + 1
+                successor_info.action = "policy"  # chosen_action
+                successor_info.lb = ranges_probs[chosen_action][0]
+                successor_info.ub = ranges_probs[chosen_action][1]
+                post.append(successor_info)
         return post
 
     @staticmethod
     def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
         assert min_theta <= max_theta, f"min_theta = {min_theta},max_theta={max_theta}"
         assert min_theta_dot <= max_theta_dot, f"min_theta_dot = {min_theta_dot},max_theta_dot={max_theta_dot}"
-        step_theta = 0.1
+        step_theta = 0.3
         step_theta_dot = 0.1
         # min_theta = max(min_theta, -math.pi / 2)
         # max_theta = min(max_theta, math.pi / 2)
@@ -231,8 +242,8 @@ class PendulumExperimentProbabilistic(ProbabilisticExperiment):
         theta_dot = Experiment.e(self.env_input_size, 1)
         # battery = Experiment.e(self.env_input_size, 4)
         if mode == 0:  # box directions with intervals
-            # input_boundaries = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
-            input_boundaries = [np.pi / 5, np.pi / 5, 1 / 5, 1 / 5]
+            input_boundaries = [0.05, 0.05, 0.05, 0.05]
+            # input_boundaries = [0.20, 0.20, 1 / 5, 1 / 5]
             # input_boundaries = [3.13, 3.15, -0.08193365, 0.08193365]
             # input_boundaries = [1, 1, 1, 1]
             # input_boundaries = [0.04373426, -0.04373426, -0.04980056, 0.04980056, 0.045, -0.045, -0.51, 0.51]

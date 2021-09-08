@@ -151,6 +151,7 @@ def show_polygons(template, boundaries, template_2d, colours=None, rgb=False):
         assert vertices is not None
         sorted_vertices = PolygonSort(vertices)
         trace = compute_trace_polygons([sorted_vertices], colours=[colours[i]] if colours is not None else None, rgb=rgb)
+        trace.name = f"{np.round(colours[i], 4)}"
         fig.add_trace(trace)
     fig.update_yaxes(
         scaleanchor="x",
