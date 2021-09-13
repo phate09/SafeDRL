@@ -14,7 +14,7 @@ from scipy.optimize import linprog, minimize, minimize_scalar
 import plotly.graph_objects as go
 
 
-def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, action=0, minimum_length=0.1):
+def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, action=0, minimum_length=0.1,use_softmax=True):
     # print("Performing split...", "")
     repeat = True
     samples = None
@@ -27,7 +27,9 @@ def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_
             print("Warning: error during the sampling")
             repeat = True
     preprocessed = pre_nn(torch.tensor(samples).float())
-    samples_ontput = torch.softmax(nn(preprocessed), 1)
+    samples_ontput = nn(preprocessed)
+    if use_softmax:
+        samples_ontput = torch.softmax(samples_ontput, 1)
     predicted_label = samples_ontput.detach().numpy()[:, action]
     # template_2d: np.ndarray = np.array([Experiment.e(env_input_size, 2), Experiment.e(env_input_size, 0) - Experiment.e(env_input_size, 1)])
     at_least_one_valid_dimension = False
@@ -163,7 +165,7 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
     # slices_sizes = np.array([(i / len(points)) for i in indices])
     # norm_costs = np.array(costs) / np.max(costs)
     alpha = 1  # hyperparameter to decide the importance of cost vs the size of the slice
-    chosen_dimension = np.argmin(costs)
+    chosen_dimension = np.argmin(np.array(costs))
     # chosen_dimension = np.argmin( - (1 - alpha) * slices_sizes) #norm_costs * alpha
     # chosen_dimension = np.argmin((slices_sizes - 0.5) ** 2)  # try to halve the shape
     max_value_y = np.max(predicted_label)
@@ -181,6 +183,7 @@ def find_dimension_split3(points, predicted_label, template, template2d, dimensi
 
 @ray.remote
 def remote_find_minimum(dimension, points, predicted_label):
+    normalise = True
     proj = project_to_dimension(points, dimension)
     proj2d = np.array([[x, predicted_label[i]] for i, x in enumerate(proj)])
     max_value_x = np.max(proj)
@@ -196,7 +199,10 @@ def remote_find_minimum(dimension, points, predicted_label):
     mid_value_y = (max_value_y + min_value_y) / 2
     delta_y = max_value_y - min_value_y
     true_label = predicted_label >= mid_value_y
-    normalised_label = (predicted_label - min_value_y) / delta_y
+    if normalise:
+        normalised_label = (predicted_label - min_value_y) / delta_y
+    else:
+        normalised_label = predicted_label
     # enumerate all points, find ranges of probabilities for each decision boundary
     range_1 = (max_value_y, min_value_y)
     range_2 = (max_value_y, min_value_y)
@@ -250,6 +256,15 @@ def remote_find_minimum(dimension, points, predicted_label):
             slice_probabilities = only_max.astype(float)[int(i) - (len(filter) // 2):int(i) + (len(filter) // 2)]
             cost2 = sklearn.metrics.log_loss(true_label, slice_probabilities)
             cost = cost2
+        elif mode == 4:
+            true_label = np.array(range(len(only_max))) > i
+            histogram = np.histogram(sorted_pred.astype(float), n_bins, range=(0.0, 1.0))
+            digitized = np.digitize(sorted_pred.astype(float), np.linspace(0, 1.0, n_bins))
+            eps = 1e-15
+            y_pred = np.clip(true_label.astype(float), eps, 1 - eps)
+            # cost = -np.average(sorted_pred.astype(float) * np.log2(y_pred)) #,weights=1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized]
+            cost = np.dot(sorted_pred.astype(float) * np.log2(y_pred), 1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized])
+            # cost = sklearn.metrics.log_loss(sorted_pred.astype(float), true_label.astype(float), sample_weight=1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized])  # .astype(int)
         else:
             raise Exception("Unvalid choice")
         return cost

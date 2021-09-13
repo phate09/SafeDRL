@@ -1,3 +1,4 @@
+from scipy.stats import norm
 import sys
 from typing import List, Tuple
 
@@ -40,6 +41,8 @@ class TotalSplit:
         delta_x = Experiment.e(self.env_input_size, 0)
         # x_ego = Experiment.e(self.env_input_size, 1)
         v_ego = Experiment.e(self.env_input_size, 1)
+        self.use_softmax = True
+        self.use_milp_range_prob = True
         # template = Experiment.combinations([1 / 4.5*(x_lead - x_ego), - v_ego])
         template = np.array([delta_x, -delta_x, v_ego, -v_ego, 1 / 4.5 * delta_x + v_ego, 1 / 4.5 * delta_x - v_ego, -1 / 4.5 * delta_x + v_ego,
                              -1 / 4.5 * delta_x - v_ego])
@@ -61,7 +64,10 @@ class TotalSplit:
         assert gurobi_model.status == 2, "LP wasn't optimally solved"
         observation = self.get_observation_variable(input, gurobi_model)  # get the observation from the input
         ranges = Experiment.get_range_bounds(observation, nn, gurobi_model)
-        ranges_probs = unroll_methods.softmax_interval(ranges)
+        if self.use_softmax:
+            ranges_probs = unroll_methods.softmax_interval(ranges)
+        else:
+            ranges_probs = ranges
         if round >= 0:
             pass
             # todo round the probabilities
@@ -70,7 +76,9 @@ class TotalSplit:
     def sample_probabilities(self, template, x, nn, pre_nn):
         samples = polytope.sample(10000, template, np.array(x))
         preprocessed = pre_nn(torch.tensor(samples).float())
-        samples_ontput = torch.softmax(nn(preprocessed), 1)
+        samples_ontput = nn(preprocessed)
+        if self.use_softmax:
+            samples_ontput = torch.softmax(samples_ontput, 1)
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         min_prob = np.min(samples_ontput.detach().numpy(), 0)
         max_prob = np.max(samples_ontput.detach().numpy(), 0)
@@ -110,7 +118,7 @@ class TotalSplit:
         pre_nn = self.get_pre_nn()
         # self.find_direction_split(template,x,nn,pre_nn)
         ranges_probs = self.sample_probabilities(template, x, nn, pre_nn)  # sampled version
-        if not is_split_range(ranges_probs, self.max_probability_split):  # refine only if the range is small
+        if not is_split_range(ranges_probs, self.max_probability_split) and self.use_milp_range_prob:  # refine only if the range is small
             ranges_probs = self.create_range_bounds_model(template, x, self.env_input_size, nn)
         new_frontier = []
         to_split = []
@@ -125,17 +133,17 @@ class TotalSplit:
                 can_be_split = self.can_be_split(template, to_analyse)
                 action_to_split = np.nanargmax([x[1] - x[0] for x in ranges_probs])
                 if split_flag and can_be_split:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
-                                                      minimum_length=self.minimum_length)
+                    split1, split2 = sample_and_split(pre_nn, nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
+                                                      minimum_length=self.minimum_length, use_softmax=self.use_softmax)
                     n_splits += 1
                     if split1 is None or split2 is None:
-                        split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
-                                                          minimum_length=self.minimum_length)
+                        split1, split2 = sample_and_split(pre_nn, nn, template, np.array(to_analyse), self.env_input_size, template_2d, action=action_to_split,
+                                                          minimum_length=self.minimum_length, use_softmax=self.use_softmax)
                     ranges_probs1 = self.sample_probabilities(template, split1, nn, pre_nn)  # sampled version
-                    if not is_split_range(ranges_probs1, self.max_probability_split):  # refine only if the range is small
+                    if not is_split_range(ranges_probs1, self.max_probability_split) and self.use_milp_range_prob:  # refine only if the range is small
                         ranges_probs1 = self.create_range_bounds_model(template, split1, self.env_input_size, nn)
                     ranges_probs2 = self.sample_probabilities(template, split2, nn, pre_nn)  # sampled version
-                    if not is_split_range(ranges_probs2, self.max_probability_split):  # refine only if the range is small
+                    if not is_split_range(ranges_probs2, self.max_probability_split) and self.use_milp_range_prob:  # refine only if the range is small
                         ranges_probs2 = self.create_range_bounds_model(template, split2, self.env_input_size, nn)
                     to_split.append((tuple(split1), ranges_probs1))
                     to_split.append((tuple(split2), ranges_probs2))
@@ -155,7 +163,9 @@ class TotalSplit:
         nn = self.get_nn()
         samples = polytope.sample(sample_size, self.analysis_template, np.array(root))
         preprocessed = pre_nn(torch.tensor(samples).float())
-        samples_ontput = torch.softmax(nn(preprocessed), 1)
+        samples_ontput = nn(preprocessed)
+        if self.use_softmax:
+            samples_ontput = torch.softmax(samples_ontput)
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         plot_points_and_prediction(samples @ self.template_2d.T, predicted_label)
         print("plot done")
@@ -171,12 +181,12 @@ class TotalSplit:
                 at_least_one_valid_dimension = True
         return at_least_one_valid_dimension
 
-    def plot_frontier(self, new_frontier):
+    def plot_frontier(self, new_frontier, show_probs=True):
         colours = []
         for x, ranges_probs in new_frontier:
             colours.append(np.mean(ranges_probs[0]))
         print("", file=sys.stderr)  # new line
-        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours)
+        fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours if show_probs else None)
 
     def load_frontier(self):
         new_frontier = pickle.load(open("new_frontier3.p", "rb"))
@@ -458,6 +468,7 @@ class TotalSplitPendulum(TotalSplit):
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
         nn = sequential_nn
         return nn
+
     def plot_frontier(self, new_frontier):
         colours = []
         for x, ranges_probs in new_frontier:
@@ -465,9 +476,46 @@ class TotalSplitPendulum(TotalSplit):
         print("", file=sys.stderr)  # new line
         fig = show_polygons(self.analysis_template, [x[0] for x in new_frontier], self.template_2d, colours, rgb=True)
 
+
+class GaussianLayer(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mean = 0
+        self.std = 1
+
+    def forward(self, x):
+        return torch.unsqueeze(torch.tensor(norm.pdf(x[:, 0], self.mean, self.std)) * torch.tensor(norm.pdf(x[:, 1], self.mean, self.std)), 1) / 0.4
+
+
+class TotalSplitGaussian(TotalSplit):
+    def __init__(self):
+        super().__init__()
+        self.max_probability_split = 0.05
+        self.env_input_size: int = 2
+        self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
+        self.input_boundaries = [5, 5, 5, 5]
+        self.use_softmax = False
+        self.use_milp_range_prob = False
+        self.input_template = Experiment.box(self.env_input_size)
+        template = Experiment.octagon(self.env_input_size)
+        self.analysis_template: np.ndarray = template
+        self.nn_path = "/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333"
+
+    def get_nn(self):
+        layers = []
+        layers.append(GaussianLayer())
+        return torch.nn.Sequential(*layers)
+
+    def get_pre_nn(self):
+        return torch.nn.Identity()
+
+    def get_observation_variable(self, input, gurobi_model):
+        return input
+
+
 if __name__ == '__main__':
     ray.init(local_mode=False)
-    agent = TotalSplitPendulum()
+    agent = TotalSplitGaussian()
     # agent.plot_2d_sample()
     # agent.load_frontier()
     polytopes = agent.start()

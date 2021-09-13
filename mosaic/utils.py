@@ -304,7 +304,9 @@ def compute_trace_polygons(polygons: List[List], marker_size=1, colours: List[fl
         y_list.extend(y)
     if colours is not None:
         if rgb:
-            trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=f"{Color(rgb=colours[0]).get_hex_l()}",
+            single_colour = colours[0]
+            # normalised_colour =single_colour*( 1/single_colour.sum())
+            trace1 = go.Scatter(x=x_list, y=y_list, mode='markers', fill='toself', fillcolor=f"{Color(rgb=single_colour).get_hex_l()}",
                                 marker=dict(size=marker_size, colorscale='bluered', color=colours))
         else:
             value_int = int(round(colours[0], rounding) * (10 ** rounding))

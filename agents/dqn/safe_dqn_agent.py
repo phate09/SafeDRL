@@ -87,8 +87,8 @@ class InvariantAgent:
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # I-Net
-        self.inetwork_local = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
-        self.inetwork_target = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, 50), nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
+        self.inetwork_local = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
+        self.inetwork_target = nn.Sequential(*[nn.Linear(state_size, 50),nn.ReLU(), nn.Linear(50, action_size), nn.Tanh()]).to(device)
         self.inetwork_target.load_state_dict(self.inetwork_local.state_dict())  # clones the weigths
         self.ioptimizer = optim.Adam(self.inetwork_local.parameters(), 1e-3)
 

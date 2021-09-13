@@ -59,80 +59,109 @@ class StoppingCarExperiment(InvariantNetExperiment):
         post = []
         start_unsafe = []
         future_timesteps = 15
-        for chosen_actions in itertools.product(range(2), repeat=future_timesteps):
-            already_visited = False
-            for start in start_unsafe:
-                same = True
-                for a, b in zip(start, chosen_actions):
-                    if a != b:
-                        same = False
-                        break
-                if same:
-                    already_visited = True
-                    break
-            if already_visited:
-                continue
-            gurobi_model = grb.Model()
-            gurobi_model.setParam('OutputFlag', output_flag)
-            input = gurobi_model.addMVar(shape=self.env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
-            observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation0")
-            gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
-            gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
-            gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
-            gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
-            # feasible_safe = True
-            gurobi_model.addConstr(input[0] - input[1] <= 30, name=f"initial_constraint") #distac
-            gurobi_model.addConstr(input[0] - input[1] >= 0, name=f"initial_safety_constraint")
-            # gurobi_model.addConstr(input[2] <= 100, name=f"initial_constraint")
-            gurobi_model.update()
-            gurobi_model.optimize()
-            feasible = Experiment.generate_nn_guard_positive(gurobi_model, observation, inv_nn, True, eps=0)  # initially filter for elements within the invariant
-            for timestep in range(future_timesteps):
-                if feasible:
-                    results = self.safe_timestep(gurobi_model, observation, nn, inv_nn, chosen_actions, input, index=timestep)
-                    if results is not None:
-                        feasible, input, observation = results
-                    else:
-                        feasible = False
-                        break
+        # for chosen_actions in itertools.product(range(2), repeat=future_timesteps):
+        #     already_visited = False
+        #     for start in start_unsafe:
+        #         same = True
+        #         for a, b in zip(start, chosen_actions):
+        #             if a != b:
+        #                 same = False
+        #                 break
+        #         if same:
+        #             already_visited = True
+        #             break
+        #     if already_visited:
+        #         continue
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        input = gurobi_model.addMVar(shape=self.env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
+        observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation0")
+        gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
+        gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
+        gurobi_model.addConstr(observation[0] <= self.v_lead - input[2] + self.input_epsilon / 2, name=f"obs_constr11")
+        gurobi_model.addConstr(observation[0] >= self.v_lead - input[2] - self.input_epsilon / 2, name=f"obs_constr12")
+        # feasible_safe = True
+        gurobi_model.addConstr(input[0] - input[1] <= 30, name=f"initial_constraint")  # distac
+        gurobi_model.addConstr(input[0] - input[1] >= 0, name=f"initial_safety_constraint")
+        # gurobi_model.addConstr(input[2] <= 100, name=f"initial_constraint")
+        gurobi_model.update()
+        gurobi_model.optimize()
+
+        feasible = False  # try to go outside of invariant / make it unsafe-> is it feasible to make it unsafe?
+        for i in range(future_timesteps):
+            if not feasible:
+                results = self.safe_timestep(gurobi_model, observation, nn, inv_nn, input, index=i)
+                if results is not None:
+                    feasible, input, observation = results
                 else:
+                    feasible = False
                     break
-            print(f"action sequence: {chosen_actions[:timestep+1]}")
-            start_unsafe.append(chosen_actions[:timestep+1])
-            assert not feasible
-            print("Safe")
+            else:
+                break
+        # feasible = Experiment.generate_nn_guard_positive(gurobi_model, observation, inv_nn, True, eps=0)  # initially filter for elements within the invariant
+        # for timestep in range(future_timesteps):
+        #     if feasible:
+        #         results = self.safe_timestep(gurobi_model, observation, nn, inv_nn, input, index=timestep)
+        #         if results is not None:
+        #             feasible, input, observation = results
+        #         else:
+        #             feasible = False
+        #             break
+        #     else:
+        #         break
+        # print(f"action sequence: {chosen_actions[:timestep + 1]}")
+        # start_unsafe.append(chosen_actions[:timestep + 1])
+        assert not feasible
+        print("Safe")
         return post
 
-    def safe_timestep(self, gurobi_model, observation, nn, inv_nn, chosen_actions, input, index):
-        chose_action = chosen_actions[index]
-        feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chose_action)
-        if feasible_action:
-            # apply dynamic
-            x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=chose_action, env_input_size=self.env_input_size)
-            gurobi_model.update()
-            gurobi_model.optimize()
-            assert gurobi_model.status == 2
-            next_observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name=f"observation{index + 1}")
-            gurobi_model.addConstr(next_observation[1] <= x_prime[0] - x_prime[1] + self.input_epsilon / 2, name=f"obs_constr{index + 1}1")
-            gurobi_model.addConstr(next_observation[1] >= x_prime[0] - x_prime[1] - self.input_epsilon / 2, name=f"obs_constr{index + 1}2")
-            gurobi_model.addConstr(next_observation[0] <= self.v_lead - x_prime[2] + self.input_epsilon / 2, name=f"obs_constr{index + 1}3")
-            gurobi_model.addConstr(next_observation[0] >= self.v_lead - x_prime[2] - self.input_epsilon / 2, name=f"obs_constr{index + 1}4")
-            feasible_unsafe = Experiment.generate_nn_guard_positive(gurobi_model, next_observation, inv_nn, False, eps=0.1)
-            if feasible_unsafe:
-                for t in range(index + 2):
-                    delta_v = gurobi_model.getVarByName(f'observation{t}[0]').X
-                    delta_x = gurobi_model.getVarByName(f'observation{t}[1]').X
-                    tensor_input = torch.tensor([delta_v, delta_x])
+    def safe_timestep(self, gurobi_model, observation, nn, inv_nn, input, index, M=1e2):
+        # chose_action = chosen_actions[index]
+        gurobi_vars = []
+        gurobi_vars.append(observation)
+        Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
+        last_layer = gurobi_vars[-1]
 
-                    print(f"t:{t}, delta_v:{delta_v}, delta_x:{delta_x}, invariant: {inv_nn(tensor_input)[chosen_actions[t]].item()}")
-            print("")
-            return feasible_unsafe, x_prime, next_observation
-        else:
-            return None
+        action_variable = gurobi_model.addMVar(lb=float("-inf"), shape=(1,), vtype=grb.GRB.BINARY, name=f"layer_action_{index}")  # same shape as previous
+        z = gurobi_model.addMVar(shape=(1,), vtype=grb.GRB.BINARY, name=f"relu_action_{index}")  # lb=0, ub=1,
+        gurobi_model.addConstr(action_variable >= last_layer[0] - last_layer[1], name=f"relu_constr_1_action_{index}")
+        gurobi_model.addConstr(action_variable <= (last_layer[0] - last_layer[1]) + M * z, name=f"relu_constr_2_action_{index}")
+        gurobi_model.addConstr(action_variable >= 0, name=f"relu_constr_3_action_{index}")
+        gurobi_model.addConstr(action_variable <= M - M * z, name=f"relu_constr_4_action_{index}")
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        # gurobi_model.setObjective(action_variable.sum(), grb.GRB.MAXIMIZE)  # maximise the output
+        # feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chose_action)
+        # if feasible_action:
+        # apply dynamic
+        x_prime = StoppingCarExperiment.apply_dynamic(input, gurobi_model, action=action_variable, env_input_size=self.env_input_size)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2
+        next_observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name=f"observation{index + 1}")
+        gurobi_model.addConstr(next_observation[1] <= x_prime[0] - x_prime[1] + self.input_epsilon / 2, name=f"obs_constr{index + 1}1")
+        gurobi_model.addConstr(next_observation[1] >= x_prime[0] - x_prime[1] - self.input_epsilon / 2, name=f"obs_constr{index + 1}2")
+        gurobi_model.addConstr(next_observation[0] <= self.v_lead - x_prime[2] + self.input_epsilon / 2, name=f"obs_constr{index + 1}3")
+        gurobi_model.addConstr(next_observation[0] >= self.v_lead - x_prime[2] - self.input_epsilon / 2, name=f"obs_constr{index + 1}4")
+        feasible_unsafe = Experiment.generate_nn_guard_positive(gurobi_model, next_observation, inv_nn, False, eps=0.1)
+        if feasible_unsafe:
+            for t in range(index + 2):
+                delta_v = gurobi_model.getVarByName(f'observation{t}[0]').X
+                delta_x = gurobi_model.getVarByName(f'observation{t}[1]').X
+                tensor_input = torch.tensor([delta_v, delta_x])
+
+        #         print(f"t:{t}, delta_v:{delta_v}, delta_x:{delta_x}, invariant: {inv_nn(tensor_input)[chosen_actions[t]].item()}")
+        # print("")
+        # feasible_unsafe = False
+        return feasible_unsafe, x_prime, next_observation
+        # else:
+        #     return None
 
     @staticmethod
     def apply_dynamic(input, gurobi_model: grb.Model, action, env_input_size):
         '''
+        in this case ACTION is a variable
 
         :param input:
         :param gurobi_model:
@@ -149,19 +178,12 @@ class StoppingCarExperiment(InvariantNetExperiment):
         max_speed = 36
         x_lead = input[0]
         x_ego = input[1]
-        # v_lead = input[2]
         v_ego = input[2]
-        # a_lead = input[4]
-        # a_ego = input[5]
         z = gurobi_model.addMVar(shape=(3,), lb=float("-inf"), name=f"x_prime")
         const_acc = 3
         dt = .1  # seconds
-        if action == 0:
-            acceleration = -const_acc
-        elif action == 1:
-            acceleration = const_acc
-        else:
-            acceleration = 0
+        acceleration = gurobi_model.addMVar(shape=(1,), lb=float("-inf"))
+        gurobi_model.addConstr(acceleration[0] == (2 * action[0] - 1) * const_acc, name=f"action_constr")
         v_ego_prime = v_ego + acceleration * dt
         gurobi_model.addConstr(v_ego_prime <= max_speed, name=f"v_constr")
         # gurobi_model.addConstr(v_ego_prime >= -max_speed, name=f"v_constr")
@@ -169,14 +191,9 @@ class StoppingCarExperiment(InvariantNetExperiment):
         v_lead_prime = v_lead
         x_lead_prime = x_lead + v_lead_prime * dt
         x_ego_prime = x_ego + v_ego_prime * dt
-        # delta_x_prime = (x_lead + (v_lead + (a_lead + 0) * dt) * dt) - (x_ego + (v_ego + (a_ego + acceleration) * dt) * dt)
-        # delta_v_prime = (v_lead + (a_lead + 0) * dt) - (v_ego + (a_ego + acceleration) * dt)
         gurobi_model.addConstr(z[0] == x_lead_prime, name=f"dyna_constr_1")
         gurobi_model.addConstr(z[1] == x_ego_prime, name=f"dyna_constr_2")
         gurobi_model.addConstr(z[2] == v_ego_prime, name=f"dyna_constr_3")
-        # gurobi_model.addConstr(z[3] == v_ego_prime, name=f"dyna_constr_4")
-        # gurobi_model.addConstr(z[4] == 0, name=f"dyna_constr_5")  # no change in a_lead
-        # gurobi_model.addConstr(z[5] == acceleration, name=f"dyna_constr_6")
         return z
 
     def plot(self, vertices_list, template, template_2d):

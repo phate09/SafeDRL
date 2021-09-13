@@ -472,13 +472,17 @@ class Experiment():
         Experiment.build_nn_model_core(gurobi_model, gurobi_vars, nn, M)
         last_layer = gurobi_vars[-1]
         if positive:
-            gurobi_model.addConstr(last_layer[0] + eps >= 0, name="last_layer")
+            constraint = gurobi_model.addConstr(last_layer[0] + eps >= 0, name="last_layer")
         else:
-            gurobi_model.addConstr(last_layer[0] + eps <= 0, name="last_layer")
+            constraint = gurobi_model.addConstr(last_layer[0] + eps <= 0, name="last_layer")
         gurobi_model.update()
         gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
-        return gurobi_model.status == 2 or gurobi_model.status == 5
+        feasible = gurobi_model.status == 2 or gurobi_model.status == 5
+        gurobi_model.remove(constraint)
+        gurobi_model.update()
+        gurobi_model.optimize()
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        return feasible
 
     # @staticmethod
     # def generate_nn_guard_pyo(model: pyo.ConcreteModel, input, nn: torch.nn.Sequential, action_ego=0, M=1e2):
