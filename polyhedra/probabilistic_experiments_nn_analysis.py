@@ -127,9 +127,9 @@ class ProbabilisticExperiment(Experiment):
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
         # ----for plotting
         colours = []
-        # to_plot = list(self.graph.successors(root_pair))
+        to_plot = list(self.graph.successors(root_pair))
         # to_plot = stats.vertices_list[1]
-        to_plot = [root_pair]
+        # to_plot = [root_pair]
         bad_nodes = []
         for x in self.graph.adj:
             safe = self.graph.nodes[x].get("safe")

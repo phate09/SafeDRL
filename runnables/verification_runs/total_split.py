@@ -165,7 +165,7 @@ class TotalSplit:
         preprocessed = pre_nn(torch.tensor(samples).float())
         samples_ontput = nn(preprocessed)
         if self.use_softmax:
-            samples_ontput = torch.softmax(samples_ontput)
+            samples_ontput = torch.softmax(samples_ontput,1)
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         plot_points_and_prediction(samples @ self.template_2d.T, predicted_label)
         print("plot done")
@@ -347,7 +347,7 @@ class TotalSplitStoppingCar(TotalSplit):
         self.v_lead = 28
         self.env_input_size: int = 2
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
-        self.input_boundaries = tuple([50, 0, 36, 36])
+        self.input_boundaries = tuple([10, -3, 32, -26])
         self.input_template = Experiment.box(self.env_input_size)
         delta_x = Experiment.e(self.env_input_size, 0)
         # x_ego = Experiment.e(self.env_input_size, 1)
@@ -484,20 +484,20 @@ class GaussianLayer(torch.nn.Module):
         self.std = 1
 
     def forward(self, x):
-        return torch.unsqueeze(torch.tensor(norm.pdf(x[:, 0], self.mean, self.std)) * torch.tensor(norm.pdf(x[:, 1], self.mean, self.std)), 1) / 0.4
+        return torch.unsqueeze(torch.tensor(norm.pdf(x[:, 0], self.mean, self.std)) * torch.tensor(norm.pdf(x[:, 1], self.mean, self.std)), 1) / 0.159
 
 
 class TotalSplitGaussian(TotalSplit):
     def __init__(self):
         super().__init__()
-        self.max_probability_split = 0.05
+        self.max_probability_split = 0.3
         self.env_input_size: int = 2
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
         self.input_boundaries = [5, 5, 5, 5]
         self.use_softmax = False
         self.use_milp_range_prob = False
         self.input_template = Experiment.box(self.env_input_size)
-        template = Experiment.octagon(self.env_input_size)
+        template = Experiment.box(self.env_input_size)
         self.analysis_template: np.ndarray = template
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_pendulum/PPO_MonitoredPendulum_035b5_00000_0_2021-05-11_11-59-52/checkpoint_3333/checkpoint-3333"
 
@@ -515,7 +515,7 @@ class TotalSplitGaussian(TotalSplit):
 
 if __name__ == '__main__':
     ray.init(local_mode=False)
-    agent = TotalSplitGaussian()
-    # agent.plot_2d_sample()
+    agent = TotalSplitStoppingCar()
+    agent.plot_2d_sample(sample_size=100000)
     # agent.load_frontier()
     polytopes = agent.start()

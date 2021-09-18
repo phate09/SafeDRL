@@ -21,7 +21,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
-        self.input_boundaries = tuple([10, -3, 36, -28])
+        self.input_boundaries = tuple([10, -3, 32, -26])
         self.input_template = Experiment.box(env_input_size)
         # self.input_boundaries: List = input_boundaries
         # self.input_template: np.ndarray = input_template
@@ -39,7 +39,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         # self.n_workers = 1
         self.rounding_value = 2 ** 10
         self.use_rounding = False
-        self.time_horizon = 400
+        self.time_horizon = 20
         self.unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
         self.input_epsilon = 0
         self.v_lead = 28
