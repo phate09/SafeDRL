@@ -53,6 +53,9 @@ class ProbabilisticExperiment(Experiment):
         assert self.analysis_template is not None
         assert self.unsafe_zone is not None
         assert self.assign_lbl_fn is not None
+        assert self.save_dir is not None
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
         experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
         max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
@@ -94,6 +97,10 @@ class ProbabilisticExperiment(Experiment):
             self.is_agent_unsafe = False
             self.discarded = []  # list of elements after the maximum horizon, used to restart the computation (if we wanted to expand the horizon)
             self.root = None
+            self.elapsed_time = 0
+            self.start_time = None
+            self.last_time = None
+            self.end_time = None
 
     def main_loop(self, nn, template, template_2d):
         self.load_abstract_mapping()  # loads the mapping
@@ -103,6 +110,7 @@ class ProbabilisticExperiment(Experiment):
         if not self.load_graph:
             stats = ProbabilisticExperiment.LoopStats()
             stats.root = root_pair
+            stats.start_time = datetime.datetime.now()
             if self.additional_seen_fn is not None:
                 for extra in self.additional_seen_fn():
                     stats.seen.append(extra)
@@ -119,12 +127,14 @@ class ProbabilisticExperiment(Experiment):
             self.plot_fn(stats.vertices_list, template, template_2d)
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
             inv_map = {v: k for k, v in mapping.items()}
+            stats.end_time = datetime.datetime.now()
             networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
             pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
         else:
             self.graph = networkx.read_gpickle(os.path.join(self.save_dir, "graph.p"))
             stats: ProbabilisticExperiment.LoopStats = pickle.load(open(os.path.join(self.save_dir, "stats.p"), "rb"))
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
+
         # ----for plotting
         colours = []
         to_plot = list(self.graph.successors(root_pair))
@@ -169,7 +179,7 @@ class ProbabilisticExperiment(Experiment):
         # todo split intervals according to the seen list, similar to the abstract mapping
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
-            if t > self.time_horizon:
+            if t >= self.time_horizon:
                 print(f"Discard timestep t={t}")
                 stats.discarded.append((x, x_label))
                 continue
@@ -276,6 +286,7 @@ class ProbabilisticExperiment(Experiment):
         # todo go through the tree and decide if we want to split already visited nodes based on the max and min probability of encountering a terminal state
         stats.new_frontier = []  # resets the new_frontier
         if self.save_graph:
+            stats.last_time_save = datetime.datetime.now()
             networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
             pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
 

@@ -63,6 +63,9 @@ class Experiment():
         assert self.analysis_template is not None
         assert self.unsafe_zone is not None
         assert self.assign_lbl_fn is not None
+        assert self.save_dir is not None
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
         experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
 

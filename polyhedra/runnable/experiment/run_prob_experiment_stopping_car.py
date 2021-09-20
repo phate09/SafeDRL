@@ -191,23 +191,14 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
 if __name__ == '__main__':
     ray.init(log_to_driver=False, local_mode=False)
     experiment = StoppingCarExperimentProbabilistic()
-    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
+    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/template_h7_probabilistic"
+    # experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/box_h7_probabilistic_psi05_nocontain"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
-    # experiment.n_workers = 1
-
-    # x_lead = Experiment.e(experiment.env_input_size, 0)
-    # x_ego = Experiment.e(experiment.env_input_size, 1)
-    # v_ego = Experiment.e(experiment.env_input_size, 2)
-    # template = np.array([-(x_lead - x_ego), v_ego, -v_ego])
-    # experiment.analysis_template = template  # standard
-    # experiment.input_template = Experiment.box(3)
-    # input_boundaries = [40, -30, 10, -0, 36, -28]
-    # input_boundaries = [40, -30, 10, -0, 36, -28]
-    # experiment.input_boundaries = input_boundaries
-    # experiment.input_template = experiment.analysis_template
-    # experiment.input_boundaries = (41.11888939, -37.82961296, -35.29123968,  35.53653031,
-    #      5.71856605, -73.12085264,  76.65541971,  -2.53837328)
-    experiment.time_horizon = 1000
+    # experiment.analysis_template = Experiment.box(2)
+    # experiment.use_contained = False
+    # experiment.max_probability_split = 0.5
+    experiment.time_horizon = 7
+    # experiment.load_graph = True
     experiment.run_experiment()
