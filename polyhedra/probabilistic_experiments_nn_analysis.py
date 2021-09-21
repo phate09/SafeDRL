@@ -118,7 +118,7 @@ class ProbabilisticExperiment(Experiment):
             if self.graph is not None:
                 self.graph.add_node(root_pair)
             widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
-                       progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
+                       progressbar.Variable('max_t'), ", ", progressbar.Variable('elapsed_time')]
             if self.before_start_fn is not None:
                 self.before_start_fn(nn)
             with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar_main:
@@ -206,7 +206,7 @@ class ProbabilisticExperiment(Experiment):
             stats.seen.append((x, x_label))
             if self.show_progressbar:
                 bar_main.update(value=bar_main.value + 1, n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited,
-                                last_visited_state=str(x),
+                                elapsed_time=(datetime.datetime.now()-stats.start_time).total_seconds()/60.0,
                                 max_t=stats.max_t)
             if self.use_split:
                 if self.use_abstract_mapping:
