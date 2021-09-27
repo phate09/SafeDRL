@@ -22,12 +22,13 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         self.get_nn_fn = self.get_nn
         self.plot_fn = self.plot
         self.template_2d: np.ndarray = np.array([[0, 1], [1, 0]])
-        input_boundaries, input_template = self.get_template(0)
+        self.template_index = 1
+        input_boundaries = self.get_template(self.template_index)
+
         self.input_boundaries: List = input_boundaries
-        self.input_template: np.ndarray = input_template
-        _, template = self.get_template(0)
-        self.analysis_template: np.ndarray = template
-        self.time_horizon = 21
+        self.input_template: np.ndarray = Experiment.box(self.env_input_size)
+        self.analysis_template: np.ndarray = Experiment.box(self.env_input_size)
+        self.time_horizon = 20
         self.rounding_value = 2 ** 8
         self.load_graph = False
         self.minimum_length = 0.2
@@ -254,20 +255,22 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
     def get_template(self, mode=0):
         p = Experiment.e(self.env_input_size, 0)
         v = Experiment.e(self.env_input_size, 1)
-        if mode == 0:  # box directions with intervals
+        if mode == 0:  # large s0
             # input_boundaries = [0, 0, 10, 10]
             input_boundaries = [6, -3, 1, 1]
-            # optimise in a direction
-            template = []
-            for dimension in range(self.env_input_size):
-                template.append(Experiment.e(self.env_input_size, dimension))
-                template.append(-Experiment.e(self.env_input_size, dimension))
-            template = np.array(template)  # the 6 dimensions in 2 variables
-            return input_boundaries, template
-        if mode == 1:  # directions to easily find fixed point
-            input_boundaries = None
-            template = np.array([v + p, -v - p, -p])
-            return input_boundaries, template
+            return input_boundaries
+        if mode == 1:  # small s0
+            input_boundaries = [6, -3, 0, 0.1]
+            return input_boundaries
+        if mode == 2:
+            input_boundaries = [9, -3, 0, 0.1]
+            return input_boundaries
+        if mode == 3:
+            input_boundaries = [9, -5, 0, 0.1]
+            return input_boundaries
+        if mode == 4:
+            input_boundaries = [9, -5, 1, 1]
+            return input_boundaries
 
     def get_nn_old(self):
         config, trainer = get_PPO_trainer(use_gpu=0)
@@ -297,9 +300,13 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     ray.init(log_to_driver=False, local_mode=False)
     experiment = BouncingBallExperimentProbabilistic()
-    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/test"
+    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/h20_box_t4_psi01"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
-    experiment.n_workers = 1
+    experiment.max_probability_split = 0.1
+    # experiment.analysis_template = Experiment.octagon(2)
+    # experiment.use_contained = False
+    experiment.load_graph = True
+    experiment.input_boundaries = experiment.get_template(4)
     experiment.run_experiment()

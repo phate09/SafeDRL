@@ -48,6 +48,36 @@ class BouncingBall(gym.Env):
             cost += 1
         return np.array((self.p, self.v)), cost, done, {}
 
+    @staticmethod
+    def calculate_successor(state, action):
+        p, v = state
+        dt = 0.1
+        done = False
+
+        cost = 0
+        v_prime = v - 9.81 * dt
+        p_prime = max(p + dt * v_prime, 0)
+        if v_prime <= 0 and p_prime <= 0:
+            v_prime = -(0.90) * v_prime
+            p_prime = 0
+            if v_prime <= 1:
+                done = True
+                # cost += -1000
+        if v_prime <= 0 and p_prime > 4 and action == 1:
+            v_prime = v_prime - 4
+            p_prime = 4
+        if v_prime > 0 and p_prime > 4 and action == 1:
+            v_prime = -(0.9) * v_prime - 4
+            p_prime = 4
+        # v_second = v_prime - 9.81 * dt
+        # p_second = p_prime + dt * v_prime
+        cost += -1 if action == 1 else 0
+        if not done:
+            cost += 1
+        if v_prime < 7 and v_prime > -7 and p < 1:
+            done = True
+        return np.array((p_prime, v_prime)), cost, done, {}
+
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]

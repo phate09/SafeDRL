@@ -14,7 +14,7 @@ from scipy.optimize import linprog, minimize, minimize_scalar
 import plotly.graph_objects as go
 
 
-def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, action=0, minimum_length=0.1,use_softmax=True):
+def sample_and_split(pre_nn, nn, template, boundaries, env_input_size, template_2d, action=0, minimum_length=0.1, use_softmax=True):
     # print("Performing split...", "")
     repeat = True
     samples = None
@@ -199,7 +199,7 @@ def remote_find_minimum(dimension, points, predicted_label):
     mid_value_y = (max_value_y + min_value_y) / 2
     delta_y = max_value_y - min_value_y
     true_label = predicted_label >= mid_value_y
-    if normalise:
+    if normalise and delta_y != 0:
         normalised_label = (predicted_label - min_value_y) / delta_y
     else:
         normalised_label = predicted_label
@@ -236,7 +236,10 @@ def remote_find_minimum(dimension, points, predicted_label):
         if mode == 0:  # sorted_pred
             histogram = np.histogram(sorted_pred.astype(float), n_bins, range=(0.0, 1.0))
             digitized = np.digitize(sorted_pred.astype(float), np.linspace(0, 1.0, n_bins))
-            cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float), sample_weight=1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized])  # .astype(int)
+            try:
+                cost = sklearn.metrics.log_loss(true_label, sorted_pred.astype(float), sample_weight=1 / np.where(histogram[0] == 0, 1, histogram[0])[digitized])  # .astype(int)
+            except:
+                print("erro")
         elif mode == 1:  # onlymax
             histogram = np.histogram(only_max.astype(float), n_bins, range=(0.0, 1.0))
             digitized = np.digitize(only_max.astype(float), np.linspace(0, 1.0, n_bins))
