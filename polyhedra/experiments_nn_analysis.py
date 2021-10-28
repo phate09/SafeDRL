@@ -1,26 +1,25 @@
 import csv
 import datetime
+import heapq
 import math
 import os
+import pickle
 import time
 from collections import defaultdict
 from contextlib import nullcontext
 from typing import Tuple, List
-# import pyomo.environ as pyo
-# import pyomo.gdp as gdp
+
 import gurobipy as grb
 import networkx
 import numpy as np
 import progressbar
 import ray
 import torch
-from interval import interval, imath
-import plotly.graph_objects as go
-# from pyomo.core import TransformationFactory
-# from pyomo.opt import SolverStatus, TerminationCondition
-# from pyomo.util.infeasible import log_infeasible_constraints
 
+from polyhedra.milp_methods import generate_input_region, optimise, generate_region_constraints
+from polyhedra.partitioning import split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
+from polyhedra.runnable.templates import polytope
 from symbolic import unroll_methods
 
 
@@ -50,6 +49,12 @@ class Experiment():
         self.show_progressbar = True
         self.show_progress_plot = True
         self.save_dir = None
+        self.save_graph = True
+        self.use_split = True  # enable/disable splitting
+        self.load_graph = False
+        self.use_abstract_mapping = False  # decide whether to use the precomputed abstract mapping or compute it on the fly
+        self.use_contained = True  # enable/disable containment check
+        self.use_split_with_seen = True  # enable/disable splitting polytopes when they are partially contained within previously visited abstract states
         self.keep_model = False  # whether to keep the gurobi model for later timesteps
         self.graph = networkx.DiGraph()  # set None to disable use of graph
 
@@ -134,86 +139,297 @@ class Experiment():
         root = self.generate_root_polytope()
         root_pair = (root, 0)  # label for root is always 0
         root_list = [root_pair]
-        vertices_list = defaultdict(list)
-        seen = []
-        if self.additional_seen_fn is not None:
-            for extra in self.additional_seen_fn():
-                seen.append(extra)
-        frontier = [(0, x) for x in root_list]
-        if self.graph is not None:
-            self.graph.add_node(root_pair)
-        max_t = 0
-        num_already_visited = 0
-        widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
-                   progressbar.Variable('max_t'), ", ", progressbar.Variable('last_visited_state')]
-        proc_ids = []
-        last_time_plot = None
-        if self.before_start_fn is not None:
-            self.before_start_fn(nn)
-        with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar:
-            while len(frontier) != 0 or len(proc_ids) != 0:
-                while len(proc_ids) < self.n_workers and len(frontier) != 0:
-                    t, (x, x_label) = frontier.pop(0) if self.use_bfs else frontier.pop()
-                    if max_t > self.time_horizon:
-                        print(f"Reached horizon t={t}")
-                        self.plot_fn(vertices_list, template, template_2d)
-                        return max_t, num_already_visited, vertices_list, False
-                    contained_flag = False
-                    to_remove = []
-                    for (s, s_label) in seen:
-                        if s_label == x_label:
-                            if contained(x, s):
+        if not self.load_graph:
+            stats = Experiment.LoopStats()
+            stats.root = root_pair
+            stats.start_time = datetime.datetime.now()
+            if self.additional_seen_fn is not None:
+                for extra in self.additional_seen_fn():
+                    stats.seen.append(extra)
+            stats.frontier = [(0, x) for x in root_list]
+            if self.graph is not None:
+                self.graph.add_node(root_pair)
+            widgets = [progressbar.Variable('n_workers'), ', ', progressbar.Variable('frontier'), ', ', progressbar.Variable('seen'), ', ', progressbar.Variable('num_already_visited'), ", ",
+                       progressbar.Variable('max_t'), ", ", progressbar.widgets.Timer()]
+            if self.before_start_fn is not None:
+                self.before_start_fn(nn)
+            with progressbar.ProgressBar(widgets=widgets) if self.show_progressbar else nullcontext() as bar_main:
+                while len(stats.frontier) != 0 or len(stats.proc_ids) != 0:
+                    self.inner_loop_step(stats, template_2d, template, nn, bar_main)
+            self.plot_fn(stats.vertices_list, template, template_2d)
+            # gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
+            # inv_map = {v: k for k, v in mapping.items()}
+            stats.end_time = datetime.datetime.now()
+            networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
+            pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
+        else:
+            self.graph = networkx.read_gpickle(os.path.join(self.save_dir, "graph.p"))
+            stats: Experiment.LoopStats = pickle.load(open(os.path.join(self.save_dir, "stats.p"), "rb"))
+            # gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
+        return stats.max_t, stats.num_already_visited, stats.vertices_list, stats.is_agent_unsafe
+
+    class LoopStats():
+        """Class that contains some information to share inbetween loops"""
+
+        def __init__(self):
+            self.seen = []
+            self.frontier = []  # contains the elements to explore
+            self.to_replace_split = []  # elements to replace/split because they are too big
+            self.vertices_list = defaultdict(list)  # contains point at every timesteps, this is for plotting purposes only
+            self.max_t = 0
+            self.num_already_visited = 0
+            self.num_irrelevant = 0
+            self.proc_ids = []
+            self.last_time_plot = None
+            self.exit_flag = False
+            self.is_agent_unsafe = False
+            self.discarded = []  # list of elements after the maximum horizon, used to restart the computation (if we wanted to expand the horizon)
+            self.root = None
+            self.elapsed_time = 0
+            self.start_time = None
+            self.last_time = None
+            self.end_time = None
+
+    def inner_loop_step(self, stats: LoopStats, template_2d, template, nn, bar_main):
+        # fills up the worker threads
+        while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
+            t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
+            if t >= self.time_horizon:
+                print(f"Discard timestep t={t}")
+                stats.discarded.append((x, x_label))
+                continue
+            stats.max_t = max(stats.max_t, t)
+
+            if self.use_contained:
+                contained_flag = False
+                to_remove = []
+                for (s, s_label) in stats.seen:
+                    if s_label == x_label:
+                        if contained(x, s):
+                            if not self.graph.has_predecessor((x, x_label), (s, x_label)):  # ensures that if there was a split it doesn't count as contained
+                                self.graph.add_edge((x, x_label), (s, x_label), action="contained", lb=1.0, ub=1.0)
                                 contained_flag = True
                                 break
-                            if contained(s, x):
-                                to_remove.append((s, s_label))
-                    for rem in to_remove:
-                        num_already_visited += 1
-                        seen.remove(rem)
-                    if contained_flag:
-                        num_already_visited += 1
-                        continue
-                    max_t = max(max_t, t)
-                    vertices_list[t].append(np.array(x))
-                    if self.check_unsafe(template, x, x_label):
-                        print(f"Unsafe state found at timestep t={t}")
-                        print((x, x_label))
-                        self.plot_fn(vertices_list, template, template_2d)
-                        return max_t, num_already_visited, vertices_list, True
-                    seen.append((x, x_label))
-                    proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))
-                if last_time_plot is None or time.time() - last_time_plot >= self.plotting_time_interval:
-                    if last_time_plot is not None:
-                        self.plot_fn(vertices_list, template, template_2d)
-                    last_time_plot = time.time()
-                if self.update_progress_fn is not None:
-                    self.update_progress_fn(n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, max_t=max_t)
-                if self.show_progressbar:
-                    bar.update(value=bar.value + 1, n_workers=len(proc_ids), seen=len(seen), frontier=len(frontier), num_already_visited=num_already_visited, last_visited_state=str(x), max_t=max_t)
-                ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
-                if len(ready_ids) != 0:
-                    x_primes_list = ray.get(ready_ids)
-                    assert len(x_primes_list) != 0, "something is wrong with the calculation of the successor"
-                    for x_primes in x_primes_list:
-                        for x_prime, (parent, parent_lbl) in x_primes:
-                            x_prime_label = self.assign_lbl_fn(x_prime, parent, parent_lbl)
-                            if self.use_rounding:
-                                # x_prime_rounded = tuple(np.trunc(np.array(x_prime) * self.rounding_value) / self.rounding_value)  # todo should we round to prevent numerical errors?
-                                x_prime_rounded = self.round_tuple(x_prime, self.rounding_value)
-                                # x_prime_rounded should always be bigger than x_prime
-                                assert contained(x_prime, x_prime_rounded), f"{x_prime} not contained in {x_prime_rounded}"
-                                x_prime = x_prime_rounded
-                            frontier = [(u, (y, y_label)) for u, (y, y_label) in frontier if not (y_label == x_prime_label and contained(y, x_prime))]
-                            if not any([(y_label == x_prime_label and contained(x_prime, y)) for u, (y, y_label) in frontier]):
+                        if contained(s, x):
+                            to_remove.append((s, s_label))
+                for rem in to_remove:
+                    stats.num_already_visited += 1
+                    stats.seen.remove(rem)
+                if contained_flag:
+                    stats.num_already_visited += 1
+                    continue
+            stats.seen.append((x, x_label))
+            if self.show_progressbar:
+                bar_main.update(value=bar_main.value + 1, n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited,
+                                # elapsed_time=(datetime.datetime.now()-stats.start_time).total_seconds()/60.0,
+                                max_t=stats.max_t)
+            # if self.use_split:
+            #     if self.use_abstract_mapping:
+            #         pass
+            #         # splitted_elements = self.split_item_abstract_mapping(x, [m[0] for m in self.abstract_mapping])
+            #         # n_fragments = len(splitted_elements)
+            #         # if n_fragments > 1:
+            #         #     new_fragments = []
+            #         #     stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+            #         #     for i, splitted_polytope in enumerate(splitted_elements):
+            #         #         successor_info = Experiment.SuccessorInfo()
+            #         #         successor_info.successor = tuple(splitted_polytope)
+            #         #         successor_info.parent = x
+            #         #         successor_info.parent_lbl = x_label
+            #         #         successor_info.t = t
+            #         #         successor_info.action = f"split{i}"
+            #         #         new_fragments.append(successor_info)
+            #         #         # todo probably include also the probabilities associated with each fragment
+            #         #     stats.proc_ids.append(ray.put(new_fragments))
+            #         #     continue
+            #     else:  # split on the go
+            #         if len(list(self.graph.in_edges((x, x_label)))) == 0 or not "split" in self.graph.edges[list(self.graph.in_edges((x, x_label)))[0]].get("action"):
+            #             if self.can_be_splitted(template, x):
+            #                 splitted_elements = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
+            #                 n_fragments = len(splitted_elements)
+            #                 if n_fragments > 1:
+            #                     new_fragments = []
+            #                     stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+            #                     for i, (splitted_polytope, probs_range) in enumerate(splitted_elements):
+            #                         successor_info = Experiment.SuccessorInfo()
+            #                         successor_info.successor = tuple(splitted_polytope)
+            #                         successor_info.parent = x
+            #                         successor_info.parent_lbl = x_label
+            #                         successor_info.t = t
+            #                         successor_info.action = f"split{i}"
+            #                         new_fragments.append(successor_info)
+            #                     stats.proc_ids.append(ray.put(new_fragments))
+            #                     continue
 
-                                frontier.append(((t + 1), (x_prime, x_prime_label)))
-                                if self.graph is not None:
-                                    self.graph.add_edge((parent, parent_lbl), (x_prime, x_prime_label))
-                                # print(x_prime)
-                            else:
-                                num_already_visited += 1
-        self.plot_fn(vertices_list, template, template_2d)
-        return max_t, num_already_visited, vertices_list, False
+            if self.use_split_with_seen:  # split according to the seen elements
+                splitted_elements2 = self.split_item_abstract_mapping(x, [m[0] for m in stats.seen])  # splits according to the seen list
+                n_fragments = len(splitted_elements2)
+                if self.use_split_with_seen and n_fragments > 1:
+                    new_fragments = []
+                    stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+                    for i, splitted_polytope in enumerate(splitted_elements2):
+                        successor_info = Experiment.SuccessorInfo()
+                        successor_info.successor = tuple(splitted_polytope)
+                        successor_info.parent = x
+                        successor_info.parent_lbl = x_label
+                        successor_info.t = t
+                        successor_info.action = f"split{i}"
+                        new_fragments.append(successor_info)
+                    stats.proc_ids.append(ray.put(new_fragments))
+                    continue
+            # if nothing else applies, compute the successor
+            stats.proc_ids.append(self.post_fn_remote.remote(self, x, x_label, nn, self.output_flag, t, template))  # compute successors
+
+        if stats.last_time_plot is None or time.time() - stats.last_time_plot >= self.plotting_time_interval:
+            if stats.last_time_plot is not None:
+                self.plot_fn(stats.vertices_list, template, template_2d)
+            stats.last_time_plot = time.time()
+        if self.update_progress_fn is not None:
+            self.update_progress_fn(n_workers=len(stats.proc_ids), seen=len(stats.seen), frontier=len(stats.frontier), num_already_visited=stats.num_already_visited, max_t=stats.max_t)
+
+        # process the results (if any)
+        new_frontier = self.collect_results(stats, template)
+
+        # if self.avoid_irrelevants:
+        #     # update prism
+        #     self.update_prism_step(stats.frontier, new_frontier, stats.root, stats)
+        # else:
+        if self.use_bfs:
+            for element in new_frontier:
+                heapq.heappush(stats.frontier, element)
+        else:
+            stats.frontier.extend(new_frontier)
+        stats.new_frontier = []  # resets the new_frontier
+        if self.save_graph:
+            stats.last_time_save = datetime.datetime.now()
+            networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
+            pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
+
+    def collect_results(self, stats, template):
+        """collects the results from the various processes, creates a list with the newly added states"""
+        new_frontier = []
+        ready_ids, stats.proc_ids = ray.wait(stats.proc_ids, num_returns=len(stats.proc_ids), timeout=0.5)
+        if len(ready_ids) != 0:
+            results_list = ray.get(ready_ids)
+            assert len(results_list) != 0, "something is wrong with the calculation of the successor"
+            for results in results_list:
+                successor_info: Experiment.SuccessorInfo
+                for successor_info in results:  # these are the individual elements in the list which is returned by post_milp
+                    successor_info.successor_lbl = self.assign_lbl_fn(successor_info.successor, successor_info.parent, successor_info.parent_lbl)
+                    if self.use_rounding:
+                        x_prime_rounded = self.round_tuple(successor_info.successor, self.rounding_value)
+
+                        assert contained(successor_info.successor,
+                                         x_prime_rounded), f"{successor_info.successor} not contained in {x_prime_rounded}"  # x_prime_rounded should always be bigger than x_prime
+                        successor_info.successor = x_prime_rounded
+                    # stats.frontier = [(u, (y, y_label)) for u, (y, y_label) in stats.frontier if
+                    #                   not (y_label == successor_info.successor_lbl and contained(y, successor_info.successor))]  # remove from frontier if the successor is bigger
+                    is_splitted = "split" in successor_info.action
+                    # ---check splitted
+                    if is_splitted:
+                        if successor_info.get_parent_node() in stats.seen:
+                            stats.seen.remove(successor_info.get_parent_node())  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+                    else:
+                        stats.vertices_list[successor_info.t].append(successor_info.get_successor_node())
+                    unsafe = self.check_unsafe(template, successor_info.successor, self.unsafe_zone)
+                    self.graph.add_edge(successor_info.get_parent_node(), successor_info.get_successor_node(), action=successor_info.action, lb=successor_info.lb, ub=successor_info.ub)
+                    if not unsafe:
+                        new_frontier.append((successor_info.t, successor_info.get_successor_node()))  # put the item back into the queue
+                    else:  # unsafe
+                        self.graph.nodes[successor_info.get_successor_node()]["safe"] = False
+                        stats.seen.append(successor_info.get_successor_node())  # todo are we sure we want to keep track of unsafe elements?
+                        # print(x_prime)
+        return new_frontier
+
+    def split_item_abstract_mapping(self, current_polytope, abstract_mapping):
+        to_split = [current_polytope]
+        processed = []
+        relevant_polytopes = self.find_relevant_polytopes(current_polytope, abstract_mapping)
+
+        widgets = [progressbar.Variable('splitting_queue'), ", ", progressbar.Variable('frontier_size'), ", ", progressbar.widgets.Timer()]
+        # with progressbar.ProgressBar(prefix=f"Splitting states: ", widgets=widgets, is_terminal=True, term_width=200, redirect_stdout=True).start() as bar_split:
+        while len(to_split) > 0:
+            current_polytope = to_split.pop()
+            split_happened = False
+            for x in relevant_polytopes:
+                choose = self.check_intersection(x, current_polytope)
+                if choose:
+                    dimensions_volume = self.find_important_dimensions(current_polytope, x)
+                    dimensions_volume = [x for x in dimensions_volume if find_inverted_dimension(-self.analysis_template[x[0]], self.analysis_template) != -1]
+                    if len(dimensions_volume) > 0:
+                        assert len(dimensions_volume) > 0
+                        min_idx = dimensions_volume[np.argmin(np.array(dimensions_volume)[:, 1])][0]
+                        splits = split_polyhedron_milp(self.analysis_template, current_polytope, min_idx, x[min_idx])
+                        to_split.append(tuple(splits[0]))
+                        to_split.append(tuple(splits[1]))
+                        split_happened = True
+                        break
+                # bar_split.update(splitting_queue=len(to_split), frontier_size=len(processed))
+            if not split_happened:
+                processed.append(current_polytope)
+
+        # colours = []
+        # for x, ranges_probs in frontier:
+        #     colours.append(np.mean(ranges_probs[0]))
+        # print("", file=sys.stderr)  # new line
+        # fig = show_polygons(template, [x[0] for x in frontier] + to_split + processed, self.template_2d, colours + [0.5] * len(to_split) + [0.5] * len(processed))
+        return processed
+
+    def find_important_dimensions(self, poly1, poly2):
+        '''assuming check_contained(poly1,poly2) returns true, we are interested in the halfspaces that matter in terms of splitting of poly1
+        poly1 = root, poly2 = candidate
+        '''
+        # #Binary Space Partitioning
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', self.output_flag)
+        input1 = generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
+        relevant_directions = []
+        for j, dimension in enumerate(self.analysis_template):
+            # inverted_dimension = find_inverted_dimension(-dimension, self.analysis_template)
+            # if inverted_dimension == -1:
+            #     continue
+            multiplication = 0
+            for i in range(self.env_input_size):
+                multiplication += dimension[i] * input1[i]
+            previous_constraint = gurobi_model.getConstrByName("check_contained_constraint")
+            if previous_constraint is not None:
+                gurobi_model.remove(previous_constraint)
+                gurobi_model.update()
+            gurobi_model.addConstr(multiplication <= poly2[j], name=f"check_contained_constraint")
+            gurobi_model.update()
+            x_results = optimise(self.analysis_template, gurobi_model, input1)
+            if np.allclose(np.array(poly1), x_results) is False:
+                samples = polytope.sample(1000, self.analysis_template, x_results)
+                from scipy.spatial import ConvexHull
+                hull = ConvexHull(samples)
+                volume = hull.volume  # estimated volume from points helps prioritise halfspaces
+                relevant_directions.append((j, volume))
+        return relevant_directions
+
+    def find_relevant_polytopes(self, current_polytope, abstract_mapping):
+        '''finds which elements of abstract_mapping are relevant to current_polytope'''
+        new_frontier = []
+        for x in abstract_mapping:
+            if x == current_polytope:  # ignore itself
+                continue
+            choose = self.check_intersection(x, current_polytope)
+            if choose:
+                new_frontier.append(x)
+        frontier = new_frontier  # shrink the selection of polytopes to only the ones which are relevant
+        return frontier
+
+    def check_intersection(self, poly1, poly2, eps=1e-5):
+        '''checks if a polytope is inside another (even partially)'''
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', self.output_flag)
+        input1 = generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
+        generate_region_constraints(gurobi_model, self.analysis_template, input1, poly2, self.env_input_size, eps=eps)  # use epsilon to prevent single points
+        x_results = optimise(self.analysis_template, gurobi_model, input1)
+        if x_results is None:
+            # not contained
+            return False
+        else:
+            return True
 
     @staticmethod
     def round_tuple(x, rounding_value):
@@ -236,103 +452,21 @@ class Experiment():
     def generate_root_polytope(self):
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', self.output_flag)
-        input = Experiment.generate_input_region(gurobi_model, self.input_template, self.input_boundaries, self.env_input_size)
-        x_results = self.optimise(self.analysis_template, gurobi_model, input)
+        input = generate_input_region(gurobi_model, self.input_template, self.input_boundaries, self.env_input_size)
+        x_results = optimise(self.analysis_template, gurobi_model, input)
         if x_results is None:
             print("Model unsatisfiable")
             return None
         root = tuple(x_results)
         return root
 
-    @staticmethod
-    def generate_input_region(gurobi_model, templates, boundaries, env_input_size):
-        input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
-        Experiment.generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
-        return input
-
-    # @staticmethod
-    # def generate_input_region_pyo(model: pyo.ConcreteModel, templates, boundaries, env_input_size, name="input"):
-    #     input = pyo.Var(range(env_input_size), domain=pyo.Reals, name=name)
-    #     model.add_component(name, input)
-    #     Experiment.generate_region_constraints_pyo(model, templates, model.input, boundaries, env_input_size, name=f"{name}_constraints")
-    #     return model.input
-
-    @staticmethod
-    def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False, eps=0):
-        for j, template in enumerate(templates):
-            gurobi_model.update()
-            multiplication = 0
-            for i in range(env_input_size):
-                multiplication += template[i] * input[i]
-            if not invert:
-                gurobi_model.addConstr(multiplication <= boundaries[j] - eps, name=f"input_constr_{j}")
-            else:
-                gurobi_model.addConstr(multiplication >= boundaries[j] + eps, name=f"input_constr_{j}")
-
-    # @staticmethod
-    # def generate_region_constraints_pyo(model: pyo.ConcreteModel, templates, input, boundaries, env_input_size, invert=False, name="region_constraints"):
-    #     region_constraints = pyo.ConstraintList()
-    #     model.add_component(name, region_constraints)
-    #     for j, template in enumerate(templates):
-    #         multiplication = 0
-    #         for i in range(env_input_size):
-    #             multiplication += template[i] * input[i]
-    #         if not invert:
-    #             # gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-    #             region_constraints.add(multiplication <= boundaries[j])
-    #         else:
-    #             # gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
-    #             region_constraints.add(multiplication >= boundaries[j])
-    @staticmethod
-    def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
-        results = []
-        for template in templates:
-            gurobi_model.update()
-            gurobi_model.setObjective(sum((template[i] * x_prime[i]) for i in range(len(template))), grb.GRB.MAXIMIZE)
-            gurobi_model.optimize()
-            # print_model(gurobi_model)
-            if gurobi_model.status == 5:
-                result = float("inf")
-                results.append(result)
-                continue
-            if gurobi_model.status == 4 or gurobi_model.status == 3:
-                return None
-            assert gurobi_model.status == 2, f"gurobi_model.status=={gurobi_model.status}"
-            # if gurobi_model.status != 2:
-            #     return None
-            result = gurobi_model.ObjVal
-            results.append(result)
-        return np.array(results)
-
-    # def optimise_pyo(self, templates: np.ndarray, model: pyo.ConcreteModel, x_prime):
-    #     results = []
-    #     for template in templates:
-    #         model.del_component(model.obj)
-    #         model.obj = pyo.Objective(expr=sum((template[i] * x_prime[i]) for i in range(self.env_input_size)), sense=pyo.maximize)
-    #         result = pyo.SolverFactory('glpk').solve(model)
-    #         # assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal), f"LP wasn't optimally solved {x}"
-    #         # print_model(gurobi_model)
-    #         if (result.solver.status == SolverStatus.ok):
-    #             if (result.solver.termination_condition == TerminationCondition.optimal):
-    #                 result = pyo.value(model.obj)
-    #                 results.append(result)
-    #             elif (result.solver.termination_condition == TerminationCondition.unbounded):
-    #                 result = float("inf")
-    #                 results.append(result)
-    #                 continue
-    #             else:
-    #                 return None
-    #         else:
-    #             return None
-    #     return np.array(results)
-
     def check_unsafe(self, template, bnds, x_label):
         for A, b in self.unsafe_zone:
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = gurobi_model.addMVar(shape=(self.env_input_size,), lb=float("-inf"), name="input")
-            Experiment.generate_region_constraints(gurobi_model, template, input, bnds, self.env_input_size)
-            Experiment.generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
+            generate_region_constraints(gurobi_model, template, input, bnds, self.env_input_size)
+            generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
             if gurobi_model.status == 2:
@@ -384,7 +518,7 @@ class Experiment():
         return np.stack(template)
 
     def h_repr_to_plot(self, gurobi_model, template, x_prime):
-        x_prime_results = self.optimise(template, gurobi_model, x_prime)  # h representation
+        x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
         return x_prime_results is not None, x_prime_results
 
     @staticmethod

@@ -3,7 +3,7 @@ import numpy as np
 import ray
 import polyhedra.runnable.templates.polytope as polytope
 from mosaic.utils import PolygonSort, compute_trace_polygons
-from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region, optimise
 from polyhedra.plot_utils import windowed_projection, show_polygons, project_to_dimension
 from polyhedra.runnable.templates.dikin_walk_simplified import plot_points_and_prediction, plot_list
 from symbolic import unroll_methods
@@ -92,22 +92,22 @@ def split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
     split_template = template[chosen_dimension]
-    input = Experiment.generate_input_region(gurobi_model, template, boundaries, len(split_template))
+    input = generate_input_region(gurobi_model, template, boundaries, len(split_template))
     gurobi_model.update()
     gurobi_model.optimize()
     assert gurobi_model.status == 2, "LP wasn't optimally solved"
     gurobi_model.addConstr(sum((split_template[i] * input[i]) for i in range(len(split_template))) >= decision_point)
-    split1 = Experiment.optimise(template, gurobi_model, input)
+    split1 = optimise(template, gurobi_model, input)
 
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
     split_template = template[chosen_dimension]
-    input = Experiment.generate_input_region(gurobi_model, template, boundaries, len(split_template))
+    input = generate_input_region(gurobi_model, template, boundaries, len(split_template))
     gurobi_model.update()
     gurobi_model.optimize()
     assert gurobi_model.status == 2, "LP wasn't optimally solved"
     gurobi_model.addConstr(sum((split_template[i] * input[i]) for i in range(len(split_template))) <= decision_point)
-    split2 = Experiment.optimise(template, gurobi_model, input)
+    split2 = optimise(template, gurobi_model, input)
     return split1, split2
 
 
@@ -117,7 +117,7 @@ def find_inverted_dimension(inverted_value, template):
         if np.array_equal(inverted_value, val):
             inverted_dimension = i
             break
-    assert inverted_dimension != -1, "Could not find inverted dimension"
+    # assert inverted_dimension != -1, "Could not find inverted dimension"
     return inverted_dimension
 
 

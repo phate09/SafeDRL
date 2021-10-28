@@ -31,11 +31,7 @@ class ProbabilisticExperiment(Experiment):
         super().__init__(env_input_size)
         self.minimum_length = 0.1
         self.use_entropy_split = True
-        self.use_split = True  # enable/disable splitting
-        self.load_graph = False
-        self.use_abstract_mapping = False  # decide whether to use the precomputed abstract mapping or compute it on the fly
-        self.use_contained = True  # enable/disable containment check
-        self.use_split_with_seen = False  # enable/disable splitting polytopes when they are partially contained within previously visited abstract states
+
         self.max_probability_split = 0.33
         self.save_graph = True
         self.rgb_plot = False  # enable/disable plotting probabilities as rgb (for 3 action agent)
@@ -79,28 +75,6 @@ class ProbabilisticExperiment(Experiment):
 
     def load_abstract_mapping(self):
         self.abstract_mapping = pickle.load(open(self.abstract_mapping_path, "rb"))
-
-    class LoopStats():
-        """Class that contains some information to share inbetween loops"""
-
-        def __init__(self):
-            self.seen = []
-            self.frontier = []  # contains the elements to explore
-            self.to_replace_split = []  # elements to replace/split because they are too big
-            self.vertices_list = defaultdict(list)  # contains point at every timesteps, this is for plotting purposes only
-            self.max_t = 0
-            self.num_already_visited = 0
-            self.num_irrelevant = 0
-            self.proc_ids = []
-            self.last_time_plot = None
-            self.exit_flag = False
-            self.is_agent_unsafe = False
-            self.discarded = []  # list of elements after the maximum horizon, used to restart the computation (if we wanted to expand the horizon)
-            self.root = None
-            self.elapsed_time = 0
-            self.start_time = None
-            self.last_time = None
-            self.end_time = None
 
     def main_loop(self, nn, template, template_2d):
         self.load_abstract_mapping()  # loads the mapping
@@ -174,7 +148,7 @@ class ProbabilisticExperiment(Experiment):
     def post_milp(self, x, x_label, nn, output_flag, t, template):
         raise NotImplementedError()  # need to implement this method, remember to put @ray.remote as an attribute
 
-    def inner_loop_step(self, stats: LoopStats, template_2d, template, nn, bar_main):
+    def inner_loop_step(self, stats: Experiment.LoopStats, template_2d, template, nn, bar_main):
         # fills up the worker threads
         # todo split intervals according to the seen list, similar to the abstract mapping
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
@@ -441,18 +415,7 @@ class ProbabilisticExperiment(Experiment):
                 relevant_directions.append((j, volume))
         return relevant_directions
 
-    def check_intersection(self, poly1, poly2, eps=1e-5):
-        '''checks if a polytope is inside another (even partially)'''
-        gurobi_model = grb.Model()
-        gurobi_model.setParam('OutputFlag', self.output_flag)
-        input1 = Experiment.generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
-        Experiment.generate_region_constraints(gurobi_model, self.analysis_template, input1, poly2, self.env_input_size, eps=eps)  # use epsilon to prevent single points
-        x_results = self.optimise(self.analysis_template, gurobi_model, input1)
-        if x_results is None:
-            # not contained
-            return False
-        else:
-            return True
+
 
     def check_split(self, t, x, x_label, nn, bar_main, stats, template, template_2d) -> List[Tuple[Any, Any]]:
         # -------splitting
@@ -505,6 +468,8 @@ class ProbabilisticExperiment(Experiment):
         dimension_lengths = []
         for i, dimension in enumerate(template):
             inverted_dimension = find_inverted_dimension(-dimension, template)
+            if inverted_dimension == -1:
+                continue
             dimension_length = x[i] + x[inverted_dimension]
             dimension_lengths.append(dimension_length)
             if dimension_length > self.minimum_length:

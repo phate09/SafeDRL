@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 
-import argparse
-from concurrent import futures
-
-import ray
-import sklearn
-import torch
-import numpy as np
-import pypoman
-from ray import remote
-from scipy.optimize import linprog, minimize, minimize_scalar
-from matplotlib import pyplot as plt
-import scipy
-import scipy.stats
-from six.moves import range
 import plotly.graph_objects as go
-from agents.ppo.train_PPO_car import get_PPO_trainer
-from agents.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.experiments_nn_analysis import Experiment
+import pypoman
+import sklearn
+from ray import remote
+from scipy.optimize import linprog
+from six.moves import range
 from sklearn.linear_model import LogisticRegression
 
 from polyhedra.partitioning import project_to_dimension
@@ -205,61 +193,6 @@ def collect_chain_dikin_walk_simplified(count, burn, thin, *args, **kwargs):
 #     x = x0
 #     h_x = hessian(a, b, x)
 
-import polyhedra.runnable.templates.polytope as polytope
-
-def main():
-    # run_sampling_polyhedra()
-    template = Experiment.octagon(2)
-    boundaries = np.array((1, 1, 1, 1, 1, 1, 1, 1))
-
-    # Polytope parameters
-    a = template
-    b = boundaries
-
-    # chains = sample_polyhedron(a, b)
-    # chains = dist_in_hull(a,b,1000)
-    chains = polytope.sample(n_points=10000, A1=a, b1=b)
-    fig = go.Figure()
-    # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-    trace1 = go.Scatter(x=chains[:, 0], y=chains[:, 1], mode='markers')
-    fig.add_trace(trace1)
-    fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
-    fig.show()
-    fig.write_html("temp.html")
-    print("done")
-
-
-def get_nn():
-    config, trainer = get_PPO_trainer(use_gpu=0)
-    trainer.restore("/home/edoardo/ray_results/PPO_StoppingCar_2020-12-30_17-06-3265yz3d63/checkpoint_65/checkpoint-65")
-    policy = trainer.get_policy()
-    sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-    return sequential_nn
-
-
-def get_template():
-    return Experiment.octagon(2)
-
-
-def run_sampling_polyhedra():
-    ray.init(ignore_reinit_error=True)
-    nn = get_nn()
-    template = get_template()
-    boundaries = np.array((5, -5, 5, 5, 5, 5, 5, 5), dtype=float)
-    samples = sample_polyhedron(template, boundaries, 10000)
-    samples_ontput = torch.softmax(nn(torch.tensor(samples).float()), 1)
-
-    fig = go.Figure()
-    # trace1 = go.Scatter(x=list(range(len(position_list))), y=position_list, mode='markers', )
-    predicted_label = samples_ontput.detach().numpy()[:, 0]
-    trace1 = go.Scatter(x=samples[:, 0], y=samples[:, 1], marker=dict(color=predicted_label, colorscale='bluered', cmax=1, cmin=0), mode='markers')
-    fig.add_trace(trace1)
-    fig.update_layout(xaxis_title="delta v", yaxis_title="delta x")
-    fig.show()
-    points = samples
-    chosen_dimension = find_dimension_split(points, predicted_label, template)
-    print("done")
-
 
 def plot_points_and_prediction(points, prediction: np.ndarray):
     fig = go.Figure()
@@ -444,6 +377,3 @@ def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
     return chains
 
 
-
-if __name__ == '__main__':
-    main()

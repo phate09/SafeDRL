@@ -1,3 +1,4 @@
+import os
 from typing import List, Tuple
 
 import gurobi as grb
@@ -10,6 +11,7 @@ from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region
 
 
 class StoppingCarExperiment(Experiment):
@@ -47,13 +49,13 @@ class StoppingCarExperiment(Experiment):
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10" #unsafe
 
     @ray.remote
-    def post_milp(self, x, nn, output_flag, t, template):
+    def post_milp(self, x, x_label, nn, output_flag, t, template):
         """milp method"""
         post = []
         for chosen_action in range(2):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             # gurobi_model.addConstr(input[0] >= 0, name=f"input_base_constr1")
             # gurobi_model.addConstr(input[1] >= 0, name=f"input_base_constr2")
             # gurobi_model.addConstr(input[2] >= 20, name=f"input_base_constr3")
@@ -73,7 +75,16 @@ class StoppingCarExperiment(Experiment):
                 gurobi_model.optimize()
                 found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)
                 if found_successor:
-                    post.append(tuple(x_prime_results))
+                    # post.append((tuple(x_prime_results),(x, x_label)))
+                    successor_info = Experiment.SuccessorInfo()
+                    successor_info.successor = tuple(x_prime_results)
+                    successor_info.parent = x
+                    successor_info.parent_lbl = x_label
+                    successor_info.t = t + 1
+                    successor_info.action = "policy"  # chosen_action
+                    # successor_info.lb = ranges_probs[chosen_action][0]
+                    # successor_info.ub = ranges_probs[chosen_action][1]
+                    post.append(successor_info)
         return post
 
     @ray.remote
@@ -285,7 +296,7 @@ class StoppingCarExperiment(Experiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234)
+        config = get_PPO_config(1234, use_gpu=0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()
@@ -412,19 +423,20 @@ class StoppingCarExperiment2(StoppingCarExperiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False, local_mode=False)
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    ray.init(log_to_driver=False, local_mode=True)
     experiment = StoppingCarExperiment()
     experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_stopping_car/test"
-    experiment.plotting_time_interval = 60
+    # experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
-    experiment.show_progress_plot = True
+    # experiment.show_progress_plot = True
     x_lead = Experiment.e(experiment.env_input_size, 0)
     x_ego = Experiment.e(experiment.env_input_size, 1)
     v_ego = Experiment.e(experiment.env_input_size, 2)
-    template = np.array([-(x_lead - x_ego), v_ego, -v_ego])
+    template = np.array([-(x_lead - x_ego), v_ego, -v_ego]) #(x_lead - x_ego),
     experiment.analysis_template = template  # standard
     experiment.input_template = Experiment.box(3)
-    # input_boundaries = [40, -30, 10, -0, 36, -28]
-    # experiment.input_boundaries = input_boundaries
+    input_boundaries = [40, -30, 10, -0, 36, -28]
+    experiment.input_boundaries = input_boundaries
     experiment.time_horizon = 150
     experiment.run_experiment()
