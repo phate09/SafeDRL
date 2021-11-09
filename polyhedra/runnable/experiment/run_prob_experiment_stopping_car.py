@@ -1,3 +1,4 @@
+from numpy.random import choice
 from typing import List, Tuple
 
 import gurobi as grb
@@ -5,12 +6,17 @@ import numpy as np
 import ray
 import torch
 from ray.rllib.agents.ppo import ppo
+from sklearn.model_selection import ParameterGrid
 
 from agents.ppo.train_PPO_car import get_PPO_trainer
 from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
+from environment.stopping_car import StoppingCar
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region, optimise
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
+from polyhedra.runnable.templates import polytope
+from utility.standard_progressbar import StandardProgressBar
 
 
 class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
@@ -54,7 +60,6 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10" #unsafe
 
-
     @ray.remote
     def post_milp(self, x, x_label, nn, output_flag, t, template) -> List[Experiment.SuccessorInfo]:
         """milp method"""
@@ -76,7 +81,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             successor_info.parent = x
             successor_info.parent_lbl = x_label
             successor_info.t = t + 1
-            successor_info.action = "policy"#chosen_action
+            successor_info.action = "policy"  # chosen_action
             successor_info.lb = ranges_probs[chosen_action][0]
             successor_info.ub = ranges_probs[chosen_action][1]
             post.append(successor_info)
@@ -130,10 +135,10 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         gurobi_model.addConstr(v_ego_prime_temp2 == grb.min_(max_speed, v_ego_prime_temp1), name=f"v_constr")
         v_ego_prime = grb.MVar(v_ego_prime_temp2)  # convert from Var to MVar
         v_lead_prime = v_lead
-        delta_prime_v = v_lead_prime-v_ego_prime
+        delta_prime_v = v_lead_prime - v_ego_prime
         delta_prime_v_temp = gurobi_model.addMVar(shape=(1,), lb=float("-inf"), name=f"delta_prime_v_temp")
         gurobi_model.addConstr(delta_prime_v_temp == delta_prime_v, name=f"delta_prime_v_constr")
-        delta_x_prime = delta_x+delta_prime_v_temp*dt
+        delta_x_prime = delta_x + delta_prime_v_temp * dt
         # x_lead_prime = x_lead + v_lead_prime * dt
         # x_ego_prime = x_ego + v_ego_prime * dt
         gurobi_model.addConstr(z[0] == delta_x_prime, name=f"dyna_constr_1")
@@ -163,7 +168,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234,0)
+        config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()
@@ -187,6 +192,80 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         pre_nn = torch.nn.Sequential(*layers)
         return pre_nn
 
+    def generate_spaced_samples(self, speed, distance, n_samples=500):
+        precision = 0.1
+        rounding = 1
+        delta_speed = speed[1] - speed[0]
+        delta_distance = distance[1] - distance[0]
+        volume = delta_distance * delta_speed
+        param_grid = {'speed': list(np.arange(speed[0], speed[1], delta_speed / np.sqrt(n_samples)).round(rounding)),
+                      'distance': list(np.arange(distance[0], distance[1], delta_distance / np.sqrt(n_samples)).round(rounding))}
+        # param_grid = {'param1': list(np.arange(0.33, 0.35, precision).round(rounding)), 'param2': list(np.arange(-0.19, -0.15, precision).round(rounding))}
+        grid = ParameterGrid(param_grid)
+        points = []
+        for params in grid:
+            state = np.array((params['speed'], params['distance']))
+            points.append(state)
+        # x = np.array([[25, 45], [18, 50.5]])
+        x = np.stack(points)
+        return x
+
+    def show_sampleplot2d(self):
+        '''Generates a plot from the probability of encountering an unsafe state from a sample of points'''
+        root = self.generate_root_polytope()
+
+        # convert to intervals
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', self.output_flag)
+        input = generate_input_region(gurobi_model, self.input_template, self.input_boundaries, self.env_input_size)
+        x_results = optimise(self.input_template, gurobi_model, input)
+        if x_results is None:
+            print("Model unsatisfiable")
+            return None
+        root2d = tuple(x_results)
+
+        # samples = polytope.sample(1000, self.analysis_template, np.array(root))
+        even_samples = self.generate_spaced_samples((-root2d[3], root2d[2]), (-root2d[1], root2d[0]))
+        samples = list(even_samples)
+        nn = self.get_nn_fn()
+        t_max = 200
+        n_trajectories = 500
+        probabilities = []
+        proc_ids = []
+        with StandardProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(samples)) as bar:
+            while len(samples) != 0 or len(proc_ids) != 0:
+                while len(proc_ids) < self.n_workers and len(samples) != 0:
+                    sample = samples.pop(0)-np.array([28,0])
+                    proc_ids.append(sample_trajectory.remote(sample, nn, t_max, n_trajectories))
+                    bar.update(bar.value + 1)
+                ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
+                if len(ready_ids) != 0:
+                    results_list = ray.get(ready_ids)
+                    for result in results_list:
+                        n_failures = result
+                        probabilities.append(n_failures / n_trajectories)
+                        # bar.update(len(probabilities))
+        print(probabilities)
+
+
+@ray.remote
+def sample_trajectory(sample, nn, t_max, n_trajectories):
+    n_failures = 0
+    for n_trajectory in range(n_trajectories):
+        state = sample
+        for t in range(t_max):
+            action_score = torch.softmax(nn(torch.tensor(state, dtype=torch.float32)), 0)
+            n_actions = len(action_score)
+            action = np.random.choice(n_actions, p=action_score.detach().numpy())
+            # action = np.random.choice(n_actions)  # , p=action_score.detach().numpy())
+            # action = 1
+            successor, cost, done, _ = StoppingCar.compute_successor(state, action)
+            if done:
+                n_failures += 1
+                break
+            state = successor
+    return n_failures
+
 
 if __name__ == '__main__':
     ray.init(log_to_driver=False, local_mode=False)
@@ -201,4 +280,5 @@ if __name__ == '__main__':
     # experiment.max_probability_split = 0.5
     experiment.time_horizon = 7
     # experiment.load_graph = True
+    experiment.show_sampleplot2d()
     experiment.run_experiment()

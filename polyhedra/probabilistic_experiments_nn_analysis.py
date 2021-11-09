@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 from py4j.java_gateway import JavaGateway
 import pickle
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region, optimise, generate_region_constraints
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
@@ -507,8 +508,8 @@ class ProbabilisticExperiment(Experiment):
     def generate_root_polytope(self):
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', self.output_flag)
-        input = Experiment.generate_input_region(gurobi_model, self.input_template, self.input_boundaries, self.env_input_size)
-        x_results = self.optimise(self.analysis_template, gurobi_model, input)
+        input = generate_input_region(gurobi_model, self.input_template, self.input_boundaries, self.env_input_size)
+        x_results = optimise(self.analysis_template, gurobi_model, input)
         if x_results is None:
             print("Model unsatisfiable")
             return None
@@ -518,20 +519,8 @@ class ProbabilisticExperiment(Experiment):
     @staticmethod
     def generate_input_region(gurobi_model, templates, boundaries, env_input_size):
         input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
-        Experiment.generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
+        generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
         return input
-
-    @staticmethod
-    def generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size, invert=False):
-        for j, template in enumerate(templates):
-            gurobi_model.update()
-            multiplication = 0
-            for i in range(env_input_size):
-                multiplication += template[i] * input[i]
-            if not invert:
-                gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
-            else:
-                gurobi_model.addConstr(multiplication >= boundaries[j], name=f"input_constr_{j}")
 
     def get_pre_nn(self):
         """Returns the transformation operation to transform from input to observation"""
