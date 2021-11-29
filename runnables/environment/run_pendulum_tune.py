@@ -39,10 +39,10 @@ def trainable(config):
 
 if __name__ == '__main__':
     space = {"x": tune.uniform(0.31, 0.4), "y": tune.uniform(-1, -0.88), "n_trials": 100, "horizon": 4}
-    analysis = tune.run(trainable, num_samples=100,resources_per_trial={'gpu': 1},config=space)
+    analysis = tune.run(trainable, num_samples=100, resources_per_trial={'gpu': 1}, config=space)
     # Get the best hyperparameters
-    results = [(trial.metric_analysis["score"]["max"],trial.config) for trial in analysis.trials]
-    max_hyperparameters = max(results,key=lambda x:x[0])
-    min_hyperparameters = min(results,key=lambda x:x[0])
+    results = [(trial.metric_analysis["score"]["max"], trial.config) for trial in analysis.trials]
+    max_hyperparameters = max(results, key=lambda x: x[0])
+    min_hyperparameters = min(results, key=lambda x: x[0])
     print(f"max hyperparameters {max_hyperparameters}")
     print(f"min hyperparameters {min_hyperparameters}")

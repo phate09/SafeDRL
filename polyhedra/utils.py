@@ -79,7 +79,8 @@ def length(a: np.ndarray):
     """Calculates the length of a vector"""
     return np.sqrt(np.einsum('ij,ij->i', a, a))
 
-def support_function(s:np.ndarray,d:np.ndarray):
+
+def support_function(s: np.ndarray, d: np.ndarray):
     """Given a set of points s, calculate the furthest point of the set along direction d"""
 
     return np.max(np.einsum('ij,ij->i', s, d) / np.sqrt(np.einsum('ij,ij->i', d, d)))

@@ -294,6 +294,7 @@ class MyCallback(Callback):
         # trainer.workers.foreach_worker(
         #     lambda ev: ev.foreach_env(
         #         lambda env: env.set_phase(phase)))
+
     def on_checkpoint(self, iteration: int, trials,
                       trial, checkpoint, **info):
         experiment = StoppingCarContinuousExperiment()
@@ -327,11 +328,13 @@ class MyCallback(Callback):
             nn = sequential_nn
             # ray.shutdown()
             return nn
+
         experiment.get_nn_fn = get_nn
         elapsed_seconds, safe, max_t = experiment.run_experiment()
         if safe:
             trial.set_status(Trial.TERMINATED)
         return safe
+
 
 if __name__ == "__main__":
     seed = 1234

@@ -106,8 +106,5 @@ def softmax_interval_test2():
     print(results)
 
 
-
-
-
 if __name__ == '__main__':
     range1()

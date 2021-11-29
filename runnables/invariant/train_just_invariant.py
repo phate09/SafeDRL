@@ -35,8 +35,9 @@ os.mkdir(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
-agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth",invariant=False)
+agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth", invariant=False)
 agent2 = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+
 
 # agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
 # agent.qnetwork_target.load_state_dict(torch.load('model.pth'))
@@ -80,7 +81,6 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             else:
                 for state_np, action, next_state_np in temp_dataset:
                     invariant_dataset.append((state_np.astype(dtype=np.float32), action, next_state_np.astype(dtype=np.float32), 1))
-
 
         agent2.ioptimizer.zero_grad()  # resets the gradient
         losses = []

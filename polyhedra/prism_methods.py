@@ -91,6 +91,5 @@ def recreate_prism_PPO(graph, root, max_t: int = None):
                     pass
                 bar.update(bar.value + 1)  # else:  # print(f"Non descending item found")  # to_remove.append(parent_id)  # pass
 
-
     # mdp.exportToDotFile("imdppy.dot")
     return gateway, mc, mdp, mapping

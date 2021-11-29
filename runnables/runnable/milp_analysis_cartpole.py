@@ -307,7 +307,6 @@ def contained(x: tuple, y: tuple):
     return True
 
 
-
 def generate_angle_guard(gurobi_model: grb.Model, input, theta_interval, theta_dot_interval):
     eps = 1e-6
     gurobi_model.addConstr(input[2] >= theta_interval[0].inf, name=f"theta_guard1")

@@ -23,6 +23,7 @@ def generate_input_region(gurobi_model, templates, boundaries):
         gurobi_model.addConstr(multiplication <= boundaries[j], name=f"input_constr_{j}")
     return input
 
+
 def generate_guard(gurobi_model: grb.Model, input, case=0):
     eps = 1e-6
     if case == 0:  # v <= 0 && p <= 0

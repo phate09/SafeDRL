@@ -55,7 +55,6 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"  # safe
         # self.nn_path = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_10/checkpoint-10" #unsafe
 
-
     @ray.remote
     def post_milp(self, x, x_label, nn, output_flag, t, template) -> List[Experiment.SuccessorInfo]:
         """milp method"""
@@ -177,10 +176,10 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         gurobi_model.addConstr(v_ego_prime_temp2 == grb.min_(max_speed, v_ego_prime_temp1), name=f"v_constr")
         v_ego_prime = grb.MVar(v_ego_prime_temp2)  # convert from Var to MVar
         v_lead_prime = v_lead
-        delta_prime_v = v_lead_prime-v_ego_prime
+        delta_prime_v = v_lead_prime - v_ego_prime
         delta_prime_v_temp = gurobi_model.addMVar(shape=(1,), lb=float("-inf"), name=f"delta_prime_v_temp")
         gurobi_model.addConstr(delta_prime_v_temp == delta_prime_v, name=f"delta_prime_v_constr")
-        delta_x_prime = delta_x+delta_prime_v_temp*dt
+        delta_x_prime = delta_x + delta_prime_v_temp * dt
         # x_lead_prime = x_lead + v_lead_prime * dt
         # x_ego_prime = x_ego + v_ego_prime * dt
         gurobi_model.addConstr(z[0] == delta_x_prime, name=f"dyna_constr_1")
@@ -210,7 +209,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
-        config = get_PPO_config(1234,0)
+        config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
         policy = trainer.get_policy()

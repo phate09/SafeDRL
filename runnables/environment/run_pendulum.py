@@ -6,7 +6,7 @@ import progressbar
 from environment.pendulum_abstract import PendulumEnv
 from training.dqn.dqn_agent import Agent
 
-#array [angle,speed]
+# array [angle,speed]
 env = PendulumEnv()
 # env.state = np.array([-0.57,0.21]) #guaranteed fail
 # env.state = np.array([-0.57,0.21]) #guaranteed fail
@@ -17,7 +17,7 @@ env = PendulumEnv()
 # start_state = np.array([-0.12, 0.33]) #100% success
 # start_state = np.array([0.35,-0.83]) # should be 83% but appears 100%
 # start_state = np.array([-0.48, -0.44])  #100% fail
-start_state = np.array([0.37,0.43])  #min 33% max 100%
+start_state = np.array([0.37, 0.43])  # min 33% max 100%
 
 state_size = 2
 agent = Agent(state_size, 2)
@@ -44,6 +44,6 @@ with progressbar.ProgressBar(max_value=n_trials, widgets=widgets) as bar:
                 n_fail += 1
                 # print(f"exiting at timestep {i}")
                 break
-        bar.update(trial, fails=n_fail, trials=trial+1)
+        bar.update(trial, fails=n_fail, trials=trial + 1)
     print("finished")
 print(f"# failures: {n_fail}/{n_trials} = {n_fail / n_trials:.0%}")

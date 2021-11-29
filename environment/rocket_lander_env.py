@@ -94,10 +94,10 @@ class ContactDetector(contactListener):
 
     def BeginContact(self, contact):
         if (
-            self.env.water in [contact.fixtureA.body, contact.fixtureB.body]
-            or self.env.lander in [contact.fixtureA.body, contact.fixtureB.body]
-            or self.env.containers[0] in [contact.fixtureA.body, contact.fixtureB.body]
-            or self.env.containers[1] in [contact.fixtureA.body, contact.fixtureB.body]
+                self.env.water in [contact.fixtureA.body, contact.fixtureB.body]
+                or self.env.lander in [contact.fixtureA.body, contact.fixtureB.body]
+                or self.env.containers[0] in [contact.fixtureA.body, contact.fixtureB.body]
+                or self.env.containers[1] in [contact.fixtureA.body, contact.fixtureB.body]
         ):
             self.env.game_over = True
         else:
@@ -340,7 +340,7 @@ class RocketLander(gym.Env):
         self.lander.angularVelocity = (1 + INITIAL_RANDOM) * np.random.uniform(-1, 1)
 
         self.drawlist = (
-            self.legs + [self.water] + [self.ship] + self.containers + [self.lander]
+                self.legs + [self.water] + [self.ship] + self.containers + [self.lander]
         )
 
         if CONTINUOUS:
@@ -433,12 +433,12 @@ class RocketLander(gym.Env):
         speed = np.linalg.norm(vel_l)
         groundcontact = self.legs[0].ground_contact or self.legs[1].ground_contact
         brokenleg = (
-            self.legs[0].joint.angle < 0 or self.legs[1].joint.angle > -0
-        ) and groundcontact
+                            self.legs[0].joint.angle < 0 or self.legs[1].joint.angle > -0
+                    ) and groundcontact
         outside = abs(pos.x - W / 2) > W / 2 or pos.y > H
         fuelcost = 0.1 * (0.5 * self.power + abs(self.force_dir)) / FPS
         landed = (
-            self.legs[0].ground_contact and self.legs[1].ground_contact and speed < 0.1
+                self.legs[0].ground_contact and self.legs[1].ground_contact and speed < 0.1
         )
         done = False
 
@@ -492,7 +492,7 @@ class RocketLander(gym.Env):
             self.sky_color = rgb(126, 150, 233)
             sky.set_color(*self.sky_color)
             self.sky_color_half_transparent = (
-                np.array((np.array(self.sky_color) + rgb(255, 255, 255))) / 2
+                    np.array((np.array(self.sky_color) + rgb(255, 255, 255))) / 2
             )
             self.viewer.add_geom(sky)
 
@@ -583,9 +583,9 @@ class RocketLander(gym.Env):
             self.viewer.draw_circle(
                 radius=0.05 * s[1] + s[2],
                 color=self.sky_color
-                + (1 - (2 * s[1] / s[0] - 1) ** 2)
-                / 3
-                * (self.sky_color_half_transparent - self.sky_color),
+                      + (1 - (2 * s[1] / s[0] - 1) ** 2)
+                      / 3
+                      * (self.sky_color_half_transparent - self.sky_color),
             ).add_attr(t)
 
         self.viewer.add_onetime(self.fire)

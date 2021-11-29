@@ -31,6 +31,7 @@ class TestDomainExplorer(TestCase):
         output = DomainExplorer.approximate_to_single_datapoint(normed_domain, precisions)
 
     def test_precision3(self):
-        normed_domain = torch.tensor([[1, 1 - self.explorer.precision_constraints[0]], [1, 1 - self.explorer.precision_constraints[1]], [1, 1 - self.explorer.precision_constraints[2]], [1, 1 - self.explorer.precision_constraints[3]]])
+        normed_domain = torch.tensor([[1, 1 - self.explorer.precision_constraints[0]], [1, 1 - self.explorer.precision_constraints[1]], [1, 1 - self.explorer.precision_constraints[2]],
+                                      [1, 1 - self.explorer.precision_constraints[3]]])
         net: torch.nn.Module = self.verification_model.base_network
         action = self.explorer.assign_approximate_action(net, normed_domain)

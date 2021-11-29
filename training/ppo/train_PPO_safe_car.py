@@ -41,7 +41,7 @@ class TorchCustomModel(TorchModelV2, nn.Module):
             initializer=normc_initializer(0.01),
             activation_fn=None))
         self.safe_branch_separate = nn.Sequential(*vf_layers)
-        self.last_in =None
+        self.last_in = None
 
     def forward(self, input_dict, state, seq_lens):
         input_dict["obs"] = input_dict["obs"].float()[:, -2:]  # takes the last 2 values (delta_x, delta_v)

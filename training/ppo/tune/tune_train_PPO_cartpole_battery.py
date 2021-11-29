@@ -28,7 +28,7 @@ class TorchCustomModel(TorchModelV2, nn.Module):
         self.torch_sub_model = TorchFC(custom_input_space, action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        if input_dict["obs"].shape[1]>2:
+        if input_dict["obs"].shape[1] > 2:
             input_dict["obs"] = input_dict["obs"].float()[:, -3:-1]  # we ignore battery
         fc_out, _ = self.torch_sub_model(input_dict, state, seq_lens)
         return fc_out, []

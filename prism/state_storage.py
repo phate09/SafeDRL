@@ -179,7 +179,7 @@ class StateStorage:
                             successor: HyperRectangle_action
                             for successor in successors:
                                 eattr = successors[successor]
-                                p = (eattr.get("p_ub")+eattr.get("p_lb"))/2
+                                p = (eattr.get("p_ub") + eattr.get("p_lb")) / 2
                                 assert p is not None
                                 distribution.add(int(mapping[successor]), p)
                             mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)
@@ -187,7 +187,7 @@ class StateStorage:
                             for successor in successors:
                                 distribution = gateway.newDistribution()
                                 eattr = successors[successor]
-                                p = (eattr.get("p_ub")+eattr.get("p_lb"))/2
+                                p = (eattr.get("p_ub") + eattr.get("p_lb")) / 2
                                 assert p is not None
                                 distribution.add(int(mapping[successor]), p)
                                 mdp.addActionLabelledChoice(int(mapping[parent_id]), distribution, parent_id.action)

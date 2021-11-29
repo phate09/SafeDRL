@@ -75,5 +75,5 @@ if allow_save:
 # storage.recreate_prism()
 # utils.save_graph_as_dot(storage.graph)
 storage.recreate_prism(horizon * 2)
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]),rounding=2,title=f"LB abstract horizon:{horizon}")
-utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]),rounding=2,title=f"UB abstract horizon:{horizon}")
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["lb"]), rounding=2, title=f"LB abstract horizon:{horizon}")
+utils.show_heatmap(unroll_methods.get_property_at_timestep(storage, 1, ["ub"]), rounding=2, title=f"UB abstract horizon:{horizon}")

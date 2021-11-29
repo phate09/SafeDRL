@@ -350,7 +350,7 @@ def get_template(mode=0):
 
         input_boundaries = [20]
 
-        template = np.array([a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -(v_lead - v_ego),(v_lead - v_ego), -(x_lead - x_ego),(x_lead - x_ego)])
+        template = np.array([a_lead, -a_lead, a_ego, -a_ego, -v_lead, v_lead, -(v_lead - v_ego), (v_lead - v_ego), -(x_lead - x_ego), (x_lead - x_ego)])
         return input_boundaries, template
     if mode == 2:
         input_boundaries = [0, -100, 30, -31, 20, -30, 0, -35, 0, -0, -10, -10, 20]

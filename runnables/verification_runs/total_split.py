@@ -162,7 +162,7 @@ class TotalSplit:
         preprocessed = pre_nn(torch.tensor(samples).float())
         samples_ontput = nn(preprocessed)
         if self.use_softmax:
-            samples_ontput = torch.softmax(samples_ontput,1)
+            samples_ontput = torch.softmax(samples_ontput, 1)
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         plot_points_and_prediction(samples @ self.template_2d.T, predicted_label)
         print("plot done")

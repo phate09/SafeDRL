@@ -1,4 +1,3 @@
-
 class bidict_multi(dict):
     def __init__(self, *args, **kwargs):
         super(bidict_multi, self).__init__(*args, **kwargs)

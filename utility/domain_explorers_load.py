@@ -65,7 +65,7 @@ def generatePendulumDomainExplorerPPO(precision=1e-2, rounding=6, sym=False):
     env = env_class()
     s = env.reset()
     state_size = 2
-    sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25",get_pendulum_ppo_agent())
+    sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25", get_pendulum_ppo_agent())
     sequential_nn.add_module("softmax", torch.nn.Softmax())  # adds the softmax at the end
     if not sym:
         verification_model = VerificationNetwork(sequential_nn).to(device)

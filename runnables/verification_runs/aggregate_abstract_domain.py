@@ -46,6 +46,7 @@ def completely_inside(first: HyperRectangle, second: HyperRectangle):
     n_dim = len(first)
     return all([contained(first[k], second[k]) for k in range(n_dim)])
 
+
 def filter_only_connected(intervals_to_filter: List[Tuple[HyperRectangle, bool]], coordinate: Tuple[float] = None) -> List[Tuple[HyperRectangle, bool]]:
     if len(intervals_to_filter) == 0:
         return intervals_to_filter

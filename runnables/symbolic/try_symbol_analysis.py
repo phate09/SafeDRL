@@ -72,12 +72,13 @@ def try3():
     symnet = SymVerificationNetwork(agent.qnetwork_local.sequential.cpu().double())
     ix = Symbolic_interval(lower=torch.tensor([[-0.05, -0.05, -0.05, -0.05], [-0.01, -0.01, -0.01, -0.01]], dtype=torch.float64),
                            upper=torch.tensor([[0.05, 0.05, 0.05, 0.05], [0.01, 0.01, 0.01, 0.01]], dtype=torch.float64), use_cuda=use_cuda)
-    u,l = symnet.get_boundaries(ix, 1)
+    u, l = symnet.get_boundaries(ix, 1)
     print(f"u:{u}")
     print(f"l:{l}")
     net = VerificationNetwork(agent.qnetwork_local.cpu().double())
     dom_ub, dom_lb = net.get_boundaries(torch.tensor([[-0.05, -0.05, -0.05, -0.05], [0.05, 0.05, 0.05, 0.05]], dtype=torch.float64).t(), 1, False)
     dom_ub, dom_lb = net.get_boundaries(torch.tensor([[-0.01, -0.01, -0.01, -0.01], [0.01, 0.01, 0.01, 0.01]], dtype=torch.float64).t(), 1, False)
     print(dom_lb)
+
 
 try3()

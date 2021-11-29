@@ -128,7 +128,7 @@ def analysis_iteration(intervals: List[HyperRectangle], n_workers: int, rtree: S
 def get_interval_action_probability(intervals: List[HyperRectangle], action: int, verification_model: VerificationNetwork):
     interval_to_numpy = np.stack([interval.to_numpy() for interval in intervals])
     sequential_nn = verification_model.base_network
-    ix2 = Symbolic_interval(lower=torch.tensor(interval_to_numpy[:,0]), upper=torch.tensor(interval_to_numpy[:,1]))
+    ix2 = Symbolic_interval(lower=torch.tensor(interval_to_numpy[:, 0]), upper=torch.tensor(interval_to_numpy[:, 1]))
     inet = Interval_network(sequential_nn.double(), None)
     result_interval = inet(ix2)
     upper_bound = result_interval.u
@@ -144,10 +144,10 @@ def exploration_PPO(intervals: List[HyperRectangle], n_workers: int, rtree: Shar
     # intersected_intervals = check_tree_coverage(allow_assign_action, allow_merge, explorer, intervals, n_workers, rounding, rtree, verification_model)
     # list_assigned_action = store_subregions(intersected_intervals, storage)
     actions = [0, 1]
-    upper_bound,lower_bound =get_interval_action_probability(intervals, 0, verification_model)
+    upper_bound, lower_bound = get_interval_action_probability(intervals, 0, verification_model)
     for action in actions:
         list_assigned_action = [x.assign(action) for x in intervals]
-        parent_successor_intervals = [(x.assign(None), x.assign(action), {"p_ub": upper_bound[i][action].item(), "p_lb": lower_bound[i][action].item()}) for i,x in enumerate(intervals)]
+        parent_successor_intervals = [(x.assign(None), x.assign(action), {"p_ub": upper_bound[i][action].item(), "p_lb": lower_bound[i][action].item()}) for i, x in enumerate(intervals)]
         storage.store_successor_prob(parent_successor_intervals)
         # compute_successors(env, list_assigned_action, n_workers, rounding, storage, probabilistic=True)
         compute_successors_PPO(env, list_assigned_action, n_workers, rounding, storage)

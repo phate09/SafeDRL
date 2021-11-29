@@ -17,7 +17,7 @@ class ThermostatEnv(gym.Env):
 
     def __init__(self):
         # physical properties of the system
-        self.c = 1. #temperature resistance
+        self.c = 1.  # temperature resistance
         self.inv_c = 1. / self.c
         self.k = 1.
         self.Text = 20.
@@ -111,12 +111,13 @@ class ThermostatEnv(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+
 if __name__ == '__main__':
     env = ThermostatEnv()
     env.reset()
     env.render()
     for i in range(1000):
-        action = 10#env.action_space.sample()
+        action = 10  # env.action_space.sample()
         env.step(action)
         env.render()
     env.close()

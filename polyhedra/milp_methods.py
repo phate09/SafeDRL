@@ -3,6 +3,7 @@ import numpy as np
 
 '''Collection of methods to handle abstract states in MILP model'''
 
+
 def generate_input_region(gurobi_model, templates, boundaries, env_input_size):
     input = gurobi_model.addMVar(shape=env_input_size, lb=float("-inf"), ub=float("inf"), name="input")
     generate_region_constraints(gurobi_model, templates, input, boundaries, env_input_size)
@@ -19,6 +20,7 @@ def generate_region_constraints(gurobi_model, templates, input, boundaries, env_
             gurobi_model.addConstr(multiplication <= boundaries[j] - eps, name=f"input_constr_{j}")
         else:
             gurobi_model.addConstr(multiplication >= boundaries[j] + eps, name=f"input_constr_{j}")
+
 
 def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
     results = []

@@ -1,4 +1,6 @@
 import numpy as np
+
+
 class Linear_SVC(object):
     def __init__(self, C=1.0):
         self.C = C

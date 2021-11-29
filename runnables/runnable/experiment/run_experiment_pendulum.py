@@ -38,7 +38,7 @@ class PendulumExperiment(Experiment):
         # battery = [self.e(env_input_size, 4)]
         self.unsafe_zone: List[Tuple] = [(theta, np.array([-self.safe_angle])), (neg_theta, np.array([-self.safe_angle]))]
         epsilon = 1e-4
-        self.angle_split: List[Tuple] = [(theta, np.array([self.safe_angle-epsilon])), (neg_theta, np.array([self.safe_angle-epsilon]))]
+        self.angle_split: List[Tuple] = [(theta, np.array([self.safe_angle - epsilon])), (neg_theta, np.array([self.safe_angle - epsilon]))]
         self.use_rounding = False
         self.rounding_value = 1024
         self.time_horizon = 300

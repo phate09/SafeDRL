@@ -20,7 +20,7 @@ explorer, verification_model = generateCartpoleDomainExplorer()
 # frozen_ignore = np.stack(frozen_ignore)  # .take(range(10), axis=0)
 # @ray.remote
 def contains(first, second, safe_domains, unsafe_domains):
-    domains = np.concatenate((unsafe_domains,safe_domains))
+    domains = np.concatenate((unsafe_domains, safe_domains))
     for i, domain in enumerate(domains):
         if domain[0, 0] <= first <= domain[0, 1] and domain[2, 0] <= second <= domain[2, 1]:
             if i < len(safe_domains):

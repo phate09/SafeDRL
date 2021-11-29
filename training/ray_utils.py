@@ -18,6 +18,7 @@ def convert_td3_policy_to_sequential(policy: DDPGTorchPolicy) -> torch.nn.Sequen
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
 
+
 def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
     for seq_layer in policy.model.torch_sub_model._hidden_layers:
@@ -29,6 +30,8 @@ def convert_ray_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequent
         layers_list.append(layer)
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
+
+
 def convert_ray_policy_to_sequential2(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
     for seq_layer in policy.model.torch_sub_model._hidden_layers:
@@ -41,6 +44,8 @@ def convert_ray_policy_to_sequential2(policy: PPOTorchPolicy) -> torch.nn.Sequen
     layers_list.append(policy.model.torch_sub_model._modules['_logits'][1])
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
+
+
 def convert_ray_simple_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
     for seq_layer in policy.model._hidden_layers:
@@ -52,6 +57,8 @@ def convert_ray_simple_policy_to_sequential(policy: PPOTorchPolicy) -> torch.nn.
         layers_list.append(layer)
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
+
+
 def convert_DQN_ray_policy_to_sequential(policy: DQNTorchPolicy) -> torch.nn.Sequential:
     layers_list = []
     for seq_layer in policy.model._modules['torch_sub_model']._modules['_hidden_layers']:
@@ -65,7 +72,8 @@ def convert_DQN_ray_policy_to_sequential(policy: DQNTorchPolicy) -> torch.nn.Seq
     sequential_nn = torch.nn.Sequential(*layers_list)
     return sequential_nn
 
-def load_sequential_from_ray(filename: str,trainer):
+
+def load_sequential_from_ray(filename: str, trainer):
     trainer.restore(filename)
     return convert_ray_policy_to_sequential(trainer.get_policy())
 
@@ -78,6 +86,7 @@ def get_pendulum_ppo_agent():
               "num_envs_per_worker": 5, "train_batch_size": 2000, "framework": "torch", "horizon": 1000}  # "batch_mode":"complete_episodes"
     trainer = ppo.PPOTrainer(config=config)
     return trainer
+
 
 def get_car_ppo_agent():
     config = {"env": StoppingCar,  #

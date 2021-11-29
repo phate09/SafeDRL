@@ -38,7 +38,7 @@ env.reset()
 env.x_lead = 20
 env.x_ego = 0
 env.v_lead = 28
-env.v_ego = 28+10
+env.v_ego = 28 + 10
 min_distance = 9999
 state_np = np.array([env.x_lead, env.x_ego, env.v_lead, env.v_ego, env.y_lead, env.y_ego, env.v_lead - env.v_ego, env.x_lead - env.x_ego])
 print(state_np)

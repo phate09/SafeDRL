@@ -15,7 +15,7 @@ def try1():
     rtree.load_from_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p", rounding)
     # interval = HyperRectangle.from_tuple(((-0.386, -0.385), (1.11, 1.125)))
     interval = HyperRectangle.from_tuple(((-0.785, 0.785), (-2.0, 2.0)))
-    remainings, intersection =unroll_methods.compute_remaining_intervals4_multi([interval], rtree.tree, rounding)
+    remainings, intersection = unroll_methods.compute_remaining_intervals4_multi([interval], rtree.tree, rounding)
     # remainings, intersection = unroll_methods.compute_remaining_intervals3(interval,rtree.tree_intervals(),debug=False)
     print(remainings)
     # if len(remainings) != 0:

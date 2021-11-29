@@ -11,7 +11,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "c
 
 
 class SymVerificationNetwork(nn.Module):
-    def __init__(self, base_network:torch.nn.Sequential):
+    def __init__(self, base_network: torch.nn.Sequential):
         """Base network any nn.sequential network"""
         super(SymVerificationNetwork, self).__init__()
         self.base_network = base_network
@@ -74,5 +74,5 @@ class SymVerificationNetwork(nn.Module):
 if __name__ == '__main__':
     net = TestNetwork()
     verif = SymVerificationNetwork(net.sequential)
-    ix = Symbolic_interval(lower=torch.tensor([[4, -3]], dtype=torch.float64,requires_grad=False), upper=torch.tensor([[6, 5]], dtype=torch.float64,requires_grad=False))
+    ix = Symbolic_interval(lower=torch.tensor([[4, -3]], dtype=torch.float64, requires_grad=False), upper=torch.tensor([[6, 5]], dtype=torch.float64, requires_grad=False))
     verif.get_boundaries(ix, 0)

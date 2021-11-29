@@ -242,7 +242,7 @@ def main():
         ax.set_xlim(mins[0], maxes[0])
         ax.set_ylim(mins[1], maxes[1])
 
-        for i in range(leq.shape[0]): #plot black lines
+        for i in range(leq.shape[0]):  # plot black lines
             if leq[i, 1] != 0:
                 y1 = (mins[0] * leq[i, 0] - leq_rhs[i]) / -leq[i, 1]
                 y2 = (maxes[0] * leq[i, 0] - leq_rhs[i]) / -leq[i, 1]

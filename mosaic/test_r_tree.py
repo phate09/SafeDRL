@@ -74,7 +74,8 @@ class TestR_trees(TestCase):
             x_array = np.array(x[0])
             total_area += area_numpy(x_array)
         # print(f"Area after merge:{total_area}")
-        assert previous_total_area==total_area
+        assert previous_total_area == total_area
+
     def test_size(self):
         os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
         p = index.Property(dimension=4)
@@ -87,9 +88,10 @@ class TestR_trees(TestCase):
         union_states_total = union_states_total[0:1000]
         helper = bulk_load_rtree_helper(union_states_total)
         p = index.Property(dimension=4)
-        r = index.Index('save/rtree_test',helper, interleaved=False, properties=p)
+        r = index.Index('save/rtree_test', helper, interleaved=False, properties=p)
         r.flush()
         r.close()
+
 
 def boxes15_stream(boxes15, interleaved=True):
     for i, (minx, miny, maxx, maxy) in enumerate(boxes15):
@@ -98,5 +100,3 @@ def boxes15_stream(boxes15, interleaved=True):
             yield (i, (minx, miny, maxx, maxy), 42)
         else:
             yield (i, (minx, maxx, miny, maxy), 42)
-
-

@@ -140,22 +140,23 @@ def chebyshev_center(a, b):
 
     return res.x[:-1]
 
+
 from scipy.spatial import ConvexHull, Delaunay
 import numpy as np
 from numpy.linalg import det
 from scipy.stats import dirichlet
 
 
-def dist_in_hull(a,b, n):
-    points = np.vstack(pypoman.duality.compute_polytope_vertices(a,b))
+def dist_in_hull(a, b, n):
+    points = np.vstack(pypoman.duality.compute_polytope_vertices(a, b))
     dims = points.shape[-1]
     hull = points[ConvexHull(points).vertices]
     deln = points[Delaunay(hull).simplices]
 
     vols = np.abs(det(deln[:, :dims, :] - deln[:, dims:, :])) / np.math.factorial(dims)
-    sample = np.random.choice(len(vols), size = n, )#p = vols / vols.sum()
+    sample = np.random.choice(len(vols), size=n, )  # p = vols / vols.sum()
 
-    return np.einsum('ijk, ij -> ik', deln[sample], dirichlet.rvs([1]*(dims + 1), size = n))
+    return np.einsum('ijk, ij -> ik', deln[sample], dirichlet.rvs([1] * (dims + 1), size=n))
 
 
 def collect_chain(sampler, count, burn, thin, *args, **kwargs):
@@ -251,11 +252,6 @@ def find_dimension_split2(points, predicted_label, template):
     # plot_points_and_prediction(points, classifier_predictions[chosen_dimension].astype(int))
 
     return chosen_dimension, decision_boundaries[chosen_dimension]
-
-
-
-
-
 
 
 @remote
@@ -355,8 +351,6 @@ def find_dimension_split(points, predicted_label, template):
     return chosen_dimension
 
 
-
-
 def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
     # Initial point to start the chains from.
     # Use the Chebyshev center.
@@ -375,5 +369,3 @@ def sample_polyhedron(a: np.ndarray, b: np.ndarray, count=10000):
     # chains = collect_chain(dikin_walk, count, burn, thin, a, b, x0, *sampler_args)
     chains = collect_chain_dikin_walk_simplified(count, burn, thin, a, b, x0, *sampler_args)
     return chains
-
-

@@ -40,7 +40,7 @@ def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_ty
         utils.show_plot(safe, unsafe, undecidable, legend=["Safe", "Unsafe", "Undecidable"])
     elif plot_type == "p_chart":
         results = [(x, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
-        utils.p_chart(results, save_to=save_path, rounding=2)#, title="Barchart of volumes in the initial state grouped by the upper bound probability "
+        utils.p_chart(results, save_to=save_path, rounding=2)  # , title="Barchart of volumes in the initial state grouped by the upper bound probability "
     elif plot_type == "pca":
         results = [(x, utils.centre_tuple(x), utils.area_tuple(x), action, prob) for (x, action), prob in unroll_methods.get_property_at_timestep(storage, 1, ["ub"])]
         pca_map(results, save_path, state_size)

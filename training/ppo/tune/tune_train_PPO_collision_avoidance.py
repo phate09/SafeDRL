@@ -81,7 +81,7 @@ if __name__ == "__main__":
     np.random.seed(seed)
     torch.manual_seed(seed)
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    ray.init(local_mode=False, include_dashboard=True, log_to_driver=False,num_gpus=1)
+    ray.init(local_mode=False, include_dashboard=True, log_to_driver=False, num_gpus=1)
     config = get_PPO_config(use_gpu=0.5, seed=seed)
     datetime_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     tune.run(

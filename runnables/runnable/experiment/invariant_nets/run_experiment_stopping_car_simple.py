@@ -12,6 +12,7 @@ from training.ray_utils import convert_ray_policy_to_sequential
 
 class StoppingCarExperiment(Experiment):
     '''Simply use the neural network provided to do verification'''
+
     def __init__(self):
         env_input_size: int = 3
         super().__init__(env_input_size)
@@ -26,7 +27,7 @@ class StoppingCarExperiment(Experiment):
         x_lead = Experiment.e(self.env_input_size, 0)
         x_ego = Experiment.e(self.env_input_size, 1)
         v_ego = Experiment.e(self.env_input_size, 2)
-        template = np.array([-(x_lead - x_ego),(x_lead - x_ego), v_ego, -v_ego])
+        template = np.array([-(x_lead - x_ego), (x_lead - x_ego), v_ego, -v_ego])
         self.analysis_template: np.ndarray = template
         collision_distance = 0
         distance = [Experiment.e(self.env_input_size, 0) - Experiment.e(self.env_input_size, 1)]

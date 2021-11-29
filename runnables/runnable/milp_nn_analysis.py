@@ -71,6 +71,7 @@ def generate_mock_guard(gurobi_model: grb.Model, input, nn: torch.nn.Sequential,
     # assert gurobi_model.status == 2, "LP wasn't optimally solved"
     return gurobi_model.status == 2
 
+
 def apply_dynamic(input, gurobi_model: grb.Model, action_ego=0, t=0):
     x_lead = input[0]
     x_ego = input[1]
@@ -133,11 +134,10 @@ def print_model(gurobi_model):
     print("----------------------------")
 
 
-
 def main():
     nn = generate_nn_torch(six_dim=True)
 
-    res = nn(torch.tensor([90,30,20,30,0,0],dtype=torch.float64))
+    res = nn(torch.tensor([90, 30, 20, 30, 0, 0], dtype=torch.float64))
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
     # optimise in a direction
@@ -204,5 +204,7 @@ def h_repr_to_plot(found_successor, fringe, graph, gurobi_model, template, verti
         x_prime_vertices = pypoman.duality.compute_polytope_vertices(-template, -x_prime_results)
         vertices_list.append(x_prime_vertices)
     return found_successor
+
+
 if __name__ == '__main__':
     main()

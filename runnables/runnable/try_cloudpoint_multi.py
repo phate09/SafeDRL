@@ -15,7 +15,7 @@ plt.plot(points2[:, 0], points2[:, 1], 'ro')
 # plt.plot(points3[:, 0], points3[:, 1], 'go')
 plt.show()
 # %% scatterplot with centroids
-list_of_arrays = [points1, points2] #points3
+list_of_arrays = [points1, points2]  # points3
 X, y = points_to_classes(list_of_arrays)
 
 clf = NearestCentroid()
@@ -48,7 +48,7 @@ perpendicular21 = l12.perpendicular_line(closest_opposite_point21)
 # perpendicular23 = l23.perpendicular_line(closest_opposite_point23)
 # perpendicular31 = l31.perpendicular_line(closest_opposite_point31)
 # perpendicular32 = l23.perpendicular_line(closest_opposite_point32)
-#%%
+# %%
 plt.figure(figsize=(7, 7))
 plt.xlim(-2, 10)
 plt.ylim(-4, 8)
@@ -57,7 +57,7 @@ plt.plot(points2[:, 0], points2[:, 1], 'ro')
 # plt.plot(points3[:, 0], points3[:, 1], 'go')
 plt.plot(clf.centroids_[:, 0], clf.centroids_[:, 1], 'o', c="black", markersize=20)
 plt.plot(clf.centroids_[:, 0], clf.centroids_[:, 1], c="black")
-plt.plot(clf.centroids_[[0,-1],:][:, 0], clf.centroids_[[0,-1],:][:, 1], c="black")
+plt.plot(clf.centroids_[[0, -1], :][:, 0], clf.centroids_[[0, -1], :][:, 1], c="black")
 
 # hull = ConvexHull(points1)
 # for simplex in hull.simplices:
@@ -66,9 +66,9 @@ plt.plot(clf.centroids_[[0,-1],:][:, 0], clf.centroids_[[0,-1],:][:, 1], c="blac
 # vertices = sorted(vertices, key=lambda x: Point(hull.points[x]).distance(closest_opposite_point1))
 
 # newline(hull.points[vertices[0]], hull.points[vertices[1]])  # hull line
-newline(point_to_float(perpendicular12.p1), point_to_float(perpendicular12.p2)) #perpendicular line
+newline(point_to_float(perpendicular12.p1), point_to_float(perpendicular12.p2))  # perpendicular line
 # newline(point_to_float(perpendicular13.p1), point_to_float(perpendicular13.p2)) #perpendicular line
-newline(point_to_float(perpendicular21.p1), point_to_float(perpendicular21.p2))#perpendicular line
+newline(point_to_float(perpendicular21.p1), point_to_float(perpendicular21.p2))  # perpendicular line
 # newline(point_to_float(perpendicular23.p1), point_to_float(perpendicular23.p2))#perpendicular line
 # newline(point_to_float(perpendicular31.p1), point_to_float(perpendicular31.p2))#perpendicular line
 # newline(point_to_float(perpendicular32.p1), point_to_float(perpendicular32.p2))#perpendicular line
@@ -78,7 +78,7 @@ newline(point_to_float(perpendicular21.p1), point_to_float(perpendicular21.p2))#
 # plt.plot(centroid_line[:,0],centroid_line[:,1])
 plt.show()
 # %% logistic regression
-clf1 = LogisticRegression(random_state=0,solver="lbfgs",C=0.01,penalty='l2',max_iter=10000,multi_class='ovr').fit(X, y)
+clf1 = LogisticRegression(random_state=0, solver="lbfgs", C=0.01, penalty='l2', max_iter=10000, multi_class='ovr').fit(X, y)
 coeff = clf1.coef_
 intercept = clf1.intercept_
 plt.figure(figsize=(7, 7))
@@ -100,9 +100,9 @@ newline(point_to_float(classif_line1.p1), point_to_float(classif_line1.p2))
 # newline(point_to_float(classif_line3.p1), point_to_float(classif_line3.p2))
 # plot3d(coeff[0][0].item() * a + coeff[0][1].item() * b + intercept.item(),show=False)
 plt.show()
-#%% support vector machine
+# %% support vector machine
 # clf2 = svm.SVC(kernel="linear",decision_function_shape='ovo',max_iter=10000)
-clf2 = svm.LinearSVC(multi_class='ovr',max_iter=10000)
+clf2 = svm.LinearSVC(multi_class='ovr', max_iter=10000)
 clf2.fit(X, y)
 coeff = clf2.coef_
 intercept = clf2.intercept_

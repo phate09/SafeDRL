@@ -26,7 +26,7 @@ print(torch.cuda.is_available())
 
 
 class GridSearchDataset(torch.utils.data.Dataset):
-    def __init__(self,shuffle=False, size=16000):
+    def __init__(self, shuffle=False, size=16000):
         dataset = []
         param_grid = {'delta_v': np.arange(-30, 30, 0.2), 'delta_x': np.arange(-10, 40, 0.2)}
         for parameters in ParameterGrid(param_grid):

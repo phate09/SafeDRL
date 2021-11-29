@@ -33,6 +33,8 @@ os.mkdir(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
+
+
 # agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_11-16-16_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_6000.pth")
 
 # agent.qnetwork_local.load_state_dict(torch.load('model.pth'))
@@ -50,8 +52,8 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
     for i_episode in range(n_episodes):
         # state = env.reset()  # reset the environment
         # state = val_data[i_episode%len(val_data)]
-        state = np.array([np.random.uniform(-10,30),np.random.uniform(-10,40)])
-        state=state.numpy()
+        state = np.array([np.random.uniform(-10, 30), np.random.uniform(-10, 40)])
+        state = state.numpy()
         score = 0
         t = 0
         action = None
@@ -62,14 +64,14 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             action = agent.act(state, eps.get(i_episode))
 
             # next_state, reward, done, _ = env.step(action)  # send the action to the environment
-            next_state, reward, done, _ = env.compute_successor(state,action)
+            next_state, reward, done, _ = env.compute_successor(state, action)
             agent_error = agent.step(state, action, reward, next_state, done, beta=betas.get(i_episode))
             if agent_error is not None:
                 writer.add_scalar('loss/agent_loss', agent_error.item(), i_episode)
             state = next_state
             score += reward
             if done:
-                done_once=True
+                done_once = True
                 # break
         invariant_loss = agent.episode_end(done_once)
         scores_window.append(score)  # save most recent score
@@ -86,10 +88,13 @@ def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=MIN_EPS):
             writer.add_scalar('loss/invariant_loss', invariant_loss, i_episode)
 
         # eps = max(eps_end, eps_decay * eps)  # decrease epsilon
-        print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f}\tAverage Timesteps: {np.mean(timesteps_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}', end="")
+        print(
+            f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f}\tAverage Timesteps: {np.mean(timesteps_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}',
+            end="")
         if (i_episode + 1) % 100 == 0:
-            print(f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f}\tAverage Timesteps: {np.mean(timesteps_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
-            agent.save(os.path.join(log_dir, f"checkpoint_{i_episode+1}.pth"), i_episode)
+            print(
+                f'\rEpisode {i_episode + 1}\tAverage Score: {np.mean(scores_window):.2f}\tAverage Timesteps: {np.mean(timesteps_window):.2f} eps={eps.get(i_episode):.3f} beta={betas.get(i_episode):.3f}')
+            agent.save(os.path.join(log_dir, f"checkpoint_{i_episode + 1}.pth"), i_episode)
     agent.save(os.path.join(log_dir, f"checkpoint_final.pth"), i_episode)
     return scores
 

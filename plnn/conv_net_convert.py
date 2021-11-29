@@ -36,7 +36,7 @@ def get_weights(layers, inp_shape=(1, 28, 28)):
     return eq_weights, new_params
 
 
-def convert_conv2d(W, b, cur_size=(1, 28, 28),stride=(1,1)):  # works for pytorch input
+def convert_conv2d(W, b, cur_size=(1, 28, 28), stride=(1, 1)):  # works for pytorch input
     new_params = []
     eq_weights = []
     file_name = hashlib.sha224(W.detach().cpu().numpy().view(np.uint8)).hexdigest()
@@ -51,7 +51,7 @@ def convert_conv2d(W, b, cur_size=(1, 28, 28),stride=(1,1)):  # works for pytorc
         with open(f'{folder}{file_name}-new_size.pickle', 'rb') as f_lb:
             new_size = pickle.load(f_lb)
         return [W_flat, b_flat], flat_out, new_size
-    new_size = (W.shape[0], ((cur_size[-2] - W.shape[-2])//stride[0]) + 1, ((cur_size[-1] - W.shape[-1])//stride[1]) + 1)
+    new_size = (W.shape[0], ((cur_size[-2] - W.shape[-2]) // stride[0]) + 1, ((cur_size[-1] - W.shape[-1]) // stride[1]) + 1)
     flat_inp = np.prod(cur_size)  # m x n
     flat_out = np.prod(new_size)  #
     new_params.append(flat_out)

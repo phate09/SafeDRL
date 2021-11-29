@@ -58,7 +58,7 @@ nn_paths_cartpole = ["/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEn
 
 
 def _iter():
-    for problem in ["bouncing_ball","stopping_car"]:  # "bouncing_ball", "stopping_car", "cartpole"
+    for problem in ["bouncing_ball", "stopping_car"]:  # "bouncing_ball", "stopping_car", "cartpole"
         for method in ["standard"]:  # , "ora"
             if problem == "bouncing_ball":
                 for tau in [0.1]:  # {"tau": tune.grid_search([0.1, 0.05])}

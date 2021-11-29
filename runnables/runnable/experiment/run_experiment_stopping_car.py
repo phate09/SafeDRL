@@ -432,7 +432,7 @@ if __name__ == '__main__':
     x_lead = Experiment.e(experiment.env_input_size, 0)
     x_ego = Experiment.e(experiment.env_input_size, 1)
     v_ego = Experiment.e(experiment.env_input_size, 2)
-    template = np.array([-(x_lead - x_ego), v_ego, -v_ego]) #(x_lead - x_ego),
+    template = np.array([-(x_lead - x_ego), v_ego, -v_ego])  # (x_lead - x_ego),
     experiment.analysis_template = template  # standard
     experiment.input_template = Experiment.box(3)
     input_boundaries = [40, -30, 10, -0, 36, -28]

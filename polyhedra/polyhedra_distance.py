@@ -34,10 +34,10 @@ def is_separable(points: np.ndarray, A, b):
         print(f"Unknown code: {m.Status}")
         return False
 
+
 if __name__ == '__main__':
-    points = np.array([[2, 2], [2, 1.5], [1.5, 1.5]])  #, [1, 0.5]
+    points = np.array([[2, 2], [2, 1.5], [1.5, 1.5]])  # , [1, 0.5]
     A = np.array([[0, -1], [1, 1], [-1, 0]])
     b = np.array([0, 2, -1])
     is_separable(points, A, b)
     # find_coeff(35.0, 45.0)
-

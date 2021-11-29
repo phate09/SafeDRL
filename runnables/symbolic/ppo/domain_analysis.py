@@ -32,7 +32,7 @@ delta_x = precision * 2
 delta_y = precision * 2
 param_grid = {'param1': list(np.arange(-0.79, 0.79, delta_x).round(rounding)), 'param2': list(np.arange(-1, 1, delta_y).round(rounding))}
 grid = ParameterGrid(param_grid)
-sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25",get_pendulum_ppo_agent())
+sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25", get_pendulum_ppo_agent())
 # net = TestNetwork2()
 sequential_nn.add_module("softmax", torch.nn.Softmax())
 sequential_nn.cpu()

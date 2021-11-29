@@ -20,7 +20,7 @@ z1 = m.addMVar(shape=(1,), name="z1", lb=float("-inf"))
 # m.setObjective(sum(z1)+(b @ y), GRB.MINIMIZE)  #- (b @ y)sum(z1)
 # Add constraints
 m.addConstr(A.T @ y == -d)  # fix direction as opposite of d
-m.addConstr((z1 + (b@y)) <= epsilon)  # point inside polyhedra
+m.addConstr((z1 + (b @ y)) <= epsilon)  # point inside polyhedra
 for i in range(len(points)):
     m.addConstr(z1 >= (points[i] @ d))  # points belonging to the cloud
 

@@ -61,7 +61,7 @@ def generate_nn_torch(min_speed=20, max_speed=30, min_distance=5, max_distance=1
     l3.bias = torch.nn.Parameter(torch.tensor([0, 0], dtype=torch.float64))
     layers.append(l3)
     # z3 = l3(x3)
-    nn_upper_bound(layers,1)
+    nn_upper_bound(layers, 1)
     l4 = torch.nn.Linear(2, 2)  # (decelerate,accelerate)
     l4.weight = torch.nn.Parameter(torch.tensor([[1, 0], [0, 0.001]], dtype=torch.float64))
     l4.bias = torch.nn.Parameter(torch.tensor([0, 0], dtype=torch.float64))
@@ -79,13 +79,14 @@ def nn_upper_bound(layers, ub=6):
     # +upper_bound (6,5)
     l1 = torch.nn.Linear(2, 2)
     l1.weight = torch.nn.Parameter(torch.tensor([[-1, 0], [0, -1]], dtype=torch.float64))
-    l1.bias = torch.nn.Parameter(torch.tensor([ub,ub], dtype=torch.float64))
+    l1.bias = torch.nn.Parameter(torch.tensor([ub, ub], dtype=torch.float64))
     layers.append(l1)
     layers.append(torch.nn.ReLU())
     l2 = torch.nn.Linear(2, 2)
     l2.weight = torch.nn.Parameter(torch.tensor([[-1, 0], [0, -1]], dtype=torch.float64))
     l2.bias = torch.nn.Parameter(torch.tensor([ub, ub], dtype=torch.float64))
     layers.append(l2)
+
 
 def test_nn_numpy():
     x = generate_mock_input()

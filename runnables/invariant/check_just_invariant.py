@@ -27,9 +27,8 @@ ALPHA = 0.6  # the higher the more aggressive the sampling towards high TD trans
 EPS_DECAY = 0.2
 MIN_EPS = 0.01
 
-
 agent = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
-agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth",invariant=False)
+agent.load("/home/edoardo/Development/SafeDRL/runs/Aug05_16-14-33_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3000.pth", invariant=False)
 agent2 = InvariantAgent(state_size=state_size, action_size=action_size, alpha=ALPHA)
 # agent2.load("/home/edoardo/Development/SafeDRL/runs/Aug20_09-16-25_invariant/checkpoint_1000.pth")
 agent2.load("/home/edoardo/Development/SafeDRL/runs/Aug20_11-58-57_invariant/checkpoint_1500.pth")

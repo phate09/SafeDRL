@@ -5,7 +5,7 @@ from environment.stopping_car import StoppingCar
 from polyhedra.net_methods import generate_nn_torch
 
 ray.init(local_mode=True)
-sequential_nn = generate_nn_torch(six_dim=False,min_distance=20,max_distance=30).float()
+sequential_nn = generate_nn_torch(six_dim=False, min_distance=20, max_distance=30).float()
 env = StoppingCar()
 state = env.reset()
 print(state)

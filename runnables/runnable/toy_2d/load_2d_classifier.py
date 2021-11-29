@@ -19,7 +19,7 @@ mask_positives = result.bool().detach().numpy()
 positives = points[mask_positives]
 negatives = points[np.invert(mask_positives)]
 # positives=np.concatenate((positives,np.array([(3,4)])))
-positives=np.concatenate((positives,np.array([(1,4)])))
+positives = np.concatenate((positives, np.array([(1, 4)])))
 fig = utils.scatter_plot(positives, negatives)
 fig.add_trace(utils.compute_trace_polygon(polyhedron_vertices))
 fig.show()

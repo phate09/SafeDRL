@@ -103,7 +103,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     # line 1 points
-    time_steps = list(range(1, horizon+1))
+    time_steps = list(range(1, horizon + 1))
     plt.plot(time_steps, n_states_abstract, label="abstract")
     # plt.plot(time_steps, n_states_concrete, label="concrete")
     plt.xlabel('timesteps')
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     plt.title(f'Comparison of # of states in {environment_name} environment')
     # show a legend on the plot
     plt.legend()
-    plt.xticks(np.arange(1, horizon+1, step=1))  # Set x label locations.
+    plt.xticks(np.arange(1, horizon + 1, step=1))  # Set x label locations.
     # Display a figure.
     plt.savefig(f"{folder_path}/plot_states_{environment_name}_e{precision}_h{horizon}_{time.time()}.png")
     plt.show()

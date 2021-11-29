@@ -20,7 +20,6 @@ trainer, config = get_apex_dqn_car_trainer()
 # trainer.restore("/home/edoardo/ray_results/APEX_StoppingCar_2020-12-29_17-10-24qjvbq7ew/checkpoint_42/checkpoint-42")
 trainer.restore("/home/edoardo/ray_results/APEX_StoppingCar_2020-12-30_07-08-19vc1f79qh/checkpoint_264/checkpoint-264")
 
-
 policy = trainer.get_policy()
 trainer.cleanup()
 sequential_nn = convert_DQN_ray_policy_to_sequential(policy).cpu()

@@ -76,7 +76,7 @@ for i in range(n_trials):
 env.close()
 print("all good")
 # print(f"min_distance:{min_distance}")
-print(f"cumulative_reward:{cumulative_reward/n_trials}")
+print(f"cumulative_reward:{cumulative_reward / n_trials}")
 ray.shutdown()
 import plotly.graph_objects as go
 

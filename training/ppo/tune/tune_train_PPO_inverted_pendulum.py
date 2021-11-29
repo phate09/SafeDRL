@@ -15,7 +15,6 @@ from environment.pendulum import MonitoredPendulum
 
 torch, nn = try_import_torch()
 
-
 custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
 
 

@@ -32,7 +32,7 @@ policy = trainer.get_policy()
 # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
 sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
 l0 = torch.nn.Linear(5, 3, bias=False)
-l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0,0], [0, 0, 0, 1,0],[0, 0, 0, 0,1]], dtype=torch.float32))
+l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]], dtype=torch.float32))
 layers = [l0]
 for l in sequential_nn:
     layers.append(l)
@@ -76,7 +76,7 @@ for i in range(n_trials):
 env.close()
 print("all good")
 # print(f"min_distance:{min_distance}")
-print(f"cumulative_reward:{cumulative_reward/n_trials}")
+print(f"cumulative_reward:{cumulative_reward / n_trials}")
 ray.shutdown()
 import plotly.graph_objects as go
 

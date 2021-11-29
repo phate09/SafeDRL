@@ -51,7 +51,7 @@ while True:
     print(f"Iteration {iterations}")
     print(f"Total states:{storage.graph.number_of_nodes()}")
     split_performed = unroll_methods.probability_iteration_PPO(storage, rtree, precision, rounding, env_class, n_workers, explorer, verification_model, state_size, horizon=horizon,
-                                                           allow_assign_actions=True)
+                                                               allow_assign_actions=True)
     if time.time() - time_from_last_save >= 60 * 5:
         storage.save_state(f"/home/edoardo/Development/SafeDRL/save/ppo_nx_graph_e{rounding}.p")
         # rtree.save_to_file(f"/home/edoardo/Development/SafeDRL/save/union_states_total_e{rounding}.p")

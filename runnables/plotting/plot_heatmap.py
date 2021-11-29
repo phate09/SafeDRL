@@ -42,7 +42,7 @@ heatmap.show()
 # %% sample 10k points from the area and feed to the nn
 samples = np.stack([current_interval.sample() for i in range(10000)])
 actions = torch.argmax(verification_model.base_network(torch.from_numpy(samples)), dim=1).detach().numpy()
-scatter = utils.scatter_plot([tuple(x) for i,x in enumerate(samples) if bool(actions[i].item())],[tuple(x) for i,x in enumerate(samples) if not bool(actions[i].item())])
+scatter = utils.scatter_plot([tuple(x) for i, x in enumerate(samples) if bool(actions[i].item())], [tuple(x) for i, x in enumerate(samples) if not bool(actions[i].item())])
 scatter.show()
 # %% Logistic regression
 clf1 = LogisticRegression(random_state=0).fit(samples, actions)
@@ -56,26 +56,26 @@ classif_line = Line(a.item() * x + b.item() * y + c.item())
 bounding_box = np.stack([np.min(samples, 0), np.max(samples, 0)]).transpose()
 ymax = (-a * bounding_box[0][1] - c) / b
 ymin = (-a * bounding_box[0][0] - c) / b
-scatter.add_scatter(x=[bounding_box[0][0],bounding_box[0][1]], y=[ymin,ymax], mode="lines", hoveron="points")
+scatter.add_scatter(x=[bounding_box[0][0], bounding_box[0][1]], y=[ymin, ymax], mode="lines", hoveron="points")
 scatter.show()
-#%% padding
+# %% padding
 print(ymax)
 perp_line = classif_line.perpendicular_line(classif_line.p1)
-p1 = np.array([float(perp_line.p1[0]),float(perp_line.p1[1])])
-p2 = np.array([float(perp_line.p2[0]),float(perp_line.p2[1])])
-v = p1-p2
-u = v/np.linalg.norm(v,ord=1)
-next_point = p1+2*u
-parallel_line1 = classif_line.parallel_line(classif_line.p1+Point(0,0.2))
-a1,b1,c1 = parallel_line1.coefficients
+p1 = np.array([float(perp_line.p1[0]), float(perp_line.p1[1])])
+p2 = np.array([float(perp_line.p2[0]), float(perp_line.p2[1])])
+v = p1 - p2
+u = v / np.linalg.norm(v, ord=1)
+next_point = p1 + 2 * u
+parallel_line1 = classif_line.parallel_line(classif_line.p1 + Point(0, 0.2))
+a1, b1, c1 = parallel_line1.coefficients
 ymax1 = float((-a1 * bounding_box[0][1] - c1) / b1)
-ymin1 =float( (-a1 * bounding_box[0][0] - c1) / b1)
-scatter.add_scatter(x=[bounding_box[0][0],bounding_box[0][1]], y=[ymin1,ymax1], mode="lines", hoveron="points")
-parallel_line2 = classif_line.parallel_line(classif_line.p1+Point(0,-0.2))
-a2,b2,c2 = parallel_line2.coefficients
+ymin1 = float((-a1 * bounding_box[0][0] - c1) / b1)
+scatter.add_scatter(x=[bounding_box[0][0], bounding_box[0][1]], y=[ymin1, ymax1], mode="lines", hoveron="points")
+parallel_line2 = classif_line.parallel_line(classif_line.p1 + Point(0, -0.2))
+a2, b2, c2 = parallel_line2.coefficients
 ymax2 = float((-a2 * bounding_box[0][1] - c2) / b2)
-ymin2 =float( (-a2 * bounding_box[0][0] - c2) / b2)
-scatter.add_scatter(x=[bounding_box[0][0],bounding_box[0][1]], y=[ymin2,ymax2], mode="lines", hoveron="points")
+ymin2 = float((-a2 * bounding_box[0][0] - c2) / b2)
+scatter.add_scatter(x=[bounding_box[0][0], bounding_box[0][1]], y=[ymin2, ymax2], mode="lines", hoveron="points")
 scatter.show()
 # classif_line.parallel_line()
 

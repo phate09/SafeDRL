@@ -282,7 +282,7 @@ class DomainExplorer:
 
         # dom2: Lower bound in 'dim'th dimension is now at haflway point.
         dom2 = domain.clone()
-        dom2[0,dim] = new_value
+        dom2[0, dim] = new_value
 
         sub_domains = [dom1, dom2]
 

@@ -687,8 +687,6 @@ class Experiment():
                         wr.writerow(item[0])  # write back the first item
                     wr.writerow("")
 
-
-
     class SuccessorInfo:
         def __init__(self):
             self.action = None
