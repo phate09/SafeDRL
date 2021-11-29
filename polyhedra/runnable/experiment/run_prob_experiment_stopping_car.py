@@ -69,11 +69,11 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('DualReductions', 0)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             x_prime = StoppingCarExperimentProbabilistic.apply_dynamic(input, gurobi_model, action=chosen_action, env_input_size=self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
-            x_prime_results = self.optimise(template, gurobi_model, x_prime)
+            x_prime_results = optimise(template, gurobi_model, x_prime)
             if x_prime_results is None:
                 assert x_prime_results is not None
             successor_info = Experiment.SuccessorInfo()
@@ -235,7 +235,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         with StandardProgressBar(prefix="Preparing AbstractStepWorkers ", max_value=len(samples)) as bar:
             while len(samples) != 0 or len(proc_ids) != 0:
                 while len(proc_ids) < self.n_workers and len(samples) != 0:
-                    sample = samples.pop(0)-np.array([28,0])
+                    sample = samples.pop(0) - np.array([28, 0])
                     proc_ids.append(sample_trajectory.remote(sample, nn, t_max, n_trajectories))
                     bar.update(bar.value + 1)
                 ready_ids, proc_ids = ray.wait(proc_ids, num_returns=len(proc_ids), timeout=0.5)
@@ -278,7 +278,11 @@ if __name__ == '__main__':
     # experiment.analysis_template = Experiment.box(2)
     # experiment.use_contained = False
     # experiment.max_probability_split = 0.5
+    experiment.max_t_split = 1
+    experiment.max_probability_split = 0.1
+    experiment.use_split_with_seen = False
     experiment.time_horizon = 7
-    # experiment.load_graph = True
-    experiment.show_sampleplot2d()
+    experiment.load_graph = True
+    # experiment.show_sampleplot2d()
     experiment.run_experiment()
+    # start 23.52

@@ -30,6 +30,7 @@ import heapq
 class ProbabilisticExperiment(Experiment):
     def __init__(self, env_input_size: int):
         super().__init__(env_input_size)
+        self.max_t_split = -1  # limits the splitting to a given timestep threshold
         self.minimum_length = 0.1
         self.use_entropy_split = True
 
@@ -184,41 +185,42 @@ class ProbabilisticExperiment(Experiment):
                                 # elapsed_time=(datetime.datetime.now()-stats.start_time).total_seconds()/60.0,
                                 max_t=stats.max_t)
             if self.use_split:
-                if self.use_abstract_mapping:
-                    splitted_elements = self.split_item_abstract_mapping(x, [m[0] for m in self.abstract_mapping])
-                    n_fragments = len(splitted_elements)
-                    if n_fragments > 1:
-                        new_fragments = []
-                        stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
-                        for i, splitted_polytope in enumerate(splitted_elements):
-                            successor_info = Experiment.SuccessorInfo()
-                            successor_info.successor = tuple(splitted_polytope)
-                            successor_info.parent = x
-                            successor_info.parent_lbl = x_label
-                            successor_info.t = t
-                            successor_info.action = f"split{i}"
-                            new_fragments.append(successor_info)
-                            # todo probably include also the probabilities associated with each fragment
-                        stats.proc_ids.append(ray.put(new_fragments))
-                        continue
-                else:  # split on the go
-                    if len(list(self.graph.in_edges((x, x_label)))) == 0 or not "split" in self.graph.edges[list(self.graph.in_edges((x, x_label)))[0]].get("action"):
-                        if self.can_be_splitted(template, x):
-                            splitted_elements = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
-                            n_fragments = len(splitted_elements)
-                            if n_fragments > 1:
-                                new_fragments = []
-                                stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
-                                for i, (splitted_polytope, probs_range) in enumerate(splitted_elements):
-                                    successor_info = Experiment.SuccessorInfo()
-                                    successor_info.successor = tuple(splitted_polytope)
-                                    successor_info.parent = x
-                                    successor_info.parent_lbl = x_label
-                                    successor_info.t = t
-                                    successor_info.action = f"split{i}"
-                                    new_fragments.append(successor_info)
-                                stats.proc_ids.append(ray.put(new_fragments))
-                                continue
+                if self.max_t_split < 0 or t < self.max_t_split:  # limits the splitting to a given timestep
+                    if self.use_abstract_mapping:
+                        splitted_elements = self.split_item_abstract_mapping(x, [m[0] for m in self.abstract_mapping])
+                        n_fragments = len(splitted_elements)
+                        if n_fragments > 1:
+                            new_fragments = []
+                            stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+                            for i, splitted_polytope in enumerate(splitted_elements):
+                                successor_info = Experiment.SuccessorInfo()
+                                successor_info.successor = tuple(splitted_polytope)
+                                successor_info.parent = x
+                                successor_info.parent_lbl = x_label
+                                successor_info.t = t
+                                successor_info.action = f"split{i}"
+                                new_fragments.append(successor_info)
+                                # todo probably include also the probabilities associated with each fragment
+                            stats.proc_ids.append(ray.put(new_fragments))
+                            continue
+                    else:  # split on the go
+                        if len(list(self.graph.in_edges((x, x_label)))) == 0 or not "split" in self.graph.edges[list(self.graph.in_edges((x, x_label)))[0]].get("action"):
+                            if self.can_be_splitted(template, x):
+                                splitted_elements = self.check_split(t, x, x_label, nn, bar_main, stats, template, template_2d)
+                                n_fragments = len(splitted_elements)
+                                if n_fragments > 1:
+                                    new_fragments = []
+                                    stats.seen.remove((x, x_label))  # remove the parent node from seen if it has been split to prevent unnecessary loops when we check for containment
+                                    for i, (splitted_polytope, probs_range) in enumerate(splitted_elements):
+                                        successor_info = Experiment.SuccessorInfo()
+                                        successor_info.successor = tuple(splitted_polytope)
+                                        successor_info.parent = x
+                                        successor_info.parent_lbl = x_label
+                                        successor_info.t = t
+                                        successor_info.action = f"split{i}"
+                                        new_fragments.append(successor_info)
+                                    stats.proc_ids.append(ray.put(new_fragments))
+                                    continue
 
             if self.use_split_with_seen:  # split according to the seen elements
                 splitted_elements2 = self.split_item_abstract_mapping(x, [m[0] for m in stats.seen])  # splits according to the seen list
@@ -395,7 +397,7 @@ class ProbabilisticExperiment(Experiment):
         # #Binary Space Partitioning
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', self.output_flag)
-        input1 = Experiment.generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
+        input1 = generate_input_region(gurobi_model, self.analysis_template, poly1, self.env_input_size)
         relevant_directions = []
         for j, template in enumerate(self.analysis_template):
             multiplication = 0
@@ -407,7 +409,7 @@ class ProbabilisticExperiment(Experiment):
                 gurobi_model.update()
             gurobi_model.addConstr(multiplication <= poly2[j], name=f"check_contained_constraint")
             gurobi_model.update()
-            x_results = self.optimise(self.analysis_template, gurobi_model, input1)
+            x_results = optimise(self.analysis_template, gurobi_model, input1)
             if np.allclose(np.array(poly1), x_results) is False:
                 samples = polytope.sample(1000, self.analysis_template, x_results)
                 from scipy.spatial import ConvexHull
@@ -415,8 +417,6 @@ class ProbabilisticExperiment(Experiment):
                 volume = hull.volume  # estimated volume from points helps prioritise halfspaces
                 relevant_directions.append((j, volume))
         return relevant_directions
-
-
 
     def check_split(self, t, x, x_label, nn, bar_main, stats, template, template_2d) -> List[Tuple[Any, Any]]:
         # -------splitting
@@ -531,8 +531,8 @@ class ProbabilisticExperiment(Experiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = gurobi_model.addMVar(shape=(self.env_input_size,), lb=float("-inf"), name="input")
-            Experiment.generate_region_constraints(gurobi_model, template, input, bnds, self.env_input_size)
-            Experiment.generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
+            generate_region_constraints(gurobi_model, template, input, bnds, self.env_input_size)
+            generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
             if gurobi_model.status == 2:
@@ -584,7 +584,7 @@ class ProbabilisticExperiment(Experiment):
         return np.stack(template)
 
     def h_repr_to_plot(self, gurobi_model, template, x_prime):
-        x_prime_results = self.optimise(template, gurobi_model, x_prime)  # h representation
+        x_prime_results = optimise(template, gurobi_model, x_prime)  # h representation
         return x_prime_results is not None, x_prime_results
 
     @staticmethod

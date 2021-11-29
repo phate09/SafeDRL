@@ -300,13 +300,14 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     ray.init(log_to_driver=False, local_mode=False)
     experiment = BouncingBallExperimentProbabilistic()
-    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/h20_box_t4_psi01"
+    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/h20_box_t4_psi01_t1"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
     experiment.max_probability_split = 0.1
+    experiment.max_t_split = 1
     # experiment.analysis_template = Experiment.octagon(2)
     # experiment.use_contained = False
-    experiment.load_graph = True
-    experiment.input_boundaries = experiment.get_template(4)
+    # experiment.load_graph = True
+    experiment.input_boundaries = experiment.get_template(3)
     experiment.run_experiment()
