@@ -1,9 +1,11 @@
 import datetime
+import os
 import time
 
 import ray
 from ray import tune
 
+import utils
 from polyhedra.experiments_nn_analysis import Experiment
 from runnables.runnable.experiment.run_experiment_bouncing_ball import BouncingBallExperiment
 from runnables.runnable.experiment.run_experiment_cartpole import CartpoleExperiment
@@ -12,49 +14,49 @@ from runnables.runnable.experiment.run_ora_stopping_car import ORAStoppingCarExp
 
 nn_paths_bouncing_ball = [
 
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00000_0_2021-01-19_00-19-23/checkpoint_10/checkpoint-10",
-    "//home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00001_1_2021-01-19_00-19-23/checkpoint_20/checkpoint-20",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00002_2_2021-01-19_00-20-06/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00003_3_2021-01-19_00-20-45/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00004_4_2021-01-19_00-20-52/checkpoint_20/checkpoint-20",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00000_0_2021-01-19_00-19-23/checkpoint_10/checkpoint-10",
+    "/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00001_1_2021-01-19_00-19-23/checkpoint_20/checkpoint-20",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00002_2_2021-01-19_00-20-06/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00003_3_2021-01-19_00-20-45/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00004_4_2021-01-19_00-20-52/checkpoint_20/checkpoint-20",
 
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00000_0_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00001_1_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00002_2_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00003_3_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
-    "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00000_0_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00001_1_2021-01-18_23-46-54/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00002_2_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00003_3_2021-01-18_23-47-37/checkpoint_10/checkpoint-10",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10",
 ]
 nn_paths_stopping_car = [
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_14b68_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_11-56-58/checkpoint_31/checkpoint-31",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_14b68_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_11-56-58/checkpoint_37/checkpoint-37",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_12-37-27/checkpoint_24/checkpoint-24",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_12-37-27/checkpoint_36/checkpoint-36",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00002_2_cost_fn=0,epsilon_input=0_2021-01-17_12-38-53/checkpoint_40/checkpoint-40",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00003_3_cost_fn=0,epsilon_input=0.1_2021-01-17_12-39-31/checkpoint_32/checkpoint-32",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00004_4_cost_fn=0,epsilon_input=0_2021-01-17_12-41-14/checkpoint_76/checkpoint-76",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_58/checkpoint-58",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00007_7_cost_fn=0,epsilon_input=0.1_2021-01-17_12-45-46/checkpoint_89/checkpoint-89",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00008_8_cost_fn=0,epsilon_input=0_2021-01-17_12-47-19/checkpoint_43/checkpoint-43",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00009_9_cost_fn=0,epsilon_input=0.1_2021-01-17_12-49-48/checkpoint_50/checkpoint-50",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00010_10_cost_fn=0,epsilon_input=0_2021-01-17_12-51-01/checkpoint_27/checkpoint-27",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00011_11_cost_fn=0,epsilon_input=0.1_2021-01-17_12-52-36/checkpoint_44/checkpoint-44",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00012_12_cost_fn=0,epsilon_input=0_2021-01-17_12-52-47/checkpoint_50/checkpoint-50",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00013_13_cost_fn=0,epsilon_input=0.1_2021-01-17_12-55-12/checkpoint_53/checkpoint-53",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00014_14_cost_fn=0,epsilon_input=0_2021-01-17_12-55-46/checkpoint_56/checkpoint-56",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00015_15_cost_fn=0,epsilon_input=0.1_2021-01-17_12-58-23/checkpoint_48/checkpoint-48",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00016_16_cost_fn=0,epsilon_input=0_2021-01-17_12-59-01/checkpoint_38/checkpoint-38",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00017_17_cost_fn=0,epsilon_input=0.1_2021-01-17_13-01-15/checkpoint_50/checkpoint-50",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00018_18_cost_fn=0,epsilon_input=0_2021-01-17_13-01-17/checkpoint_35/checkpoint-35",
-    "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00019_19_cost_fn=0,epsilon_input=0.1_2021-01-17_13-03-22/checkpoint_36/checkpoint-36"
+    "tune_PPO_stopping_car/PPO_StoppingCar_14b68_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_11-56-58/checkpoint_31/checkpoint-31",
+    "tune_PPO_stopping_car/PPO_StoppingCar_14b68_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_11-56-58/checkpoint_37/checkpoint-37",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00000_0_cost_fn=0,epsilon_input=0_2021-01-17_12-37-27/checkpoint_24/checkpoint-24",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00001_1_cost_fn=0,epsilon_input=0.1_2021-01-17_12-37-27/checkpoint_36/checkpoint-36",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00002_2_cost_fn=0,epsilon_input=0_2021-01-17_12-38-53/checkpoint_40/checkpoint-40",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00003_3_cost_fn=0,epsilon_input=0.1_2021-01-17_12-39-31/checkpoint_32/checkpoint-32",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00004_4_cost_fn=0,epsilon_input=0_2021-01-17_12-41-14/checkpoint_76/checkpoint-76",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00005_5_cost_fn=0,epsilon_input=0.1_2021-01-17_12-41-27/checkpoint_58/checkpoint-58",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00006_6_cost_fn=0,epsilon_input=0_2021-01-17_12-44-54/checkpoint_41/checkpoint-41",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00007_7_cost_fn=0,epsilon_input=0.1_2021-01-17_12-45-46/checkpoint_89/checkpoint-89",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00008_8_cost_fn=0,epsilon_input=0_2021-01-17_12-47-19/checkpoint_43/checkpoint-43",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00009_9_cost_fn=0,epsilon_input=0.1_2021-01-17_12-49-48/checkpoint_50/checkpoint-50",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00010_10_cost_fn=0,epsilon_input=0_2021-01-17_12-51-01/checkpoint_27/checkpoint-27",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00011_11_cost_fn=0,epsilon_input=0.1_2021-01-17_12-52-36/checkpoint_44/checkpoint-44",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00012_12_cost_fn=0,epsilon_input=0_2021-01-17_12-52-47/checkpoint_50/checkpoint-50",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00013_13_cost_fn=0,epsilon_input=0.1_2021-01-17_12-55-12/checkpoint_53/checkpoint-53",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00014_14_cost_fn=0,epsilon_input=0_2021-01-17_12-55-46/checkpoint_56/checkpoint-56",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00015_15_cost_fn=0,epsilon_input=0.1_2021-01-17_12-58-23/checkpoint_48/checkpoint-48",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00016_16_cost_fn=0,epsilon_input=0_2021-01-17_12-59-01/checkpoint_38/checkpoint-38",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00017_17_cost_fn=0,epsilon_input=0.1_2021-01-17_13-01-15/checkpoint_50/checkpoint-50",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00018_18_cost_fn=0,epsilon_input=0_2021-01-17_13-01-17/checkpoint_35/checkpoint-35",
+    "tune_PPO_stopping_car/PPO_StoppingCar_c1c7e_00019_19_cost_fn=0,epsilon_input=0.1_2021-01-17_13-03-22/checkpoint_36/checkpoint-36"
 ]
-nn_paths_cartpole = ["/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193",
-                     "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3334/checkpoint-3334",
-                     "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00002_2_cost_fn=2,tau=0.001_2021-01-16_20-33-36/checkpoint_3334/checkpoint-3334",
-                     "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00003_3_cost_fn=0,tau=0.02_2021-01-16_23-08-42/checkpoint_190/checkpoint-190",
-                     "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00004_4_cost_fn=1,tau=0.02_2021-01-16_23-14-15/checkpoint_3334/checkpoint-3334",
-                     "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00005_5_cost_fn=2,tau=0.02_2021-01-16_23-27-15/checkpoint_3334/checkpoint-3334"]
+nn_paths_cartpole = ["tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193",
+                     "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3334/checkpoint-3334",
+                     "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00002_2_cost_fn=2,tau=0.001_2021-01-16_20-33-36/checkpoint_3334/checkpoint-3334",
+                     "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00003_3_cost_fn=0,tau=0.02_2021-01-16_23-08-42/checkpoint_190/checkpoint-190",
+                     "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00004_4_cost_fn=1,tau=0.02_2021-01-16_23-14-15/checkpoint_3334/checkpoint-3334",
+                     "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00005_5_cost_fn=2,tau=0.02_2021-01-16_23-27-15/checkpoint_3334/checkpoint-3334"]
 
 
 def _iter():
@@ -88,7 +90,7 @@ def run_parameterised_experiment(config):
     n_workers = config["n_workers"]
     if problem == "bouncing_ball":
         experiment = BouncingBallExperiment()
-        experiment.nn_path = nn_paths_bouncing_ball[other_config["nn_path"]]
+        experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_bouncing_ball[other_config["nn_path"]])
         experiment.tau = other_config["tau"]
         if other_config["template"] == 2:  # octagon
             experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
@@ -105,7 +107,7 @@ def run_parameterised_experiment(config):
     elif problem == "stopping_car":
         if method == "ora":
             experiment = ORAStoppingCarExperiment()
-            experiment.nn_path = nn_paths_stopping_car[other_config["nn_path"]]
+            experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_stopping_car[other_config["nn_path"]])
             experiment.input_epsilon = other_config["epsilon_input"]
             if other_config["template"] == 2:  # octagon
                 experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
@@ -122,7 +124,7 @@ def run_parameterised_experiment(config):
             elapsed_seconds, safe, max_t = experiment.run_experiment()
         else:
             experiment = StoppingCarExperiment()
-            experiment.nn_path = nn_paths_stopping_car[other_config["nn_path"]]
+            experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_stopping_car[other_config["nn_path"]])
             experiment.input_epsilon = other_config["epsilon_input"]
             if other_config["template"] == 2:  # octagon
                 experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
@@ -139,7 +141,7 @@ def run_parameterised_experiment(config):
             elapsed_seconds, safe, max_t = experiment.run_experiment()
     else:
         experiment = CartpoleExperiment()
-        experiment.nn_path = nn_paths_cartpole[other_config["nn_path"]]
+        experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_cartpole[other_config["nn_path"]])
         experiment.tau = other_config["tau"]
         if other_config["template"] == 2:  # octagon
             experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
