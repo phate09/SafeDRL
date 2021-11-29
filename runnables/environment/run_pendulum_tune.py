@@ -3,12 +3,13 @@ import os
 import numpy as np
 from ray import tune
 
+import utils
 from environment.pendulum_abstract import PendulumEnv
 from training.dqn.dqn_agent import Agent
 
 state_size = 2
 agent = Agent(state_size, 2)
-agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
+agent.load(os.path.join(utils.get_save_dir(),"Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth"))
 
 
 def trainable(config):

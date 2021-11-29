@@ -3,6 +3,7 @@ import os
 import numpy as np
 import progressbar
 
+import utils
 from environment.pendulum_abstract import PendulumEnv
 from training.dqn.dqn_agent import Agent
 
@@ -21,7 +22,7 @@ start_state = np.array([0.37, 0.43])  # min 33% max 100%
 
 state_size = 2
 agent = Agent(state_size, 2)
-agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
+agent.load(os.path.join(utils.get_save_dir(),"Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth"))
 action = None
 
 render = False

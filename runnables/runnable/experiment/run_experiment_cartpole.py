@@ -10,6 +10,7 @@ from ray.rllib.agents.ppo import ppo
 
 from environment.cartpole_ray import CartPoleEnv
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region
 from training.ppo.train_PPO_cartpole import get_PPO_trainer
 from training.ppo.tune.tune_train_PPO_cartpole import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
@@ -52,7 +53,7 @@ class CartpoleExperiment(Experiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('Threads', 2)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
             sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action)
             feasible_action = CartpoleExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
@@ -258,28 +259,6 @@ class CartpoleExperiment(Experiment):
             input_boundaries = [0.125, 0.0625, 0.1875]
             template = np.array([theta, theta + theta_dot, (theta - theta_dot)])
             return input_boundaries, template
-
-    def get_nn_old(self):
-        config, trainer = get_PPO_trainer(use_gpu=0)
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_12-49-16sn6s0bd0/checkpoint_19/checkpoint-19")
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-07_17-13-476oom2etf/checkpoint_20/checkpoint-20")
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-08_16-19-23tg3bxrcz/checkpoint_18/checkpoint-18")
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_150/checkpoint-150")
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_170/checkpoint-170")
-        # trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_10-42-12ad16ozkq/checkpoint_200/checkpoint-200")
-        trainer.restore("/home/edoardo/ray_results/PPO_CartPoleEnv_2021-01-09_15-34-25f0ld3dex/checkpoint_30/checkpoint-30")
-
-        policy = trainer.get_policy()
-        # sequential_nn = convert_ray_simple_policy_to_sequential(policy).cpu()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        l0 = torch.nn.Linear(4, 2, bias=False)
-        l0.weight = torch.nn.Parameter(torch.tensor([[0, 0, 1, 0], [0, 0, 0, 1]], dtype=torch.float32))
-        layers = [l0]
-        for l in sequential_nn:
-            layers.append(l)
-        # ray.shutdown()
-        nn = torch.nn.Sequential(*layers)
-        return nn
 
     def get_nn(self):
         config = get_PPO_config(1234)

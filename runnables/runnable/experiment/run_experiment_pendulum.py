@@ -11,6 +11,7 @@ from ray.rllib.agents.ppo import ppo
 
 from environment.pendulum import MonitoredPendulum
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region, optimise
 from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
 
@@ -199,8 +200,8 @@ class PendulumExperiment(Experiment):
         gurobi_model = grb.Model()
         gurobi_model.setParam('OutputFlag', self.output_flag)
         additional = [self.safe_angle, self.safe_angle, float("inf"), float("inf"), float("inf"), float("inf"), float("inf"), float("inf")]
-        input = Experiment.generate_input_region(gurobi_model, Experiment.octagon(self.env_input_size), additional, self.env_input_size)
-        x_results = self.optimise(self.analysis_template, gurobi_model, input)
+        input = generate_input_region(gurobi_model, Experiment.octagon(self.env_input_size), additional, self.env_input_size)
+        x_results = optimise(self.analysis_template, gurobi_model, input)
         if x_results is None:
             print("Model unsatisfiable")
             return None

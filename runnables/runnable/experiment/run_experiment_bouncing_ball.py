@@ -7,6 +7,7 @@ import torch
 from ray.rllib.agents.ppo import ppo
 
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region
 from training.ppo.train_PPO_bouncingball import get_PPO_trainer
 from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
@@ -40,7 +41,7 @@ class BouncingBallExperiment(Experiment):
         def standard_op():
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            input = self.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             z = self.apply_dynamic(input, gurobi_model, self.env_input_size)
             return gurobi_model, z, input
 
@@ -205,17 +206,6 @@ class BouncingBallExperiment(Experiment):
             input_boundaries = None
             template = np.array([v + p, -v - p, -p])
             return input_boundaries, template
-
-    def get_nn_old(self):
-        config, trainer = get_PPO_trainer(use_gpu=0)
-        trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
-        policy = trainer.get_policy()
-        sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        layers = []
-        for l in sequential_nn:
-            layers.append(l)
-        nn = torch.nn.Sequential(*layers)
-        return nn
 
     def get_nn(self):
         config = get_PPO_config(1234)

@@ -1,3 +1,4 @@
+import os
 import random
 
 import matplotlib.pyplot as plt
@@ -17,6 +18,7 @@ from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
 
+import utils
 from environment.stopping_car import StoppingCar
 from training.ppo.tune.tune_train_PPO_car import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
@@ -236,8 +238,8 @@ class SafetyRetrainingOperator(TrainingOperator):
 if __name__ == '__main__':
 
     ray.init(local_mode=True)
-    path1 = "/home/edoardo/ray_results/tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58"
-    path_invariant = "/runnables/invariant/invariant_checkpoint_old.pt"
+    path1 = os.path.join(utils.get_save_dir(),"tune_PPO_stopping_car/PPO_StoppingCar_acc24_00001_1_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_58/checkpoint-58")
+    path_invariant = os.path.join(utils.get_save_dir(),"invariant_checkpoint_old.pt")
     config = get_PPO_config(1234, use_gpu=0)
     trainer = ppo.PPOTrainer(config=config)
     trainer.restore(path1)
@@ -264,12 +266,12 @@ if __name__ == '__main__':
             print(stats)
 
         print(trainer1.validate())
-        torch.save(trainer1.state_dict(), "checkpoint.pt")
-        torch.save(trainer1.get_model()[0].state_dict(), "retrained_agent.pt")
+        torch.save(trainer1.state_dict(), os.path.join(utils.get_save_dir(),"checkpoint.pt"))
+        torch.save(trainer1.get_model()[0].state_dict(), os.path.join(utils.get_save_dir(),"retrained_agent.pt"))
         agent_model, invariant_model = trainer1.get_model()
     else:
         sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-        sequential_nn.load_state_dict(torch.load("/home/edoardo/Development/SafeDRL/runnables/invariant/retrained_agent.pt"))
+        sequential_nn.load_state_dict(torch.load(os.path.join(utils.get_save_dir(),"retrained_agent.pt")))
         agent_model = sequential_nn
         invariant_model = torch.nn.Sequential(torch.nn.Linear(2, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1), torch.nn.Tanh())
         invariant_model.load_state_dict(torch.load(path_invariant, map_location=torch.device('cpu')))  # load the invariant model

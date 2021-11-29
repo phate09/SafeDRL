@@ -7,6 +7,7 @@ import torch
 from ray.rllib.agents.ppo import ppo
 
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region, generate_region_constraints
 from training.ppo.tune.tune_train_PPO_watertank import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
 
@@ -43,7 +44,7 @@ class WaterTankExperiment(Experiment):
                 gurobi_model.setParam('OutputFlag', output_flag)
                 gurobi_model.setParam('Threads', 2)
                 gurobi_model.params.NonConvex = 2
-                input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+                input = generate_input_region(gurobi_model, template, x, self.env_input_size)
 
                 feasible_action = WaterTankExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
                 if feasible_action:
@@ -51,9 +52,9 @@ class WaterTankExperiment(Experiment):
                     x_prime = self.apply_dynamic(input, gurobi_model, chosen_action, env_input_size=self.env_input_size)
                     for A, b in self.unsafe_zone:  # splits the input based on the decision boundary of the ltl property
                         if unsafe_check:
-                            Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size)
+                            generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size)
                         else:
-                            Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=True)
+                            generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=True)
                     gurobi_model.update()
                     gurobi_model.optimize()
                     found_successor, x_prime_results = self.h_repr_to_plot(gurobi_model, template, x_prime)

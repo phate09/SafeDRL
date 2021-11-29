@@ -2,6 +2,7 @@ import gurobi as grb
 import ray
 
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import optimise
 from runnables.runnable.experiment.run_experiment_bouncing_ball import BouncingBallExperiment
 
 
@@ -19,7 +20,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
         observable_template = Experiment.octagon(2)
         # self.env_input_size = 2
-        observable_result = self.optimise(observable_template, gurobi_model, observation)
+        observable_result = optimise(observable_template, gurobi_model, observation)
         # self.env_input_size = 6
         return observable_template, observable_result
 
