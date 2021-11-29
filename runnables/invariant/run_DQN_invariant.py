@@ -6,9 +6,9 @@ import torch
 from matplotlib import cm
 from matplotlib.colors import Normalize
 
-from training.dqn.safe_dqn_agent import InvariantAgent
 from environment.stopping_car import StoppingCar
 from runnables.invariant.retrain_agent import GridSearchDataset
+from training.dqn.safe_dqn_agent import InvariantAgent
 
 seed = 5
 config = {"cost_fn": 1, "simplified": True}

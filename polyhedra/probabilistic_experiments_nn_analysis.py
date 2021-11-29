@@ -1,30 +1,28 @@
 import csv
 import datetime
+import heapq
 import math
 import os
+import pickle
 import sys
 import time
-from collections import defaultdict
 from contextlib import nullcontext
 from typing import Tuple, List, Any
+
 import gurobipy as grb
 import networkx
 import numpy as np
 import progressbar
 import ray
 import torch
-from interval import interval, imath
-import plotly.graph_objects as go
-from py4j.java_gateway import JavaGateway
-import pickle
+
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.milp_methods import generate_input_region, optimise, generate_region_constraints
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
+from polyhedra.partitioning import sample_and_split, is_split_range, split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
 from runnables.runnable.templates import polytope
 from utility.standard_progressbar import StandardProgressBar
-import heapq
 
 
 class ProbabilisticExperiment(Experiment):

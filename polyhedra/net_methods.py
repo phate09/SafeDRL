@@ -1,10 +1,8 @@
-import torch
 import numpy as np
-from sklearn.model_selection import ParameterGrid
-import pandas as pd
 import plotly.express as px
 import torch
 import torch.nn
+from sklearn.model_selection import ParameterGrid
 
 
 def generate_nn(x, min_speed=20, max_speed=30, min_distance=40, max_distance=50):

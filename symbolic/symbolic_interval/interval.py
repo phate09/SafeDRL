@@ -9,9 +9,10 @@ Interval class definitions
 
 from __future__ import print_function
 
+import warnings
+
 import numpy as np
 import torch
-import warnings
 
 
 class Interval():

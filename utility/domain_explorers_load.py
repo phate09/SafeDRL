@@ -1,14 +1,16 @@
 import os
+
 import numpy as np
 import torch
-from training.dqn.dqn_agent import Agent
-from training.ray_utils import load_sequential_from_ray, get_pendulum_ppo_agent
+
+from environment.cartpole_abstract import CartPoleEnv_abstract
+from environment.pendulum_abstract import PendulumEnv_abstract
 from plnn.bab_explore import DomainExplorer
 from plnn.bab_explore_sym import SymbolicDomainExplorer
 from plnn.verification_network import VerificationNetwork
-from environment.cartpole_abstract import CartPoleEnv_abstract
-from environment.pendulum_abstract import PendulumEnv_abstract
 from plnn.verification_network_sym import SymVerificationNetwork
+from training.dqn.dqn_agent import Agent
+from training.ray_utils import load_sequential_from_ray, get_pendulum_ppo_agent
 
 
 def generateCartpoleDomainExplorer(precision=1e-2, rounding=6, sym=False):

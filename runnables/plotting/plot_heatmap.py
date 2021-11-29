@@ -1,20 +1,21 @@
 import os
-import time
+
 import gym
+import numpy as np
 import ray
 import sympy
+import torch
 from sklearn.linear_model import LogisticRegression
 from sympy import Line
 from sympy.geometry import Point
+
 import mosaic.hyperrectangle_serialisation as serialisation
 import mosaic.utils as utils
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
-from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
+from mosaic.hyperrectangle import HyperRectangle
 from prism.shared_rtree import SharedRtree
-import numpy as np
-import torch
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")

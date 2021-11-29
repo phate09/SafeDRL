@@ -1,8 +1,5 @@
 from collections import defaultdict
-from itertools import permutations
 from typing import Tuple, List
-
-import numpy as np
 
 from mosaic.hyperrectangle import HyperRectangle
 from mosaic.utils import partially_contained, contained, flatten_interval, create_tree

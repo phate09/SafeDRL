@@ -1,17 +1,13 @@
 import datetime
 import os
 from collections import deque
-import torch
+
 import matplotlib.pyplot as plt
 import numpy as np
-from gym.envs.classic_control import CartPoleEnv
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from tensorboardX import SummaryWriter
-import torch.nn.functional as F
-from training.dqn.dqn_agent import Agent
-from training.dqn.safe_dqn_agent import InvariantAgent, device
+
 from environment.stopping_car import StoppingCar
-from runnables.invariant.retrain_agent import GridSearchDataset
+from training.dqn.safe_dqn_agent import InvariantAgent
 from utility.Scheduler import Scheduler
 
 currentDT = datetime.datetime.now()

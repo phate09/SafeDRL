@@ -1,9 +1,8 @@
-from typing import List
 import numpy as np
-
-from polyhedra.experiments_nn_analysis import Experiment
 import pypoman
 from scipy.spatial import ConvexHull
+
+from polyhedra.experiments_nn_analysis import Experiment
 
 
 def merge_regions(template: np.ndarray, items: np.ndarray):

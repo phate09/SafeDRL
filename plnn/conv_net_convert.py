@@ -1,18 +1,15 @@
 from __future__ import print_function
 
-import argparse
 import hashlib
 import os
 import pickle
 
 import numpy as np
-import progressbar
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils
 import torch.utils.data
-import torch.utils.data as utils
 
 # from black_white_generator import BlackWhite
 # from plnn.simplified.conv_net import Net

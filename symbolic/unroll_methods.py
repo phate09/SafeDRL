@@ -8,16 +8,17 @@ from collections import defaultdict
 from contextlib import nullcontext
 from itertools import cycle
 from math import ceil
-from typing import Tuple, List, Set
+from typing import Tuple, List
 
 import networkx as nx
 import numpy as np
 import progressbar
 import ray
 import sympy
+import torch
 from rtree import index
 from sympy.combinatorics.graycode import GrayCode
-import torch
+
 import mosaic.utils as utils
 import prism.state_storage
 import runnables.verification_runs.aggregate_abstract_domain

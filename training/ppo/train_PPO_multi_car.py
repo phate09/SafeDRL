@@ -1,11 +1,10 @@
 import ray
 import ray.rllib.agents.ppo as ppo
-from gym.vector.utils import spaces
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
-import numpy as np
+
 from environment.multi_car import allCars
 
 torch, nn = try_import_torch()

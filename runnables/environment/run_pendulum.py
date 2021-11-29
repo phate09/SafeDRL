@@ -1,12 +1,10 @@
 import os
 
+import numpy as np
 import progressbar
 
-from training.dqn.dqn_agent import Agent
 from environment.pendulum_abstract import PendulumEnv
-import numpy as np
-
-from utility.standard_progressbar import StandardProgressBar
+from training.dqn.dqn_agent import Agent
 
 #array [angle,speed]
 env = PendulumEnv()

@@ -1,17 +1,16 @@
 import os
-import time
+
 import gym
+import numpy as np
 import ray
 import torch
 
 import mosaic.hyperrectangle_serialisation as serialisation
-import mosaic.utils as utils
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
 from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
 from prism.shared_rtree import SharedRtree
-import numpy as np
 
 
 def trunc(values, decs=0):

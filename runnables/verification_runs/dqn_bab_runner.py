@@ -1,11 +1,10 @@
-from plnn.branch_and_bound import bab
-from training.dqn.dqn_sequential import QNetwork
-from plnn.conv_net_convert import convert
-from plnn.verification_network import VerificationNetwork
+import numpy as np
 import torch
 import torch.nn
-import numpy as np
 
+from plnn.branch_and_bound import bab
+from plnn.verification_network import VerificationNetwork
+from training.dqn.dqn_sequential import QNetwork
 
 use_cuda = False
 seed = 1

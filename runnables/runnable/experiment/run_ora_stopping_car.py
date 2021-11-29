@@ -1,6 +1,6 @@
 import gurobi as grb
 import ray
-import numpy as np
+
 from polyhedra.experiments_nn_analysis import Experiment
 from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
 

@@ -1,5 +1,6 @@
 import random
 from typing import List
+
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np

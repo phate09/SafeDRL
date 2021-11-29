@@ -1,10 +1,7 @@
 import gym
-from gym.utils import seeding
-from gym import spaces, logger
-import random
-import time
 import numpy as np
 from gym.envs.classic_control import rendering
+from gym.utils import seeding
 
 
 class ColAvoidEnvDiscrete(gym.Env):

@@ -7,11 +7,11 @@ import ray
 import torch
 from ray.rllib.agents.ppo import ppo
 
+from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from training.ppo.train_PPO_bouncingball import get_PPO_trainer
 from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 
 
 class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):

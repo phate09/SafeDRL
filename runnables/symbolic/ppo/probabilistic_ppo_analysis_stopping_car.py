@@ -11,17 +11,15 @@ import progressbar
 import pypoman
 import ray
 import torch
-from py4j.java_gateway import JavaGateway
 
-from training.ppo.train_PPO_car import get_PPO_trainer
-from training.ray_utils import convert_ray_policy_to_sequential
 from mosaic.utils import PolygonSort, compute_trace_polygons
 from polyhedra.experiments_nn_analysis import Experiment, contained
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, create_range_bounds_model
 from polyhedra.plot_utils import show_polygon_list3, compute_polygon_trace, windowed_projection
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO
-from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment2
+from training.ppo.train_PPO_car import get_PPO_trainer
+from training.ray_utils import convert_ray_policy_to_sequential
 from utility.standard_progressbar import StandardProgressBar
 
 

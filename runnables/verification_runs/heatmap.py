@@ -1,10 +1,9 @@
 import jsonpickle
-import numpy as np
-import numpy.random
 import matplotlib.pyplot as plt
+import numpy as np
 import progressbar as pb
-from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 import ray
+from verification_runs.cartpole_bab_load import generateCartpoleDomainExplorer
 
 with open("../save/aggregated_safe_domains.json", 'r') as f:
     frozen_safe = jsonpickle.decode(f.read())

@@ -3,7 +3,6 @@ from datetime import datetime
 
 import numpy as np
 import ray
-from gym.vector.utils import spaces
 from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC

@@ -1,10 +1,10 @@
+import logging
+
 import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
 import numpy as np
+from gym import spaces
 from matplotlib import pyplot as plt
 
-import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 

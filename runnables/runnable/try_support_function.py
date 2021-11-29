@@ -1,10 +1,11 @@
-
-from math import sqrt
 import polyhedra.utils as utils
 import matplotlib.pyplot as plt
-from sympy import Point, Line, Float, Eq
-from sympy.abc import x,y
 import numpy as np
+from sympy import Point
+from sympy.abc import x, y
+
+import polyhedra.utils as utils
+
 p1 = Point(1,1)
 p2 = Point(2,1)
 p3 = Point(1,0)

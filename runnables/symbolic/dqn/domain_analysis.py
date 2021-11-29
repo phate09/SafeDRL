@@ -1,14 +1,16 @@
 # %%
 import os
 import time
+
 import gym
 import ray
+
 import mosaic.hyperrectangle_serialisation as serialisation
 import mosaic.utils as utils
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
-from mosaic.hyperrectangle import HyperRectangle_action, HyperRectangle
+from mosaic.hyperrectangle import HyperRectangle_action
 from prism.shared_rtree import SharedRtree
 
 gym.logger.set_level(40)

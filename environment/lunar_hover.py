@@ -1,8 +1,8 @@
-from gym.envs.box2d import LunarLander
-import numpy as np
-import sys, math
+import math
 
-from gym.envs.box2d.lunar_lander import SCALE, MAIN_ENGINE_POWER, SIDE_ENGINE_AWAY, SIDE_ENGINE_HEIGHT, SIDE_ENGINE_POWER, FPS, VIEWPORT_W, LEG_DOWN, VIEWPORT_H
+import numpy as np
+from gym.envs.box2d import LunarLander
+from gym.envs.box2d.lunar_lander import SCALE, MAIN_ENGINE_POWER, SIDE_ENGINE_AWAY, SIDE_ENGINE_HEIGHT, SIDE_ENGINE_POWER, FPS, VIEWPORT_W, VIEWPORT_H
 
 
 class LunarHover(LunarLander):

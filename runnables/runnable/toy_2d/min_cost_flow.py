@@ -100,7 +100,6 @@ def pyomo_postprocess(options=None, instance=None, results=None):
 if __name__ == '__main__':
     # This emulates what the pyomo command-line tools does
     from pyomo.opt import SolverFactory
-    import pyomo.environ
 
     opt = SolverFactory("glpk")
     results = opt.solve(model)

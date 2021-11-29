@@ -1,17 +1,10 @@
-import hashlib
-import os
-import pickle
-import time
-import sympy
 # import gurobipy as grb
 import numpy as np
 import torch
-from sympy import symarray
 from torch import nn as nn
 
-from training.dqn.dqn_sequential import TestNetwork
-from plnn.flatten_layer import Flatten
 from symbolic.symbolic_interval import Interval_network, Symbolic_interval
+from training.dqn.dqn_sequential import TestNetwork
 
 use_cuda = False
 device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")

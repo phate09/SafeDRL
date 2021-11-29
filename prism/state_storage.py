@@ -6,10 +6,9 @@ import networkx as nx
 from py4j.java_collections import ListConverter
 from py4j.java_gateway import JavaGateway
 
+import mosaic.utils
 from mosaic.hyperrectangle import HyperRectangle, HyperRectangle_action
 from utility.standard_progressbar import StandardProgressBar
-import tempfile
-import mosaic.utils
 
 
 class StateStorage:

@@ -1,15 +1,13 @@
-import os
 import math
+import os
 import time
 
-import numpy as np
-
 import gym
-from gym import spaces
-from gym.utils import seeding
-
+import numpy as np
 import pybullet as p
 import pybullet_data
+from gym import spaces
+from gym.utils import seeding
 
 
 class BalancebotEnv(gym.Env):

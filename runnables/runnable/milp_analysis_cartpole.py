@@ -10,10 +10,10 @@ import ray
 import torch
 from interval import interval, imath
 
-from training.ppo.train_PPO_cartpole import get_PPO_trainer
-from training.ray_utils import convert_ray_policy_to_sequential
 from environment.cartpole_ray import CartPoleEnv
 from polyhedra.plot_utils import show_polygon_list3
+from training.ppo.train_PPO_cartpole import get_PPO_trainer
+from training.ray_utils import convert_ray_policy_to_sequential
 
 env_input_size = 4
 

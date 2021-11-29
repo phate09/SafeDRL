@@ -1,46 +1,19 @@
-import os
-from typing import List, Tuple
+import heapq
 
-import gurobi as grb
-import numpy as np
-import ray
-import torch
-from py4j.java_collections import ListConverter
-from ray.rllib.agents.ppo import ppo
-
-from training.ppo.train_PPO_bouncingball import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
-from environment.bouncing_ball_old import BouncingBall
-from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
-import csv
-import datetime
-import math
-import os
-import sys
-import time
-from collections import defaultdict
-from contextlib import nullcontext
-from typing import Tuple, List, Any
-import gurobipy as grb
 import networkx
 import numpy as np
 import progressbar
 import ray
 import torch
-from interval import interval, imath
-import plotly.graph_objects as go
 from py4j.java_gateway import JavaGateway
-import pickle
+from ray.rllib.agents.ppo import ppo
+
+from environment.bouncing_ball_old import BouncingBall
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
-from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
-from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
 from runnables.runnable.templates import polytope
 from runnables.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
-from utility.standard_progressbar import StandardProgressBar
-import heapq
+from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 ray.init()
 nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"

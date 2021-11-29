@@ -1,5 +1,5 @@
 import random
-import plotly.graph_objects as go
+
 import ray
 
 from mosaic.utils import show_plot3d

@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
 from contextlib import nullcontext
+
 import numpy as np
 import progressbar
 import ray

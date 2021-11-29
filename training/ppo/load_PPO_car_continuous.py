@@ -1,13 +1,8 @@
-import csv
-import os
-
+import numpy as np
 import ray
 import torch.nn
-import numpy as np
-from training.ray_utils import convert_ray_policy_to_sequential
+
 from environment.stopping_car_continuous import StoppingCar
-import ray.rllib.agents.ppo as ppo
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
 from runnables.runnable.experiment.run_experiment_stopping_car_continuous import StoppingCarContinuousExperiment
 
 ray.init()

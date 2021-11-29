@@ -3,14 +3,11 @@ from typing import List, Tuple
 import gurobi as grb
 import numpy as np
 import ray
-import torch
-from ray.rllib.agents.ppo import ppo
 
+from polyhedra.experiments_nn_analysis import Experiment
 from training.dqn.safe_dqn_agent import InvariantAgent
 from training.ppo.train_PPO_car import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.experiments_nn_analysis import Experiment
 
 
 class StoppingCarExperiment(Experiment):

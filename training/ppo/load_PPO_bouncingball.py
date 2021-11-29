@@ -1,12 +1,11 @@
+import numpy as np
 import ray
 import torch.nn
-import numpy as np
 from ray.rllib.agents.ppo import ppo
 
-from training.ppo.train_PPO_bouncingball import get_PPO_trainer
+from environment.bouncing_ball_old import BouncingBall
 from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
-from environment.bouncing_ball_old import BouncingBall
 
 ray.init()
 # config, trainer = get_PPO_trainer(use_gpu=0)

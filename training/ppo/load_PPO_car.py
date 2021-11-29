@@ -1,13 +1,14 @@
 import csv
 import os
 
-import ray
-import torch.nn
 import numpy as np
-from training.ray_utils import convert_ray_policy_to_sequential
-from environment.stopping_car import StoppingCar
+import ray
 import ray.rllib.agents.ppo as ppo
+import torch.nn
+
+from environment.stopping_car import StoppingCar
 from training.ppo.tune.tune_train_PPO_car import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 ray.init()
 # config, trainer = get_PPO_trainer(use_gpu=0)

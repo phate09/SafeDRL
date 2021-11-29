@@ -1,6 +1,7 @@
 import os
 import pickle
 from typing import List
+
 from rtree import index
 
 from mosaic.hyperrectangle import HyperRectangle

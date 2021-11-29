@@ -1,12 +1,12 @@
+import numpy as np
 import ray
+import torch
+import torch.nn.functional as F
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.examples.train_example import LinearDataset
-import numpy as np
-import torch
 from torch import nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
+
 import mosaic.utils as utils
 
 

@@ -1,13 +1,11 @@
+import numpy as np
 import ray
 import torch.nn
-import numpy as np
 from ray.rllib.agents.ppo import ppo
 
-from training.ppo.train_PPO_cartpole import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_lunar_hover import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
-from environment.bouncing_ball_old import BouncingBall
 from environment.lunar_hover import LunarHover
+from training.ppo.tune.tune_train_PPO_lunar_hover import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 ray.init()
 # config, trainer = get_PPO_trainer(use_gpu=0)

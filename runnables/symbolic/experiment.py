@@ -2,17 +2,17 @@
 import itertools
 import os
 import time
-import numpy as np
+from datetime import datetime
+
 import gym
+import numpy as np
 import ray
+
 import mosaic.utils as utils
-from prism.shared_rtree import SharedRtree
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
-import networkx as nx
-from datetime import datetime
-
+from prism.shared_rtree import SharedRtree
 from symbolic.unroll_methods import get_n_states
 
 

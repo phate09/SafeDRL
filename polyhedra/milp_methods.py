@@ -1,5 +1,5 @@
-import numpy as np
 import gurobipy as grb
+import numpy as np
 
 '''Collection of methods to handle abstract states in MILP model'''
 

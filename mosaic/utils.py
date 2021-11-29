@@ -1,33 +1,24 @@
-import decimal
-import math
 import operator
-import shelve
-from collections import defaultdict
-from functools import reduce
-from typing import Tuple, List, Any
 import re
-import networkx as nx
-import pandas as pd
-import plotly.graph_objects as go
+import shelve
+from functools import reduce
+from typing import Tuple, List
+
 import intervals as I
+import networkx as nx
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import ray
 import torch
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from plotly import express as px
+# from symbolic.mesh_cube import get_mesh
+from colour import Color
 from rtree import index
-import plotly.express as px
-import importlib
-
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from mosaic.hyperrectangle import HyperRectangle
-# from symbolic.mesh_cube import get_mesh
-from networkx.drawing.nx_pydot import write_dot
-from colour import Color
 
 DATA = "data"
 ACTION = "action"
@@ -252,7 +243,6 @@ def PolygonSort(corners):
 
 
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 
 

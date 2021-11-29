@@ -1,8 +1,7 @@
-import ray
+import torch
 from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 from ray.rllib.agents.dqn import DQNTorchPolicy
 from ray.rllib.agents.ppo import PPOTorchPolicy, ppo
-import torch
 from ray.rllib.models.torch.misc import SlimFC
 
 from environment.pendulum_abstract import PendulumEnv

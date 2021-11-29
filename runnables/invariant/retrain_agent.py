@@ -1,10 +1,11 @@
-import csv
-import os
 import random
 
-import ray
-import torch.nn
+import matplotlib.pyplot as plt
 import numpy as np
+import ray
+import ray.rllib.agents.ppo as ppo
+import torch.nn
+import torch.nn.functional as F
 from matplotlib import cm
 from matplotlib.colors import Normalize
 from ray.util.sgd import TorchTrainer
@@ -13,16 +14,12 @@ from ray.util.sgd.torch.training_operator import amp
 from ray.util.sgd.utils import NUM_SAMPLES
 from sklearn.model_selection import ParameterGrid
 from torch import Tensor
-from torch.distributions import Categorical
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
 
-from training.ray_utils import convert_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
-import ray.rllib.agents.ppo as ppo
 from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-import matplotlib.pyplot as plt
-import torch.nn.functional as F
+from training.ray_utils import convert_ray_policy_to_sequential
 
 # config, trainer = get_PPO_trainer(use_gpu=0)
 print(torch.cuda.is_available())

@@ -1,5 +1,6 @@
-import numpy as np
 import Box2D
+import gym
+import numpy as np
 from Box2D.b2 import (
     fixtureDef,
     polygonShape,
@@ -7,10 +8,9 @@ from Box2D.b2 import (
     distanceJointDef,
     contactListener,
 )
-import gym
 from gym import spaces
-from gym.utils import seeding
 from gym.envs.classic_control import rendering
+from gym.utils import seeding
 
 """
 The objective of this environment is to land a rocket on a ship.

@@ -1,21 +1,13 @@
-import csv
-import datetime
 import math
-import os
 import time
 from collections import defaultdict
 from contextlib import nullcontext
-from typing import Tuple, List
 
 import gurobipy as grb
 import numpy as np
 import progressbar
-import ray
-import torch
-from interval import interval, imath
 
 from polyhedra.experiments_nn_analysis import Experiment, contained
-from polyhedra.plot_utils import show_polygon_list3
 
 
 class ContinuousExperiment(Experiment):

@@ -1,6 +1,7 @@
 from typing import List
-import plotly.graph_objects as go
+
 import numpy as np
+import plotly.graph_objects as go
 import pypoman
 
 from mosaic.utils import compute_trace_polygons, PolygonSort

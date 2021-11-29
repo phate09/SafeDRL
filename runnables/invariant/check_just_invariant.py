@@ -1,45 +1,16 @@
 import datetime
-import os
-from collections import deque
-import torch
-import matplotlib.pyplot as plt
-import numpy as np
-from gym.envs.classic_control import CartPoleEnv
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from tensorboardX import SummaryWriter
-import torch.nn.functional as F
-from training.dqn.dqn_agent import Agent
-from training.dqn.safe_dqn_agent import InvariantAgent, device, SafetyLoss, TAU
-from environment.stopping_car import StoppingCar
-from mosaic.utils import chunks
-from runnables.invariant.retrain_agent import GridSearchDataset
-from utility.Scheduler import Scheduler
-import random
-import csv
-import os
 import random
 
-import ray
-import torch.nn
+import matplotlib.pyplot as plt
 import numpy as np
+import torch.nn
 from matplotlib import cm
 from matplotlib.colors import Normalize
-from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.training_operator import amp
-from ray.util.sgd.utils import NUM_SAMPLES
-from sklearn.model_selection import ParameterGrid
-from torch import Tensor
-from torch.distributions import Categorical
-from torch.nn.modules.loss import _Loss
-from torch.utils.data import DataLoader
 
-from training.ray_utils import convert_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
-import ray.rllib.agents.ppo as ppo
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-import matplotlib.pyplot as plt
-import torch.nn.functional as F
+from runnables.invariant.retrain_agent import GridSearchDataset
+from training.dqn.safe_dqn_agent import InvariantAgent
+
 currentDT = datetime.datetime.now()
 print(f'Start at {currentDT.strftime("%Y-%m-%d %H:%M:%S")}')
 seed = 5

@@ -1,13 +1,11 @@
-from typing import Tuple
+from os import path
 
 import gym
+import interval.imath as imath
+import numpy as np
 from gym import spaces
 from gym.utils import seeding
-import numpy as np
-from os import path
-from mpmath import iv, pi
 from interval import interval
-import interval.imath as imath
 
 from mosaic.hyperrectangle import HyperRectangle
 

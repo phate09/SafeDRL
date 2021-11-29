@@ -1,19 +1,15 @@
-import itertools
 from typing import List, Tuple
 
 import gurobi as grb
 import numpy as np
 import ray
 import torch
-from ray.rllib.agents.ppo import ppo
 
-from training.dqn.safe_dqn_agent import InvariantAgent
-from training.ppo.invariant_net.stopping_car_invariant_net import StoppingCarInvariantNet
-from training.ppo.train_PPO_car import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.invariant_net_experiment import InvariantNetExperiment
+from training.dqn.safe_dqn_agent import InvariantAgent
+from training.ppo.train_PPO_car import get_PPO_trainer
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 class StoppingCarExperiment(InvariantNetExperiment):

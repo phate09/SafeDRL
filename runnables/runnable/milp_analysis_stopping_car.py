@@ -1,16 +1,14 @@
-import numpy as np
 import gurobi as grb
+import numpy as np
 import pypoman
 import ray
 import torch
 
-from training.dqn.train_DQN_car import get_dqn_car_trainer, get_apex_dqn_car_trainer
-from training.ppo.train_PPO_car import get_PPO_trainer
-from training.ray_utils import convert_DQN_ray_policy_to_sequential, convert_ray_policy_to_sequential
 from polyhedra.graph_explorer import GraphExplorer
 from polyhedra.net_methods import generate_nn_torch
-import functools
-from polyhedra.plot_utils import show_polygon_list, show_polygon_list2
+from polyhedra.plot_utils import show_polygon_list2
+from training.ppo.train_PPO_car import get_PPO_trainer
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 def generate_input_region(gurobi_model, templates, boundaries):

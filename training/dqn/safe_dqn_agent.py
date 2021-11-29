@@ -5,10 +5,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.modules.loss import _Loss
 from torch import Tensor
-from training.dqn.dqn_sequential import QNetwork
+from torch.nn.modules.loss import _Loss
+
 from mosaic.utils import chunks
+from training.dqn.dqn_sequential import QNetwork
 from utility.ExperienceReplay import ExperienceReplayBuffer
 from utility.PrioritisedExperienceReplayBuffer import PrioritizedReplayBuffer
 

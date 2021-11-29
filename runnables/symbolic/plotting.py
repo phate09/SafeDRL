@@ -1,7 +1,7 @@
-import prism.state_storage
-from mosaic.utils import pca_map
 import mosaic.utils as utils
+import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
+from mosaic.utils import pca_map
 
 
 def plot(environment_name, storage: prism.state_storage.StateStorage, *, plot_type="lb", folder_path, file_name_save: str = None):

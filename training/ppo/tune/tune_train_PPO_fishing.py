@@ -1,19 +1,15 @@
+import random
 from datetime import datetime
 
-import gym
+import numpy as np
 import ray
-import ray.rllib.agents.ppo as ppo
-from gym.vector.utils import spaces
+from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.framework import try_import_torch
-import numpy as np
-from ray import tune
-import random
 from ray.tune import Callback
 from ray.tune.registry import register_env
-import gym_fishing
 
 from environment.fishing_env import MonitoredFishingEnv
 

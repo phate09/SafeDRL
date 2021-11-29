@@ -1,14 +1,12 @@
-import gym
+import numpy as np
 import ray
 import torch.nn
-import numpy as np
 from ray.rllib.agents.ppo import ppo
 from ray.tune import register_env
 
-from training.ppo.train_PPO_cartpole import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_watertank import get_PPO_config, env_creator
-from training.ray_utils import convert_ray_policy_to_sequential, convert_ray_simple_policy_to_sequential
 from environment.water_tank import MonitoredWaterTank
+from training.ppo.tune.tune_train_PPO_watertank import get_PPO_config, env_creator
+from training.ray_utils import convert_ray_policy_to_sequential
 
 ray.init()
 register_env("fishing", env_creator)

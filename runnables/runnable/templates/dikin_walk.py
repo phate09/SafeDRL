@@ -4,9 +4,8 @@ import argparse
 from concurrent import futures
 
 import numpy as np
-from scipy.optimize import linprog
 from matplotlib import pyplot as plt
-
+from scipy.optimize import linprog
 from six.moves import range
 
 

@@ -1,19 +1,18 @@
+import itertools
+import math
 from typing import List, Tuple
 
-from ray.rllib.agents.ppo import ppo
-
-from training.ppo.train_PPO_cartpole import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.experiments_nn_analysis import Experiment
-import ray
 import gurobi as grb
-import math
 import numpy as np
+import ray
 import torch
 from interval import interval, imath
+from ray.rllib.agents.ppo import ppo
+
 from environment.pendulum import MonitoredPendulum
-import itertools
+from polyhedra.experiments_nn_analysis import Experiment
+from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 class PendulumExperiment(Experiment):

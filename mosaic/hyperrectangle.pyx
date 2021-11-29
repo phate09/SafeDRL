@@ -1,8 +1,10 @@
 # cython: profile=False
-from typing import Tuple, List
+from typing import List
+
+import numpy as np
+
 from mosaic.interval import Interval
 from mosaic.point import Point
-import numpy as np
 
 cdef class HyperRectangle:
     """

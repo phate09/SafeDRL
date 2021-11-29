@@ -3,11 +3,11 @@ import pickle
 from unittest import TestCase
 
 import jsonpickle
-from mpmath import iv
-from mosaic.utils import *
 import numpy as np
-import intervals as I
 from rtree import index
+
+from mosaic.utils import *
+
 
 class TestR_trees(TestCase):
     def test_simple(self):

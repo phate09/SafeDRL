@@ -1,14 +1,13 @@
 import datetime
 import os
+import re
 import time
 
 import ray
 from ray import tune
-import re
+
 from polyhedra.experiments_nn_analysis import Experiment
-from runnables.runnable.experiment.run_experiment_bouncing_ball import BouncingBallExperiment
 from runnables.runnable.experiment.run_experiment_cartpole import CartpoleExperiment
-from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
 
 nn_paths_cartpole = ["/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193",
                      "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3334/checkpoint-3334",

@@ -15,15 +15,12 @@ for naive interval analysis:
 
 from __future__ import print_function
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 
 from .interval import Interval, Symbolic_interval, mix_interval, Inverse_interval, Center_symbolic_interval
-from .interval import Symbolic_interval_proj1, Symbolic_interval_proj2, gen_sym
-import time
+from .interval import Symbolic_interval_proj1, Symbolic_interval_proj2
 
 
 class Interval_network(nn.Module):

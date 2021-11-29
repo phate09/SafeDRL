@@ -1,14 +1,12 @@
-import sys
 from typing import Tuple
 
-import mpmath
-import sympy
-from mpmath import iv, pi
 import gym
+import intervals as I
+import mpmath
+import numpy as np
 from gym import spaces, logger
 from gym.utils import seeding
-import numpy as np
-import intervals as I
+from mpmath import iv
 
 from mosaic.hyperrectangle import HyperRectangle
 
@@ -140,7 +138,6 @@ class CartPoleEnv_abstract(gym.Env):
     def inverse_step(self, action):
 
         """Performs the inverse of the step function"""
-        from sympy import solve
         state = self.state
         x, x_dot, theta, theta_dot = state
         force = self.force_mag if action == 1 else -self.force_mag

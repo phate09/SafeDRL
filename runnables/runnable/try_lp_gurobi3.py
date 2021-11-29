@@ -1,7 +1,5 @@
-import numpy as np
-import scipy.sparse as sp
 import gurobipy as gp
-from gurobipy import GRB
+import numpy as np
 
 # %%
 """Given a cloud of points and a polyhedron (Ax<b), find the minimum distance across a direction"""

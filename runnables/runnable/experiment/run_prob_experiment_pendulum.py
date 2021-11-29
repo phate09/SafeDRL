@@ -1,4 +1,3 @@
-import itertools
 import math
 import os
 from typing import List, Tuple
@@ -10,12 +9,12 @@ import torch
 from interval import interval, imath
 from ray.rllib.agents.ppo import ppo
 
-from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
 from environment.pendulum import MonitoredPendulum
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from runnables.runnable.experiment.run_experiment_pendulum import PendulumExperiment
+from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 class PendulumExperimentProbabilistic(ProbabilisticExperiment):

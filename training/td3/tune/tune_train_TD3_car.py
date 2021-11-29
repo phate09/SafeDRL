@@ -1,31 +1,24 @@
+import random
 from datetime import datetime
-from typing import List
 
-import ray
+import numpy as np
+import ray.rllib.agents.ppo as ppo
+import ray.tune.checkpoint_manager
 import torch
 import torch.nn as nn
-import ray.rllib.agents.ppo as ppo
 from gym.vector.utils import spaces
-from ray.rllib.agents.ddpg import TD3Trainer
+from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch
-import numpy as np
-from ray import tune
-import random
-import ray.tune.checkpoint_manager
+from ray.tune import Callback
 from ray.tune.trial import Trial
 
-from training.ray_utils import convert_ray_policy_to_sequential2
-from environment.bouncing_ball_old import BouncingBall
-from environment.cartpole_ray import CartPoleEnv
 from environment.stopping_car_continuous import StoppingCar
-from ray.tune import Callback
-
 # torch, nn = try_import_torch()
 from runnables.runnable.experiment.run_experiment_stopping_car_continuous import StoppingCarContinuousExperiment
+from training.ray_utils import convert_ray_policy_to_sequential2
 
 custom_input_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
 

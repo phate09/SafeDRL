@@ -6,12 +6,12 @@ import ray
 import torch
 from ray.rllib.agents.ppo import ppo
 
-from training.ppo.train_PPO_car import get_PPO_trainer
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
+from training.ppo.train_PPO_car import get_PPO_trainer
+from training.ppo.tune.tune_train_PPO_car import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):

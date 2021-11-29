@@ -1,27 +1,27 @@
-import csv
 import os
+import pickle
+import random
+
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import numpy as np
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import ray
+import ray.rllib.agents.ppo as ppo
 import torch.nn
-import numpy as np
+from matplotlib.colors import Normalize
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.torch import TrainingOperator
 from ray.util.sgd.torch.training_operator import amp
 from ray.util.sgd.utils import NUM_SAMPLES
+from sklearn.model_selection import ParameterGrid
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
 
-from training.ray_utils import convert_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
-import ray.rllib.agents.ppo as ppo
 from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-from sklearn.model_selection import ParameterGrid
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib.colors import Normalize
-import random
-import pickle
+from training.ray_utils import convert_ray_policy_to_sequential
 
 print(torch.cuda.is_available())
 ray.init(local_mode=True)
@@ -341,7 +341,6 @@ for data in random.sample(val_data.dataset, k=9000):
 x_data = np.array(x_data)
 xprime_data = np.array(xprime_data)
 y_data = np.array(y_data)
-import plotly.figure_factory as ff
 
 # fig = ff.create_quiver(x_data[:, 0], x_data[:, 1], xprime_data[:, 0] - x_data[:, 0], xprime_data[:, 1] - x_data[:, 1], scale=1)
 # fig.show()

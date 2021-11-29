@@ -1,15 +1,9 @@
-import random
-from typing import Tuple, List
-
-import matplotlib.pyplot as plt
-import numpy as np
 import sympy
-from sklearn.neighbors import NearestCentroid
-from sympy import Point, Line, Float, Eq
-from sympy.plotting import plot, plot3d
-import matplotlib.lines as mlines
 from scipy.spatial import ConvexHull
 from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import NearestCentroid
+from sympy import Line
+
 from polyhedra.utils import *
 
 # %% plot 2 clusters

@@ -1,13 +1,14 @@
 import os
-import torch
+
 import numpy as np
+import torch
 from dqn.dqn_agent import Agent
-from environment.cartpole_abstract import CartPoleEnv_abstract
 from models.model_critic_sequential import TestNetwork
+
 from plnn.verification_network import VerificationNetwork
 from plnn.verification_network_sym import SymVerificationNetwork
 from symbolic.symbolic_interval import Symbolic_interval
-from symbolic.symbolic_interval.symbolic_network import Interval_Bound, Interval_network
+from symbolic.symbolic_interval.symbolic_network import Interval_network
 
 
 def try1():

@@ -6,9 +6,9 @@ import pypoman
 import ray
 import torch
 
+from polyhedra.plot_utils import show_polygon_list2
 from training.ppo.train_PPO_bouncingball import get_PPO_trainer
 from training.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.plot_utils import show_polygon_list2
 
 env_input_size = 2
 

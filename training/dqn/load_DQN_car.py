@@ -1,12 +1,9 @@
-import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo import PPOTorchPolicy
+import ray
 import torch.nn
 
-from training.dqn.train_DQN_car import get_dqn_car_trainer, get_apex_dqn_car_trainer
-from environment.pendulum_abstract import PendulumEnv
-import ray
-from training.ray_utils import convert_ray_policy_to_sequential, load_sequential_from_ray, get_car_ppo_agent, convert_DQN_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
+from training.dqn.train_DQN_car import get_apex_dqn_car_trainer
+from training.ray_utils import convert_DQN_ray_policy_to_sequential
 
 ray.init(local_mode=True)
 trainer, config = get_apex_dqn_car_trainer()

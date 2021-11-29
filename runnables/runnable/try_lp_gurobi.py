@@ -1,6 +1,5 @@
-import numpy as np
-import scipy.sparse as sp
 import gurobipy as gp
+import numpy as np
 from gurobipy import GRB
 
 # %%

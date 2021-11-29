@@ -1,8 +1,8 @@
+import gurobi as grb
 import torch
 import torch.nn
-import numpy as np
-import gurobi as grb
-from polyhedra.net_methods import generate_nn_torch, generate_mock_input
+
+from polyhedra.net_methods import generate_nn_torch
 
 
 def analyse_input(nn: torch.nn.Sequential):

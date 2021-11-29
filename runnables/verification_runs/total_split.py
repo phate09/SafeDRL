@@ -1,29 +1,27 @@
-from scipy.stats import norm
+import pickle
 import sys
-from typing import List, Tuple
+from typing import List
 
 import cdd
 import gurobi as grb
+import numpy as np
 import progressbar
-import pypoman
 import ray
 import sympy
 import torch
-import numpy as np
+from numpy import array, hstack
 from ray.rllib.agents import ppo
-import pickle
-
+from scipy.stats import norm
 from sympy import Line
-from polyhedra.utils import point_to_float, newline
-from training.ppo.tune.tune_train_PPO_car import get_PPO_config
-from training.ray_utils import convert_ray_policy_to_sequential
+
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.partitioning import is_split_range, sample_and_split, pick_longest_dimension, split_polyhedron, find_inverted_dimension, split_polyhedron_milp
-from polyhedra.plot_utils import show_polygons, create_window_boundary
+from polyhedra.partitioning import is_split_range, sample_and_split, find_inverted_dimension, split_polyhedron_milp
+from polyhedra.plot_utils import show_polygons
 from runnables.runnable.templates import polytope
 from runnables.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
 from symbolic import unroll_methods
-from numpy import array, hstack, ones, vstack, zeros
+from training.ppo.tune.tune_train_PPO_car import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 
 
 class TotalSplit:
@@ -93,8 +91,7 @@ class TotalSplit:
         predicted_label = samples_ontput.detach().numpy()[:, 0]
         y = np.clip(predicted_label, 1e-7, 1 - 1e-7)
         inv_sig_y = np.log(y / (1 - y))  # transform to log-odds-ratio space
-        from sklearn.linear_model import LinearRegression, LogisticRegression
-        from sklearn.svm import LinearSVC
+        from sklearn.linear_model import LinearRegression
         lr = LinearRegression()
         lr.fit(samples, inv_sig_y)
         template_2d: np.ndarray = np.array([Experiment.e(3, 2), Experiment.e(3, 0) - Experiment.e(3, 1)])

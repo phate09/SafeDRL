@@ -5,10 +5,10 @@ import numpy as np
 import ray
 import torch
 from ray.rllib.agents.ppo import ppo
-from interval import interval, imath
+
+from polyhedra.experiments_nn_analysis import Experiment
 from training.ppo.tune.tune_train_PPO_fishing import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
-from polyhedra.experiments_nn_analysis import Experiment
 
 
 class FishingExperiment(Experiment):

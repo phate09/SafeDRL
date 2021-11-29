@@ -1,17 +1,10 @@
-import ray
-from ray.util.sgd import TorchTrainer
-from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.examples.train_example import LinearDataset
 import numpy as np
+import pypoman
 import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from runnables.runnable.toy_2d.train_2d_classifier import Net
+
 import mosaic.utils as utils
 from polyhedra.polyhedra_distance import is_separable
-import pypoman
-import cdd
+from runnables.runnable.toy_2d.train_2d_classifier import Net
 
 polyhedron_vertices = [(2, 2), (4, 2), (2, 4)]
 # polyhedron_vertices = [np.array([2, 2]), np.array([4, 2]), np.array([2, 4])]

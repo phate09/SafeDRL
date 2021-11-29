@@ -1,13 +1,10 @@
-from typing import List, Tuple
-
-from sparsemax import Sparsemax
-import torch
-import torch.nn as nn
 import numpy as np
 import plotly.graph_objects as go
-from sympy import Point, Point3D, Line, Line3D, Plane, Symbol
 import sympy
+import torch
 from mpmath import iv
+from sparsemax import Sparsemax
+from sympy import Point3D, Plane, Symbol
 
 from symbolic import unroll_methods
 

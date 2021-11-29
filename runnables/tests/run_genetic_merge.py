@@ -1,13 +1,13 @@
 from collections import defaultdict
 from functools import partial
+
 import numpy as np
 from geneticalgorithm import geneticalgorithm as ga
 from numpy.random import default_rng
-import plotly.graph_objects as go
-from mosaic.utils import PolygonSort
+
 from polyhedra.experiments_nn_analysis import Experiment, contained
-from polyhedra.plot_utils import show_polygon_list3, transform_vertices2, windowed_projection, compute_polygon_trace
-from runnables.tests.run_merge_templates import compute_volume, merge_with_volume_analysis
+from polyhedra.plot_utils import show_polygon_list3
+from runnables.tests.run_merge_templates import merge_with_volume_analysis
 
 
 def compute_volume_ga(items: np.ndarray, template, indices: np.ndarray):

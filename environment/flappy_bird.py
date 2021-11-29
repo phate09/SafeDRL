@@ -23,18 +23,16 @@
 """ Implementation of a Flappy Bird OpenAI Gym environment that yields simple
 numerical information about the game's state as observations.
 """
+# from flappy_bird_gym.envs.game_logic import FlappyBirdLogic
+from enum import IntEnum
 from itertools import cycle
-from random import random
 from typing import Dict, Tuple, Optional, Union
 
 import gym
 import numpy as np
 import pygame
-
-# from flappy_bird_gym.envs.game_logic import FlappyBirdLogic
-from enum import IntEnum
-from flappy_bird_gym.envs.game_logic import PIPE_WIDTH, PIPE_HEIGHT, PLAYER_FLAP_ACC, PLAYER_VEL_ROT, PLAYER_MAX_VEL_Y, PLAYER_ACC_Y, PIPE_VEL_X
-from flappy_bird_gym.envs.game_logic import PLAYER_WIDTH, PLAYER_HEIGHT, BASE_WIDTH, BACKGROUND_WIDTH, BACKGROUND_HEIGHT, BASE_HEIGHT
+from flappy_bird_gym.envs.game_logic import PLAYER_FLAP_ACC, PLAYER_VEL_ROT, PLAYER_MAX_VEL_Y, PLAYER_ACC_Y
+from flappy_bird_gym.envs.game_logic import PLAYER_WIDTH, PLAYER_HEIGHT, BASE_WIDTH, BACKGROUND_WIDTH
 from flappy_bird_gym.envs.renderer import FlappyBirdRenderer
 
 

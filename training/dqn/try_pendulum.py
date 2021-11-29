@@ -1,14 +1,9 @@
 import datetime
-import os
-from collections import deque
 
-import matplotlib.pyplot as plt
 import numpy as np
-from tensorboardX import SummaryWriter
 
-from training.dqn.dqn_agent import Agent
 from environment.pendulum_abstract import PendulumEnv
-from utility.Scheduler import Scheduler
+from training.dqn.dqn_agent import Agent
 
 currentDT = datetime.datetime.now()
 print(f'Start at {currentDT.strftime("%Y-%m-%d %H:%M:%S")}')

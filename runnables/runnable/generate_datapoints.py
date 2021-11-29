@@ -1,4 +1,5 @@
 import numpy as np
+
 import mosaic.utils as utils
 
 points = np.random.random((10000, 2)) * 10 - 5

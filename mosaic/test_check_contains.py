@@ -1,8 +1,9 @@
 from unittest import TestCase
-from mpmath import iv
-from mosaic.utils import *
-import numpy as np
+
 import portion as I
+from mpmath import iv
+
+from mosaic.utils import *
 
 
 class TestCheck_contains(TestCase):

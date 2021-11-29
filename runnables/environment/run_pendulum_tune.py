@@ -1,9 +1,10 @@
 import os
+
+import numpy as np
 from ray import tune
 
-from training.dqn.dqn_agent import Agent
 from environment.pendulum_abstract import PendulumEnv
-import numpy as np
+from training.dqn.dqn_agent import Agent
 
 state_size = 2
 agent = Agent(state_size, 2)

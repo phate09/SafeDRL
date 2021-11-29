@@ -2,10 +2,10 @@ import math
 from unittest import TestCase
 
 import torch
+from runnables.utility.domain_explorers_load import generateCartpoleDomainExplorer
 
 from plnn.bab_explore import DomainExplorer
 from plnn.verification_network import VerificationNetwork
-from runnables.utility.domain_explorers_load import generateCartpoleDomainExplorer
 
 
 class TestDomainExplorer(TestCase):

@@ -1,9 +1,8 @@
-import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo import PPOTorchPolicy
 import torch.nn
-from environment.pendulum_abstract import PendulumEnv
 import ray
-from training.ray_utils import convert_ray_policy_to_sequential, load_sequential_from_ray, get_pendulum_ppo_agent
+import torch.nn
+
+from training.ray_utils import convert_ray_policy_to_sequential, get_pendulum_ppo_agent
 
 # config = {"env": PendulumEnv,  # or "corridor" if registered above "env_config": {"corridor_length": 5, },"custom_model": "my_model"
 #           "model": {"fcnet_hiddens": [64, 64], "fcnet_activation": "relu"},  # model config

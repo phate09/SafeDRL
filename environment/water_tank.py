@@ -1,10 +1,9 @@
-import time
+from os import path
 
 import gym
+import numpy as np
 from gym import spaces
 from gym.utils import seeding
-import numpy as np
-from os import path
 
 current_folder = path.abspath(path.dirname(__file__))
 
