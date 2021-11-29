@@ -609,7 +609,6 @@ class ProbabilisticExperiment(Experiment):
                 v = gurobi_model.addMVar(lb=float("-inf"), shape=gurobi_vars[-1].shape, name=f"layer_{i}")  # same shape as previous
 
                 z = gurobi_model.addMVar(shape=gurobi_vars[-1].shape, vtype=grb.GRB.BINARY, name=f"relu_{i}")  # lb=0, ub=1,
-                # gurobi_model.addConstr(v == grb.max_(0, gurobi_vars[-1]))
                 gurobi_model.addConstr(v >= gurobi_vars[-1], name=f"relu_constr_1_{i}")
                 gurobi_model.addConstr(v <= gurobi_vars[-1] + M * z, name=f"relu_constr_2_{i}")
                 gurobi_model.addConstr(v >= 0, name=f"relu_constr_3_{i}")
