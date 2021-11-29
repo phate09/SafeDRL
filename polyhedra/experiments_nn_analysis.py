@@ -20,7 +20,7 @@ from environment.stopping_car import StoppingCar
 from polyhedra.milp_methods import generate_input_region, optimise, generate_region_constraints
 from polyhedra.partitioning import split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d
-from polyhedra.runnable.templates import polytope
+from runnables.runnable.templates import polytope
 from symbolic import unroll_methods
 
 

@@ -8,8 +8,8 @@ from gym.envs.classic_control import CartPoleEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from tensorboardX import SummaryWriter
 import torch.nn.functional as F
-from agents.dqn.dqn_agent import Agent
-from agents.dqn.safe_dqn_agent import InvariantAgent, device, SafetyLoss, TAU
+from training.dqn.dqn_agent import Agent
+from training.dqn.safe_dqn_agent import InvariantAgent, device, SafetyLoss, TAU
 from environment.stopping_car import StoppingCar
 from mosaic.utils import chunks
 from runnables.invariant.retrain_agent import GridSearchDataset

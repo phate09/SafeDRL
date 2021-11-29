@@ -1,11 +1,11 @@
 import torch
 import numpy as np
 import ray
-import polyhedra.runnable.templates.polytope as polytope
+import runnables.runnable.templates.polytope as polytope
 from mosaic.utils import PolygonSort, compute_trace_polygons
 from polyhedra.milp_methods import generate_input_region, optimise
 from polyhedra.plot_utils import windowed_projection, show_polygons, project_to_dimension
-from polyhedra.runnable.templates.dikin_walk_simplified import plot_points_and_prediction, plot_list
+from runnables.runnable.templates.dikin_walk_simplified import plot_points_and_prediction, plot_list
 from symbolic import unroll_methods
 import gurobi as grb
 import scipy

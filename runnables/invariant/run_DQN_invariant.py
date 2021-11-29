@@ -6,7 +6,7 @@ import torch
 from matplotlib import cm
 from matplotlib.colors import Normalize
 
-from agents.dqn.safe_dqn_agent import InvariantAgent
+from training.dqn.safe_dqn_agent import InvariantAgent
 from environment.stopping_car import StoppingCar
 from runnables.invariant.retrain_agent import GridSearchDataset
 

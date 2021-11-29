@@ -8,9 +8,9 @@ import torch
 from py4j.java_collections import ListConverter
 from ray.rllib.agents.ppo import ppo
 
-from agents.ppo.train_PPO_bouncingball import get_PPO_trainer
-from agents.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
-from agents.ray_utils import convert_ray_policy_to_sequential
+from training.ppo.train_PPO_bouncingball import get_PPO_trainer
+from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 from environment.bouncing_ball_old import BouncingBall
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
@@ -37,8 +37,8 @@ from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
-from polyhedra.runnable.templates import polytope
-from polyhedra.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
+from runnables.runnable.templates import polytope
+from runnables.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
 from utility.standard_progressbar import StandardProgressBar
 import heapq
 

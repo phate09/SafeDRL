@@ -9,7 +9,7 @@ import torch
 from sympy import symarray
 from torch import nn as nn
 
-from agents.dqn.dqn_sequential import TestNetwork
+from training.dqn.dqn_sequential import TestNetwork
 from plnn.flatten_layer import Flatten
 from symbolic.symbolic_interval import Interval_network, Symbolic_interval
 

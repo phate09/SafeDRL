@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import torch
-from agents.dqn.dqn_agent import Agent
-from agents.ray_utils import load_sequential_from_ray, get_pendulum_ppo_agent
+from training.dqn.dqn_agent import Agent
+from training.ray_utils import load_sequential_from_ray, get_pendulum_ppo_agent
 from plnn.bab_explore import DomainExplorer
 from plnn.bab_explore_sym import SymbolicDomainExplorer
 from plnn.verification_network import VerificationNetwork

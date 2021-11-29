@@ -1,7 +1,7 @@
 import os
 from ray import tune
 
-from agents.dqn.dqn_agent import Agent
+from training.dqn.dqn_agent import Agent
 from environment.pendulum_abstract import PendulumEnv
 import numpy as np
 

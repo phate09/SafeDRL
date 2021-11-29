@@ -47,7 +47,7 @@ class ColAvoidEnvDiscrete(gym.Env):
         # self.WEST, self.SW, self.SOUTH, self.SE, self.STOP = range(9)
 
         self.vel_agents = None  # one of the 9 actions above
-        self.pos_agents = None  # position of agents
+        self.pos_agents = None  # position of training
         self.vel_intruders = None  # moving direction of intruders
         self.pos_intruders = None  # position of intruders
         self.observation = None  # 40 bins + 2 dimensions

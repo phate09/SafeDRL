@@ -22,7 +22,7 @@ from polyhedra.milp_methods import generate_input_region, optimise, generate_reg
 from polyhedra.partitioning import sample_and_split, pick_longest_dimension, split_polyhedron, is_split_range, split_polyhedron_milp, find_inverted_dimension
 from polyhedra.plot_utils import show_polygon_list3, show_polygon_list31d, show_polygons
 from polyhedra.prism_methods import calculate_target_probabilities, recreate_prism_PPO, extract_probabilities
-from polyhedra.runnable.templates import polytope
+from runnables.runnable.templates import polytope
 from utility.standard_progressbar import StandardProgressBar
 import heapq
 

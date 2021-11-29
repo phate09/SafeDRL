@@ -17,10 +17,10 @@ from torch.distributions import Categorical
 from torch.nn.modules.loss import _Loss
 from torch.utils.data import DataLoader
 
-from agents.ray_utils import convert_ray_policy_to_sequential
+from training.ray_utils import convert_ray_policy_to_sequential
 from environment.stopping_car import StoppingCar
 import ray.rllib.agents.ppo as ppo
-from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
+from training.ppo.tune.tune_train_PPO_car import get_PPO_config
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 

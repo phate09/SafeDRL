@@ -15,13 +15,13 @@ import pickle
 
 from sympy import Line
 from polyhedra.utils import point_to_float, newline
-from agents.ppo.tune.tune_train_PPO_car import get_PPO_config
-from agents.ray_utils import convert_ray_policy_to_sequential
+from training.ppo.tune.tune_train_PPO_car import get_PPO_config
+from training.ray_utils import convert_ray_policy_to_sequential
 from polyhedra.experiments_nn_analysis import Experiment
 from polyhedra.partitioning import is_split_range, sample_and_split, pick_longest_dimension, split_polyhedron, find_inverted_dimension, split_polyhedron_milp
 from polyhedra.plot_utils import show_polygons, create_window_boundary
-from polyhedra.runnable.templates import polytope
-from polyhedra.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
+from runnables.runnable.templates import polytope
+from runnables.runnable.templates.dikin_walk_simplified import plot_points_and_prediction
 from symbolic import unroll_methods
 from numpy import array, hstack, ones, vstack, zeros
 
@@ -428,7 +428,7 @@ class TotalSplitBouncingBall(TotalSplit):
         return input
 
     def get_nn(self):
-        from agents.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
+        from training.ppo.tune.tune_train_PPO_bouncing_ball import get_PPO_config
         config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -460,7 +460,7 @@ class TotalSplitPendulum(TotalSplit):
         return input
 
     def get_nn(self):
-        from agents.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
+        from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
         config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
