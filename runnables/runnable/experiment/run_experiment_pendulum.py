@@ -11,7 +11,7 @@ from ray.rllib.agents.ppo import ppo
 
 from environment.pendulum import MonitoredPendulum
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.milp_methods import generate_input_region, optimise
+from polyhedra.milp_methods import generate_input_region, optimise, generate_region_constraints
 from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
 from training.ray_utils import convert_ray_policy_to_sequential
 
@@ -60,7 +60,7 @@ class PendulumExperiment(Experiment):
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
                 gurobi_model.setParam('Threads', 2)
-                input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+                input = generate_input_region(gurobi_model, template, x, self.env_input_size)
                 max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
                 feasible_action = PendulumExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e03)
                 if feasible_action:  # performs action 2 automatically when battery is dead
@@ -71,7 +71,7 @@ class PendulumExperiment(Experiment):
                     # apply dynamic
                     x_prime = self.apply_dynamic(input, gurobi_model, newthdot=newthdot, newtheta=newtheta, env_input_size=self.env_input_size, action=chosen_action)
                     for i, (A, b) in enumerate(self.angle_split):
-                        Experiment.generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=not split_angle[i])
+                        generate_region_constraints(gurobi_model, A, x_prime, b, self.env_input_size, invert=not split_angle[i])
                     gurobi_model.update()
                     gurobi_model.optimize()
                     if gurobi_model.status != 2:
@@ -92,8 +92,8 @@ class PendulumExperiment(Experiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', False)
             input = gurobi_model.addMVar(shape=(self.env_input_size,), lb=float("-inf"), name="input")
-            Experiment.generate_region_constraints(gurobi_model, self.analysis_template, input, x_prime, self.env_input_size)
-            Experiment.generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
+            generate_region_constraints(gurobi_model, self.analysis_template, input, x_prime, self.env_input_size)
+            generate_region_constraints(gurobi_model, A, input, b, self.env_input_size)
             gurobi_model.update()
             gurobi_model.optimize()
             if gurobi_model.status == 2:

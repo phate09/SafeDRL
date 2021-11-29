@@ -2,6 +2,7 @@ import gurobi as grb
 import ray
 
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import optimise, generate_input_region, generate_region_constraints
 from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
 
 
@@ -19,7 +20,7 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
         Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
         observable_template = Experiment.octagon(2)
         self.env_input_size = 2
-        observable_result = self.optimise(observable_template, gurobi_model, observation)
+        observable_result = optimise(observable_template, gurobi_model, observation)
         self.env_input_size = 6
         return observable_template, observable_result
 
@@ -43,7 +44,7 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('Threads', 2)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
             gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
             gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
@@ -52,7 +53,7 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
             # feasible_action = Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
             # feasible_action = Experiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action)
 
-            Experiment.generate_region_constraints(gurobi_model, observable_template, observation, observable_result, 2)
+            generate_region_constraints(gurobi_model, observable_template, observation, observable_result, 2)
             gurobi_model.optimize()
             feasible_action = gurobi_model.status
             if feasible_action:

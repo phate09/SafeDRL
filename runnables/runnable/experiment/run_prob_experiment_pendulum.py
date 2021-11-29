@@ -11,6 +11,7 @@ from ray.rllib.agents.ppo import ppo
 
 from environment.pendulum import MonitoredPendulum
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from runnables.runnable.experiment.run_experiment_pendulum import PendulumExperiment
 from training.ppo.tune.tune_train_PPO_inverted_pendulum import get_PPO_config
@@ -63,7 +64,7 @@ class PendulumExperimentProbabilistic(ProbabilisticExperiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('Threads', 2)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
             # feasible_action = PendulumExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e03)
             # if feasible_action:  # performs action 2 automatically when battery is dead

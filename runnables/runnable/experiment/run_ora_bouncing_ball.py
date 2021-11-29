@@ -2,7 +2,7 @@ import gurobi as grb
 import ray
 
 from polyhedra.experiments_nn_analysis import Experiment
-from polyhedra.milp_methods import optimise
+from polyhedra.milp_methods import optimise, generate_input_region, generate_region_constraints
 from runnables.runnable.experiment.run_experiment_bouncing_ball import BouncingBallExperiment
 
 
@@ -45,7 +45,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         def standard_op():
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            input = self.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             z = self.apply_dynamic(input, gurobi_model, self.env_input_size)
             return gurobi_model, z, input
 
@@ -54,10 +54,10 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         feasible0 = self.generate_guard(gurobi_model, z, case=0)  # bounce
         if feasible0:  # action is irrelevant in this case
             # apply dynamic
-            x_prime_results = self.optimise(template, gurobi_model, z)
+            x_prime_results = optimise(template, gurobi_model, z)
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+            input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
             x_second = self.apply_dynamic2(input2, gurobi_model, case=0, env_input_size=self.env_input_size)
             found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
             if found_successor:
@@ -67,16 +67,16 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         gurobi_model, z, input = standard_op()
         feasible11 = self.generate_guard(gurobi_model, z, case=1)
         if feasible11:
-            Experiment.generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
+            generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
             gurobi_model.optimize()
             feasible12 = gurobi_model.status
             # feasible12 = self.generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible12:
                 # apply dynamic
-                x_prime_results = self.optimise(template, gurobi_model, z)
+                x_prime_results = optimise(template, gurobi_model, z)
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
-                input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+                input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
                 x_second = self.apply_dynamic2(input2, gurobi_model, case=1, env_input_size=self.env_input_size)
                 found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
                 if found_successor:
@@ -85,16 +85,16 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         gurobi_model, z, input = standard_op()
         feasible21 = self.generate_guard(gurobi_model, z, case=2)
         if feasible21:
-            Experiment.generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
+            generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
             gurobi_model.optimize()
             feasible22 = gurobi_model.status
             # feasible22 = self.generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible22:
                 # apply dynamic
-                x_prime_results = self.optimise(template, gurobi_model, z)
+                x_prime_results = optimise(template, gurobi_model, z)
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
-                input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+                input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
                 x_second = self.apply_dynamic2(input2, gurobi_model, case=2, env_input_size=self.env_input_size)
                 found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
                 if found_successor:
@@ -103,16 +103,16 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         gurobi_model, z, input = standard_op()
         feasible11_alt = self.generate_guard(gurobi_model, z, case=1)
         if feasible11_alt:
-            Experiment.generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
+            generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
             gurobi_model.optimize()
             feasible12_alt = gurobi_model.status
             # feasible12_alt = self.generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
             if feasible12_alt:
                 # apply dynamic
-                x_prime_results = self.optimise(template, gurobi_model, z)
+                x_prime_results = optimise(template, gurobi_model, z)
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
-                input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+                input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
                 x_second = self.apply_dynamic2(input2, gurobi_model, case=3, env_input_size=self.env_input_size)
                 found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
 
@@ -122,16 +122,16 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         gurobi_model, z, input = standard_op()
         feasible21_alt = self.generate_guard(gurobi_model, z, case=2)
         if feasible21_alt:
-            Experiment.generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
+            generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
             gurobi_model.optimize()
             feasible22_alt = gurobi_model.status
             # feasible22_alt = self.generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
             if feasible22_alt:
                 # apply dynamic
-                x_prime_results = self.optimise(template, gurobi_model, z)
+                x_prime_results = optimise(template, gurobi_model, z)
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
-                input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+                input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
                 x_second = self.apply_dynamic2(input2, gurobi_model, case=3, env_input_size=self.env_input_size)
                 found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
                 if found_successor:
@@ -141,10 +141,10 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         feasible3 = self.generate_guard(gurobi_model, z, case=3)  # out of reach
         if feasible3:  # action is irrelevant in this case
             # apply dynamic
-            x_prime_results = self.optimise(template, gurobi_model, z)
+            x_prime_results = optimise(template, gurobi_model, z)
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
-            input2 = self.generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
+            input2 = generate_input_region(gurobi_model, template, x_prime_results, self.env_input_size)
             x_second = self.apply_dynamic2(input2, gurobi_model, case=3, env_input_size=self.env_input_size)
             found_successor, x_second_results = self.h_repr_to_plot(gurobi_model, template, x_second)
             if found_successor:

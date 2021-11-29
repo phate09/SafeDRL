@@ -7,6 +7,7 @@ import torch
 from ray.rllib.agents.ppo import ppo
 
 from polyhedra.experiments_nn_analysis import Experiment
+from polyhedra.milp_methods import generate_input_region
 from polyhedra.probabilistic_experiments_nn_analysis import ProbabilisticExperiment
 from runnables.runnable.experiment.run_experiment_stopping_car import StoppingCarExperiment
 from training.ppo.train_PPO_car import get_PPO_trainer
@@ -64,7 +65,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
             gurobi_model = grb.Model()
             gurobi_model.setParam('OutputFlag', output_flag)
             gurobi_model.setParam('DualReductions', 0)
-            input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
+            input = generate_input_region(gurobi_model, template, x, self.env_input_size)
             observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="input")
             gurobi_model.addConstr(observation[1] <= input[0] - input[1] + self.input_epsilon / 2, name=f"obs_constr21")
             gurobi_model.addConstr(observation[1] >= input[0] - input[1] - self.input_epsilon / 2, name=f"obs_constr22")
