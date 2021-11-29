@@ -15,7 +15,7 @@ from runnables.runnable.experiment.run_ora_stopping_car import ORAStoppingCarExp
 nn_paths_bouncing_ball = [
 
     "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00000_0_2021-01-19_00-19-23/checkpoint_10/checkpoint-10",
-    "/tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00001_1_2021-01-19_00-19-23/checkpoint_20/checkpoint-20",
+    "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00001_1_2021-01-19_00-19-23/checkpoint_20/checkpoint-20",
     "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00002_2_2021-01-19_00-20-06/checkpoint_10/checkpoint-10",
     "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00003_3_2021-01-19_00-20-45/checkpoint_10/checkpoint-10",
     "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00004_4_2021-01-19_00-20-52/checkpoint_20/checkpoint-20",
