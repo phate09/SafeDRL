@@ -32,7 +32,7 @@ def generateCartpoleDomainExplorer(precision=1e-2, rounding=6, sym=False):
     return explorer, verification_model, env, s, state_size, env_class
 
 
-def generatePendulumDomainExplorer(precision=1e-2, rounding=6, sym=False):
+def generatePendulumDomainExplorer(file_name,precision=1e-2, rounding=6, sym=False):
     use_cuda = False
     seed = 1
     torch.manual_seed(seed)
@@ -43,7 +43,8 @@ def generatePendulumDomainExplorer(precision=1e-2, rounding=6, sym=False):
     s = env.reset()
     state_size = 2
     agent = Agent(state_size, 2)
-    agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
+    # agent.load(os.path.expanduser("~/Development") + "/SafeDRL/save/Pendulum_Apr07_12-17-45_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_final.pth")
+    agent.load(file_name)
     if not sym:
         verification_model = VerificationNetwork(agent.qnetwork_local.sequential.cpu().double()).to(device)
         explorer = DomainExplorer(1, device, precision=precision, rounding=rounding)
@@ -53,7 +54,7 @@ def generatePendulumDomainExplorer(precision=1e-2, rounding=6, sym=False):
     return explorer, verification_model, env, s, state_size, env_class
 
 
-def generatePendulumDomainExplorerPPO(precision=1e-2, rounding=6, sym=False):
+def generatePendulumDomainExplorerPPO(file_name,precision=1e-2, rounding=6, sym=False):
     use_cuda = False
     seed = 1
     torch.manual_seed(seed)
@@ -63,7 +64,8 @@ def generatePendulumDomainExplorerPPO(precision=1e-2, rounding=6, sym=False):
     env = env_class()
     s = env.reset()
     state_size = 2
-    sequential_nn = load_sequential_from_ray(os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25",get_pendulum_ppo_agent())
+    #os.path.expanduser("~/Development") + "/SafeDRL/save/PPO_PendulumEnv_2020-09-18_11-23-17wpwqe3zd/checkpoint_25/checkpoint-25"
+    sequential_nn = load_sequential_from_ray(file_name, get_pendulum_ppo_agent())
     sequential_nn.add_module("softmax", torch.nn.Softmax())  # adds the softmax at the end
     if not sym:
         verification_model = VerificationNetwork(sequential_nn).to(device)

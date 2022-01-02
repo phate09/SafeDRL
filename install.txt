@@ -5,12 +5,13 @@ conda activate safedrl
 pip install torch gym
 conda config --add channels http://conda.anaconda.org/gurobi
 conda install gurobi
-pip install ray[rllib] py4j bidict
+pip install ray[default,rllib] py4j bidict
 conda install -c conda-forge libspatialindex
 pip install Rtree
-#local install mpmath
+#local install mpmath from github, latest version
 pip install progressbar2 jsonpickle networkx python-intervals simpy pandas matplotlib plotly scikit-learn colour contexttimer pyinterval sympy
 
-conda install cython
+pip install cython
 python setup.py build_ext --inplace
+sudo apt-get install cython libglpk-dev python python-dev python-pip python-scipy #for pypoman
 pip install dm-tree opencv-python lz4 python-intervals pyinterval pypoman
