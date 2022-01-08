@@ -9,13 +9,14 @@ import mosaic.utils as utils
 import prism.state_storage
 import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
+from mosaic.hyperrectangle import HyperRectangle
 from prism.shared_rtree import SharedRtree
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
 local_mode = True
 if not ray.is_initialized():
-    ray.init(local_mode=local_mode, include_webui=True, log_to_driver=False)
+    ray.init(local_mode=local_mode, include_dashboard=True, log_to_driver=False)
 n_workers = int(ray.cluster_resources()["CPU"]) if not local_mode else 1
 storage = prism.state_storage.StateStorage()
 storage.reset()
@@ -29,7 +30,7 @@ rtree.reset(state_size)
 print(f"Finished building the tree")
 # current_interval = tuple([(-0.3, -0.2), (-0.7, -0.6)])
 remainings = [current_interval]
-storage.root = (utils.round_tuple(current_interval, rounding), None)
+storage.root = (HyperRectangle.round(current_interval, rounding), None)
 storage.graph.add_node(storage.root)
 horizon = 9
 t = 0

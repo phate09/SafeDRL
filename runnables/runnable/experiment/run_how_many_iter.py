@@ -1,3 +1,6 @@
+"""
+Loads a folder where the agent was trained and checks after how many training iterations the agent became safe
+"""
 import datetime
 import os
 import re
