@@ -1,3 +1,6 @@
+"""
+Loads the agents previously trained and then performs the probabilistic verification with various parameters
+"""
 import datetime
 import os
 import time
@@ -201,7 +204,7 @@ if __name__ == '__main__':
     trials = list(_iter())
     n_trials = len(trials) - 1
     print(f"Total n of trials: {n_trials}")
-    start_from = 0  # 7 stoppign_car
+    start_from = 0
     name_group = NameGroup()
     for i, (problem, method, other_config) in enumerate(trials):
         if i < start_from:
