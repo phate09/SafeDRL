@@ -47,7 +47,7 @@ def get_PPO_trainer(use_gpu=1):
               "use_gae": True,  #
               "lambda": 0.95,  # gae lambda param
               "num_envs_per_worker": 10,
-              "train_batch_size": 4000,
+              "train_batch_size": 4096,
               "evaluation_num_episodes": 20,
               "rollout_fragment_length": 1000,
               "framework": "torch",

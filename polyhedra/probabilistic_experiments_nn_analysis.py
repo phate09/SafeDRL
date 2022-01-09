@@ -150,7 +150,6 @@ class ProbabilisticExperiment(Experiment):
 
     def inner_loop_step(self, stats: Experiment.LoopStats, template_2d, template, nn, bar_main):
         # fills up the worker threads
-        # todo split intervals according to the seen list, similar to the abstract mapping
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
             if t >= self.time_horizon:
@@ -198,7 +197,6 @@ class ProbabilisticExperiment(Experiment):
                                 successor_info.t = t
                                 successor_info.action = f"split{i}"
                                 new_fragments.append(successor_info)
-                                # todo probably include also the probabilities associated with each fragment
                             stats.proc_ids.append(ray.put(new_fragments))
                             continue
                     else:  # split on the go
