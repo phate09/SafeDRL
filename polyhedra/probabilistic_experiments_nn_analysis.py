@@ -431,10 +431,12 @@ class ProbabilisticExperiment(Experiment):
             while len(to_split) != 0:
                 bar_split.update(value=bar_split.value + 1, splitting_queue=len(to_split), frontier_size=len(new_frontier))
                 to_analyse, ranges_probs = to_split.pop()
+                action_to_split = np.nanargmax([x[1] - x[0] for x in ranges_probs])
                 split_flag = is_split_range(ranges_probs, self.max_probability_split)
                 can_be_split = self.can_be_splitted(template, to_analyse)
                 if split_flag and can_be_split:
-                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length)
+                    split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d, minimum_length=self.minimum_length,
+                                                      action=action_to_split)
                     n_splits += 1
                     if split1 is None or split2 is None:
                         split1, split2 = sample_and_split(self.get_pre_nn(), nn, template, np.array(to_analyse), self.env_input_size, template_2d)

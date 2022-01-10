@@ -40,4 +40,5 @@ def optimise(templates: np.ndarray, gurobi_model: grb.Model, x_prime: tuple):
         #     return None
         result = gurobi_model.ObjVal
         results.append(result)
-    return np.array(results)
+    array = np.array(results)
+    return array

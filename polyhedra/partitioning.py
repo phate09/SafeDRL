@@ -95,7 +95,7 @@ def split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point
     assert gurobi_model.status == 2, "LP wasn't optimally solved"
     gurobi_model.addConstr(sum((split_template[i] * input[i]) for i in range(len(split_template))) >= decision_point)
     split1 = optimise(template, gurobi_model, input)
-
+    assert split1 is not None
     gurobi_model = grb.Model()
     gurobi_model.setParam('OutputFlag', False)
     split_template = template[chosen_dimension]
@@ -105,6 +105,7 @@ def split_polyhedron_milp(template, boundaries, chosen_dimension, decision_point
     assert gurobi_model.status == 2, "LP wasn't optimally solved"
     gurobi_model.addConstr(sum((split_template[i] * input[i]) for i in range(len(split_template))) <= decision_point)
     split2 = optimise(template, gurobi_model, input)
+    assert split2 is not None
     return split1, split2
 
 

@@ -299,13 +299,14 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     ray.init(log_to_driver=False, local_mode=False)
     experiment = PendulumExperimentProbabilistic()
-    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_pendulum/octagon_psi05_h7_nocontain"
+    experiment.save_dir = "/home/edoardo/ray_results/tune_PPO_pendulum/octagon_psi05_h7_nocontain2"
     experiment.plotting_time_interval = 60
     experiment.show_progressbar = True
     experiment.show_progress_plot = False
     experiment.analysis_template = Experiment.octagon(2)
     experiment.use_contained = False
+    experiment.use_split_with_seen = False
     # experiment.max_probability_split = 0.5
     experiment.time_horizon = 6
-    experiment.load_graph = True
+    # experiment.load_graph = True
     experiment.run_experiment()
