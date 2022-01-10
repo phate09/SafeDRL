@@ -24,7 +24,8 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 2
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorerPPO(precision, rounding, sym=True)
+file_name ="/home/phate09/Development/SafeDRL/save/Dec30_09-58-35_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3200.pth"
+explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorerPPO(file_name,precision, rounding, sym=True)
 delta_x = precision * 2
 delta_y = precision * 2
 param_grid = {'param1': list(np.arange(-0.79, 0.79, delta_x).round(rounding)), 'param2': list(np.arange(-1, 1, delta_y).round(rounding))}

@@ -27,7 +27,7 @@ MIN_EPS = 0.01
 current_time = currentDT.strftime('%b%d_%H-%M-%S')
 comment = f"alpha={ALPHA}, min_eps={MIN_EPS}, eps_decay={EPS_DECAY}"
 log_dir = os.path.join('../runs', current_time + '_' + comment)
-os.mkdir(log_dir)
+os.makedirs(log_dir)
 print(f"logging to {log_dir}")
 writer = SummaryWriter(log_dir=log_dir)
 agent = Agent(state_size=state_size, action_size=action_size, alpha=ALPHA)

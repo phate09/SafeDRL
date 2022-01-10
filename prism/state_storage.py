@@ -99,7 +99,9 @@ class StateStorage:
     def recreate_prism(self, max_t: int = None):
         gateway = JavaGateway()
         mdp = gateway.entry_point.reset_mdp()
-        gateway.entry_point.add_states(self.graph.number_of_nodes())
+        mdp = gateway.entry_point.getMdpSimple()
+        mdp.addStates(self.graph.number_of_nodes())
+        # gateway.entry_point.add_states(self.graph.number_of_nodes())
         path_length = nx.shortest_path_length(self.graph, source=self.root)
         # descendants = list(path_length.keys())  # descendants from 0
         # descendants.insert(0, self.root)

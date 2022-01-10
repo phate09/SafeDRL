@@ -20,5 +20,5 @@ def ray_deserializer_hyper(value):
 
 
 def register_serialisers():
-    ray.register_custom_serializer(HyperRectangle_action, serializer=ray_serializer_hyper_action, deserializer=ray_deserializer_hyper_action)
-    ray.register_custom_serializer(HyperRectangle, serializer=ray_serializer_hyper, deserializer=ray_deserializer_hyper)
+    ray.util.register_serializer(HyperRectangle_action, serializer=ray_serializer_hyper_action, deserializer=ray_deserializer_hyper_action)
+    ray.util.register_serializer(HyperRectangle, serializer=ray_serializer_hyper, deserializer=ray_deserializer_hyper)

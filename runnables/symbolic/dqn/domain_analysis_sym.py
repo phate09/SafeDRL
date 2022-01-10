@@ -11,6 +11,7 @@ import symbolic.unroll_methods as unroll_methods
 import utility.domain_explorers_load
 from mosaic.hyperrectangle import HyperRectangle
 from prism.shared_rtree import SharedRtree
+import numpy as np
 
 gym.logger.set_level(40)
 os.chdir(os.path.expanduser("~/Development") + "/SafeDRL")
@@ -22,7 +23,9 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 3
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding, sym=True)
+explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorer(
+    "/home/phate09/Development/SafeDRL/save/Dec30_09-58-35_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3200.pth", precision, rounding, sym=True)
+# /home/phate09/Development/SafeDRL/save/Dec30_09-58-35_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3200.pth
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
@@ -30,7 +33,7 @@ rtree.reset(state_size)
 print(f"Finished building the tree")
 # current_interval = tuple([(-0.3, -0.2), (-0.7, -0.6)])
 remainings = [current_interval]
-storage.root = (HyperRectangle.round(current_interval, rounding), None)
+storage.root = (HyperRectangle.round(current_interva, rounding), None)
 storage.graph.add_node(storage.root)
 horizon = 9
 t = 0

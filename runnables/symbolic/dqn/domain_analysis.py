@@ -27,7 +27,8 @@ storage = prism.state_storage.StateStorage()
 storage.reset()
 rounding = 2
 precision = 10 ** (-rounding)
-explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorer(precision, rounding, sym=True)
+file_name ="/home/phate09/Development/SafeDRL/save/Dec30_09-58-35_alpha=0.6, min_eps=0.01, eps_decay=0.2/checkpoint_3200.pth"
+explorer, verification_model, env, current_interval, state_size, env_class = utility.domain_explorers_load.generatePendulumDomainExplorer(file_name,precision, rounding, sym=True)
 print(f"Building the tree")
 rtree = SharedRtree()
 rtree.reset(state_size)
