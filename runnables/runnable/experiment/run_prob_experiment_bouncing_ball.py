@@ -287,7 +287,6 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         pickled_path = self.nn_path + ".pickle"
         if os.path.exists(pickled_path):
             nn = torch.load(pickled_path, map_location=torch.device('cpu'))
-            print("Restored")
             return nn
         config = get_PPO_config(1234, use_gpu=0)
         trainer = ppo.PPOTrainer(config=config)
@@ -298,6 +297,7 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         for l in sequential_nn:
             layers.append(l)
         nn = torch.nn.Sequential(*layers)
+        torch.save(nn, pickled_path)
         return nn
 
 

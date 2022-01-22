@@ -88,8 +88,8 @@ def update_progress(n_workers, seen, frontier, num_already_visited, max_t):
     tune.report(n_workers=n_workers, seen=seen, frontier=frontier, num_already_visited=num_already_visited, max_t=max_t, safe=0)
 
 
-def run_parameterised_experiment(config):
-    experiment = get_experiment_instance(config)
+def run_parameterised_experiment(config, trial_dir):
+    experiment = get_experiment_instance(config, trial_dir=trial_dir)
 
     elapsed_seconds, safe, max_t = experiment.run_experiment()
     safe_value = 0
@@ -99,12 +99,16 @@ def run_parameterised_experiment(config):
         safe_value = 1
     elif not safe:
         safe_value = -1
-    tune.report(elapsed_seconds=elapsed_seconds, safe=safe_value, max_t=max_t, done=True)
+    verification_results_path = os.path.join(experiment.save_dir, "verification_result")
+    now = datetime.datetime.now()
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    with open(verification_results_path, "w") as f:
+        f.write(f"elapsed_seconds={elapsed_seconds}, safe={safe_value}, max_t={max_t}, done={dt_string}")
+    # tune.report(elapsed_seconds=elapsed_seconds, safe=safe_value, max_t=max_t, done=True)
 
 
-def get_experiment_instance(config):
+def get_experiment_instance(config, trial_dir):
     # Hyperparameters
-    trial_dir = tune.get_trial_dir()
     problem, other_config = config["main_params"]
     n_workers = config["n_workers"]
     if problem == "bouncing_ball":
@@ -128,7 +132,7 @@ def get_experiment_instance(config):
         experiment.show_progressbar = False
         experiment.show_progress_plot = False
         experiment.save_dir = trial_dir
-        experiment.update_progress_fn = update_progress
+        # experiment.update_progress_fn = update_progress
     elif problem == "stopping_car":
         experiment = StoppingCarExperiment()
         experiment.nn_path = os.path.join(utils.get_agents_dir(), nn_paths_stopping_car[other_config["nn_path"]])
@@ -144,7 +148,7 @@ def get_experiment_instance(config):
         experiment.show_progressbar = False
         experiment.show_progress_plot = False
         experiment.save_dir = trial_dir
-        experiment.update_progress_fn = update_progress
+        # experiment.update_progress_fn = update_progress
     else:
         experiment = CartpoleExperiment()
         experiment.nn_path = os.path.join(utils.get_agents_dir(), nn_paths_cartpole[other_config["nn_path"]])
@@ -161,7 +165,7 @@ def get_experiment_instance(config):
         experiment.show_progress_plot = False
         # experiment.use_rounding = False
         experiment.save_dir = trial_dir
-        experiment.update_progress_fn = update_progress
+        # experiment.update_progress_fn = update_progress
     return experiment
 
 
@@ -173,8 +177,8 @@ class NameGroup:
         self.date_time = datetime_str
         self.name = hex(int(time.time()))[2:]
 
-    def trial_str_creator(self, trial):
-        problem, other_config = trial.config["main_params"]
+    def trial_str_creator(self, config):
+        problem, other_config = config["main_params"]
         add_string = ""
         if problem == "cartpole":
             add_string += f"tau: {other_config.get('tau', 0)}"
@@ -193,8 +197,8 @@ class NameGroup:
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=False, log_to_driver=True, include_dashboard=True)
-    cpu = 1
+    ray.init(local_mode=os.environ.get("local_mode", False), log_to_driver=False, include_dashboard=True)
+    cpu = 8
     trials = list(_iter())
     n_trials = len(trials) - 1
     print(f"Total n of trials: {n_trials}")
@@ -204,26 +208,24 @@ if __name__ == '__main__':
         if i < start_from:
             continue
         print(f"Starting trial: {i + 1}/{n_trials}")
-        # run_parameterised_experiment(config={
-        #         "main_params": (problem, other_config),
-        #         "n_workers": 1
-        #     })
         experiment_config = {
             "main_params": (problem, other_config),
-            "n_workers": 1
+            "n_workers": cpu
         }
-        get_experiment_instance(experiment_config).pickle_nn()  # preprocess the neural network so that it is pickled befor running the experiment
-        analysis = tune.run(
-            run_parameterised_experiment,
-            name="experiment_collection_NFM",
-            config=experiment_config,
-            resources_per_trial={"cpu": 8},
-            stop={"time_since_restore": 300},
-            trial_name_creator=name_group.trial_str_creator,
-            reuse_actors=True,
-            # resume="PROMPT",
-            verbose=0,
-            log_to_file=True)
+        trial_dir = os.path.join(utils.get_save_dir(), "experiment_collection_NFM", name_group.trial_str_creator(experiment_config))
+        run_parameterised_experiment(config=experiment_config, trial_dir=trial_dir)
+
+        # analysis = tune.run(
+        #     run_parameterised_experiment,
+        #     name="experiment_collection_NFM",
+        #     config=experiment_config,
+        #     resources_per_trial={"cpu": 8},
+        #     stop={"time_since_restore": 300},
+        #     trial_name_creator=name_group.trial_str_creator,
+        #     reuse_actors=True,
+        #     # resume="PROMPT",
+        #     verbose=0,
+        #     log_to_file=True)
         # df = analysis.results_df
         # df.to_json(os.path.join(analysis.best_logdir, "experiment_results.json"))
         print(f"Finished trial: {i}/{n_trials}")

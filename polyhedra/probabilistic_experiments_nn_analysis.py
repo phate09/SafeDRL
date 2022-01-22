@@ -54,7 +54,6 @@ class ProbabilisticExperiment(Experiment):
             os.makedirs(self.save_dir)
         experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
-        print("Before Main")
         max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
         print(f"T={max_t}")
 
@@ -153,7 +152,7 @@ class ProbabilisticExperiment(Experiment):
         # fills up the worker threads
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
-            if t >= self.time_horizon:
+            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time).seconds / 60 > self.max_elapsed_time:
                 print(f"Discard timestep t={t}")
                 stats.discarded.append((x, x_label))
                 continue

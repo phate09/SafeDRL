@@ -1,3 +1,4 @@
+import os
 from typing import List, Tuple
 
 import gurobi as grb
@@ -210,6 +211,10 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
+        pickled_path = self.nn_path + ".pickle"
+        if os.path.exists(pickled_path):
+            nn = torch.load(pickled_path, map_location=torch.device('cpu'))
+            return nn
         config = get_PPO_config(1234, 0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)
@@ -223,6 +228,7 @@ class StoppingCarExperimentProbabilistic(ProbabilisticExperiment):
         #
         # nn = torch.nn.Sequential(*layers)
         nn = sequential_nn
+        torch.save(nn, pickled_path)
         # ray.shutdown()
         return nn
 

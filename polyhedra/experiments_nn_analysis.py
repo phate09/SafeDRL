@@ -43,6 +43,7 @@ class Experiment():
         self.n_workers = 8
         self.plotting_time_interval = 60 * 5
         self.time_horizon = 100
+        self.max_elapsed_time = 0.5  # minutes
         self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
         self.use_rounding = True
@@ -194,7 +195,7 @@ class Experiment():
         # fills up the worker threads
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
-            if t >= self.time_horizon:
+            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time) / 60 < self.max_elapsed_time:
                 print(f"Discard timestep t={t}")
                 stats.discarded.append((x, x_label))
                 continue
@@ -472,10 +473,6 @@ class Experiment():
             if gurobi_model.status == 2:
                 return True
         return False
-
-    def pickle_nn(self):
-        nn = self.get_nn_fn()
-        torch.save(nn, self.nn_path + ".pickle")  # nn_path needs to be defined in the class
 
     @staticmethod
     def e(n, i):
