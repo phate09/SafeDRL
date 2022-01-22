@@ -1,6 +1,7 @@
 .idea/
 /dqn/data/
 /runs/
+/saved_agents
 */__pycache__/*
 save/**
 *.so

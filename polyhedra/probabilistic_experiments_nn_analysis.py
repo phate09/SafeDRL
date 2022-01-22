@@ -54,6 +54,7 @@ class ProbabilisticExperiment(Experiment):
             os.makedirs(self.save_dir)
         experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
+        print("Before Main")
         max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
         print(f"T={max_t}")
 

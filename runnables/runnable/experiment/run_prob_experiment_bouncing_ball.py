@@ -284,6 +284,11 @@ class BouncingBallExperimentProbabilistic(ProbabilisticExperiment):
         return nn
 
     def get_nn(self):
+        pickled_path = self.nn_path + ".pickle"
+        if os.path.exists(pickled_path):
+            nn = torch.load(pickled_path, map_location=torch.device('cpu'))
+            print("Restored")
+            return nn
         config = get_PPO_config(1234, use_gpu=0)
         trainer = ppo.PPOTrainer(config=config)
         trainer.restore(self.nn_path)

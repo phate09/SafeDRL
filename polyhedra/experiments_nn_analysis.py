@@ -473,6 +473,10 @@ class Experiment():
                 return True
         return False
 
+    def pickle_nn(self):
+        nn = self.get_nn_fn()
+        torch.save(nn, self.nn_path + ".pickle")  # nn_path needs to be defined in the class
+
     @staticmethod
     def e(n, i):
         result = [0] * n
