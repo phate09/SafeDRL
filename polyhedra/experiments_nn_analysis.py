@@ -1,6 +1,7 @@
 import csv
 import datetime
 import heapq
+import json
 import math
 import os
 import pickle
@@ -10,6 +11,7 @@ from contextlib import nullcontext
 from typing import Tuple, List
 
 import gurobipy as grb
+import jsonpickle
 import networkx
 import numpy as np
 import progressbar
@@ -43,7 +45,7 @@ class Experiment():
         self.n_workers = 8
         self.plotting_time_interval = 60 * 5
         self.time_horizon = 100
-        self.max_elapsed_time = 0.5  # minutes
+        self.max_elapsed_time = 10  # seconds
         self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
         self.use_rounding = True
@@ -72,27 +74,10 @@ class Experiment():
         assert self.save_dir is not None
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
-        experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
 
-        max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
-        print(f"T={max_t}")
-
-        print(f"The algorithm skipped {num_already_visited} already visited states")
-        safe = None
-        if unsafe:
-            print("The agent is unsafe")
-            safe = False
-        elif max_t < self.time_horizon:
-            print("The agent is safe")
-            safe = True
-        else:
-            print(f"It could not be determined if the agent is safe or not within {self.time_horizon} steps. Increase 'time_horizon' to increase the number of steps to analyse")
-            safe = None
-        experiment_end_time = time.time()
-        elapsed_seconds = round((experiment_end_time - experiment_start_time))
-        print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
-        return elapsed_seconds, safe, max_t
+        stats = self.main_loop(nn, self.analysis_template, self.template_2d)
+        return stats
 
     def assign_lbl_dummy(self, x_prime, parent, parent_lbl):
         """assigns the same label to every state"""
@@ -178,6 +163,7 @@ class Experiment():
             self.to_replace_split = []  # elements to replace/split because they are too big
             self.vertices_list = defaultdict(list)  # contains point at every timesteps, this is for plotting purposes only
             self.max_t = 0
+            self.max_elapsed_time = -1
             self.num_already_visited = 0
             self.num_irrelevant = 0
             self.proc_ids = []
@@ -191,11 +177,23 @@ class Experiment():
             self.last_time = None
             self.end_time = None
 
+        def pickle(self, filename):
+            # os.makedirs(filename, exist_ok=True)
+            with open(filename, "w") as f:
+                jsonpickle.set_encoder_options('json', sort_keys=True, indent=4)
+                f.write(jsonpickle.encode(self))
+
+        @staticmethod
+        def unpickle(filename):
+            with open(filename, "r") as f:
+                state = jsonpickle.decode(f.read())
+                return state
+
     def inner_loop_step(self, stats: LoopStats, template_2d, template, nn, bar_main):
         # fills up the worker threads
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
-            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time) / 60 < self.max_elapsed_time:
+            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time).seconds < self.max_elapsed_time:
                 print(f"Discard timestep t={t}")
                 stats.discarded.append((x, x_label))
                 continue

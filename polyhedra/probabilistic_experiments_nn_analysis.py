@@ -1,6 +1,7 @@
 import csv
 import datetime
 import heapq
+import json
 import math
 import os
 import pickle
@@ -10,6 +11,7 @@ from contextlib import nullcontext
 from typing import Tuple, List, Any
 
 import gurobipy as grb
+import jsonpickle
 import networkx
 import numpy as np
 import progressbar
@@ -52,26 +54,9 @@ class ProbabilisticExperiment(Experiment):
         assert self.save_dir is not None
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
-        experiment_start_time = time.time()
         nn: torch.nn.Sequential = self.get_nn_fn()
-        max_t, num_already_visited, vertices_list, unsafe = self.main_loop(nn, self.analysis_template, self.template_2d)
-        print(f"T={max_t}")
-
-        print(f"The algorithm skipped {num_already_visited} already visited states")
-        safe = None
-        if unsafe:
-            print("The agent is unsafe")
-            safe = False
-        elif max_t < self.time_horizon:
-            print("The agent is safe")
-            safe = True
-        else:
-            print(f"It could not be determined if the agent is safe or not within {self.time_horizon} steps. Increase 'time_horizon' to increase the number of steps to analyse")
-            safe = None
-        experiment_end_time = time.time()
-        elapsed_seconds = round((experiment_end_time - experiment_start_time))
-        print(f"Total verification time {str(datetime.timedelta(seconds=elapsed_seconds))}")
-        return elapsed_seconds, safe, max_t
+        stats = self.main_loop(nn, self.analysis_template, self.template_2d)
+        return stats
 
     def load_abstract_mapping(self):
         self.abstract_mapping = pickle.load(open(self.abstract_mapping_path, "rb"))
@@ -82,8 +67,9 @@ class ProbabilisticExperiment(Experiment):
         root_pair = (root, 0)  # label for root is always 0
         root_list = [root_pair]
         if not self.load_graph:
-            stats = ProbabilisticExperiment.LoopStats()
+            stats = Experiment.LoopStats()
             stats.root = root_pair
+            stats.max_elapsed_time = self.max_elapsed_time
             stats.start_time = datetime.datetime.now()
             if self.additional_seen_fn is not None:
                 for extra in self.additional_seen_fn():
@@ -102,11 +88,12 @@ class ProbabilisticExperiment(Experiment):
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
             inv_map = {v: k for k, v in mapping.items()}
             stats.end_time = datetime.datetime.now()
+            stats.elapsed_time = (stats.end_time - stats.start_time).seconds
             networkx.write_gpickle(self.graph, os.path.join(self.save_dir, "graph.p"))
             pickle.dump(stats, open(os.path.join(self.save_dir, "stats.p"), "wb"))
         else:
             self.graph = networkx.read_gpickle(os.path.join(self.save_dir, "graph.p"))
-            stats: ProbabilisticExperiment.LoopStats = pickle.load(open(os.path.join(self.save_dir, "stats.p"), "rb"))
+            stats: Experiment.LoopStats = pickle.load(open(os.path.join(self.save_dir, "stats.p"), "rb"))
             gateway, mc, mdp, mapping = recreate_prism_PPO(self.graph, root_pair)
 
         # ----for plotting
@@ -140,9 +127,9 @@ class ProbabilisticExperiment(Experiment):
         print("", file=sys.stderr)  # new line
         fig = show_polygons(template, [x[0] for x in to_plot], self.template_2d, colours)
         fig.write_html("initial_state_unsafe_prob.html")
-        fig.show()
+        # fig.show()
         print("", file=sys.stderr)  # new line
-        return stats.max_t, stats.num_already_visited, stats.vertices_list, stats.is_agent_unsafe
+        return stats
 
     @ray.remote
     def post_milp(self, x, x_label, nn, output_flag, t, template):
@@ -152,7 +139,7 @@ class ProbabilisticExperiment(Experiment):
         # fills up the worker threads
         while len(stats.proc_ids) < self.n_workers and len(stats.frontier) != 0:
             t, (x, x_label) = heapq.heappop(stats.frontier) if self.use_bfs else stats.frontier.pop()
-            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time).seconds / 60 > self.max_elapsed_time:
+            if t >= self.time_horizon or (datetime.datetime.now() - stats.start_time).seconds > self.max_elapsed_time:
                 print(f"Discard timestep t={t}")
                 stats.discarded.append((x, x_label))
                 continue

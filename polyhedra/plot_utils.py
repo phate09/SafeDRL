@@ -159,5 +159,5 @@ def show_polygons(template, boundaries, template_2d, colours=None, rgb=False):
         scaleanchor="x",
         scaleratio=1,
     )
-    fig.show()
+    # fig.show()
     return fig
