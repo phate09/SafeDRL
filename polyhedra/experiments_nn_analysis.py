@@ -45,7 +45,7 @@ class Experiment():
         self.n_workers = 8
         self.plotting_time_interval = 60 * 5
         self.time_horizon = 100
-        self.max_elapsed_time = 10  # seconds
+        self.max_elapsed_time = 300 * 60  # seconds
         self.use_bfs = True  # use Breadth-first-search or Depth-first-search
         self.local_mode = False  # disable multi processing
         self.use_rounding = True
